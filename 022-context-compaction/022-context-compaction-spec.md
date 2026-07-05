@@ -131,6 +131,64 @@ The user works in one conversation all day. It never hits a provider context-len
 ### Functional Requirements — Memory-loop integration (soft dependency on 020)
 
 - **FR-014**: If the 021 fast-loop module is present, the summarization job MUST first invoke the fast-loop review for this conversation (idle threshold waived, same code path as 021 FR-009) covering turns up to the boundary, and only then summarize. If absent or failing, proceed without it (log the skip) — compaction MUST NOT hard-depend on 021.
+- **User Story 4 - Compacted details remain recoverable (Priority: P2)**
+
+**Acceptance Scenarios**:
+
+1. **Given** the memory loops (021) are installed, **When** a summarization is about to run, **Then** the fast-loop review is invoked first for this conversation (idle threshold waived) covering turns up to the compaction boundary, so durable lessons are on disk in an episode before the model's view is compressed.
+2. **Given** a compacted conversation, **When** the assistant needs a detail from the compacted span, **Then** the summary's trailing recovery note points it at `memory_search`, and `memory_search` over episodes/topics returns matches with provenance.
+3. **Given** 021 is not installed (or its module is absent), **Then** summarization still works — the review step is skipped, not failed.
+
+### User Story 5 - The transcript stays authoritative and debuggable (Priority: P2)
+
+**Acceptance Scenarios**:
+
+1. **Given** any compaction activity, **Then** `/Documents/Chats/<id>.json` is never written by this feature; the UI continues to show the full history.
+2. **Given** the user edits or truncates history client-side (regenerate, branch switch), **When** the span hash in the sidecar no longer matches, **Then** the stale compaction state is discarded and recomputed — never applied to mismatched messages.
+3. **Given** a compaction event (clear advance, summary applied, fallback), **Then** it is visible in the central log and via `GET /api/compaction?conv=<id>` (state, thresholds, last event).
+
+### Edge Cases
+
+- **Tool-pair integrity**: both providers hard-400 on an assistant tool-call without its matching result. Every boundary (clear-watermark, summary boundary, fallback cut) MUST treat a tool-call message and its result message(s) as one atomic group.
+- **Provider message-order validity**: the kept tail MUST begin at a user message; the summary is injected as a user-role message. Resulting prompts MUST be valid for both provider families (AI SDK conversion merges consecutive same-role messages — assert in tests, don't assume).
+- **`maxInputTokens` unset**: fall back to `compaction.assumedContextTokens` (default 128000). Reserve output headroom (`maxTokens ?? DEFAULT_MAX_TOKENS`) when computing the effective budget.
+- **Summarizer failure / step limit**: retry at most once per lock acquisition; on failure log and leave state unchanged (the hard-limit fallback still protects the conversation). No retry loops.
+- **Summarizer output**: MUST pass `looksLikeInjection` before entering the sidecar (summary text re-enters prompts); refused output is dropped and logged.
+- **Locking**: one summarization in flight per conversation; lock is a sidecar field with staleness expiry (default 10 min) so a crashed job cannot wedge the conversation.
+- **Concurrent turns during summarization**: the middleware never waits on the lock; it serves the current view and the summary applies from the first turn after it lands (boundary chosen from the message span that was hashed, not "latest").
+- **Repeated compaction**: anchored, never chained — a re-summarization's input is (previous summary + newly evicted span), producing one updated summary. Summaries of summaries of summaries are forbidden (drift amplification).
+- **No credentials**: `hasCredentials()` false → Layer 2 disabled; Layer 1 and the mechanical fallback still function (they need no LLM).
+- **Sub-agents**: `runToolLoop` is bounded (8 steps) and out of scope; delegation already returns condensed results to the caller.
+
+---
+
+## Requirements *(mandatory)*
+
+### Functional Requirements — Estimation & thresholds
+
+- **FR-001**: Token estimation is a pure, isolated module (`estimateTokens(messages)`), initial heuristic `ceil(chars/4)` over serialized content — **no new dependencies**. The module MUST isolate the heuristic so a real tokenizer can replace it without interface change.
+- **FR-002**: Effective budget = (`maxInputTokens` ?? `compaction.assumedContextTokens`) − output headroom. Defaults: `clearThreshold` 50% of budget, `summarizeThreshold` 75%, `hardLimit` 92%. All configurable via the `compaction` namespace (FR-018).
+- **FR-003**: Below `clearThreshold` the middleware is a pass-through: zero LLM calls, zero writes, byte-identical output (SC-002).
+
+### Functional Requirements — Layer 1: tool-result clearing
+
+- **FR-004**: When estimated tokens ≥ `clearThreshold`, advance a persisted **clear-watermark**: all tool-result contents at positions older than the newest `keepToolResults` (default 5) tool-use/result pairs are replaced, in one batch, by a single-line placeholder: tool name + `"output elided to save context — re-run the tool if the output is needed again"`. Tool-call parts (assistant side) are preserved verbatim; message structure and ordering are unchanged.
+- **FR-005**: Clearing is deterministic from the sidecar watermark: between watermark advances, repeated requests produce a byte-identical transformed prefix (prompt-cache preservation; SC-003). A rolling every-turn mask is explicitly non-compliant.
+- **FR-006**: Tools listed in `compaction.unrecoverableTools` (default: empty) are never cleared. The default placeholder MUST make regeneration actionable (the cleared span is also eventually covered by the Layer-2 summary).
+
+### Functional Requirements — Layer 2: summarization
+
+- **FR-007**: When estimated tokens ≥ `summarizeThreshold` and no valid summary covers the overflow, the middleware schedules an **asynchronous** summarization (fire-and-forget with error logging) and serves the current turn without waiting. Compaction work MUST never block a user-facing model call, except the FR-011 hard-limit fallback.
+- **FR-008**: Boundary selection: keep the most recent tail (default: max(last 20% of budget, last 10 messages)) verbatim; walk the cut back so (a) no tool group is split and (b) the kept tail begins at a user message. The summarized span is everything before the cut (including previously cleared placeholders and any previous summary — anchored update, see Edge Cases).
+- **FR-009**: The summarizer runs via `complete()` (`src/lib/agent/llm.ts`) — provider-agnostic, honoring `compaction.model` as an optional cheaper override. Its system prompt is the bundled [`prompts/compaction-summary-system.md`](prompts/compaction-summary-system.md) — normative, embedded verbatim (FR-013). Input: the serialized span + previous summary if any. Output: the structured summary text.
+- **FR-010**: The sidecar stores `{ boundary: { count, spanHash }, summary, clearWatermark, lock, updatedAt, stats }`. `spanHash` is a content hash of the summarized span; on any mismatch at apply time the state is discarded (US-5.2). Writes are atomic (temp-file + rename, as in `memory/curated.ts`); the summary text is injection-scanned before persisting.
+- **FR-011**: **Hard-limit fallback**: if a request arrives with estimated tokens ≥ `hardLimit` and no applicable summary, the middleware synchronously applies a mechanical, pair-safe truncation — keep the first user message and the largest recent tail that fits — logs a warning, and still schedules Layer 2. A provider context-length 400 due to unmanaged growth is a spec violation.
+- **FR-012**: Summary injection shape: one user-role message whose text is wrapped in `<conversation_summary>…</conversation_summary>`, ending with the fixed recovery note ("Earlier details from this conversation were compacted. Durable lessons may be retrievable via memory_search."), spliced immediately before the kept tail. Nothing else is inserted or reordered.
+- **FR-013**: The bundled prompt is **normative**: the implementation MUST embed its body verbatim (leading HTML comment stripped) as a module constant; any wording change is a spec change made in the bundled file first (same rule as 021 FR-021).
+
+### Functional Requirements — Memory-loop integration (soft dependency on 021)
+
+- **FR-014**: If the 021 fast-loop module is present, the summarization job MUST first invoke the fast-loop review for this conversation (idle threshold waived, same code path as 021 FR-009) covering turns up to the boundary, and only then summarize. If absent or failing, proceed without it (log the skip) — compaction MUST NOT hard-depend on 021.
 - **FR-015**: Automated compaction never writes `USER.md`, `MEMORY.md`, topics, episodes, or skills directly — durable extraction is exclusively the memory loops' job. Compaction owns only its sidecar.
 
 ### Functional Requirements — Placement & invariants
