@@ -8,8 +8,9 @@ This document provides per-file design detail for implementing spec 021-memory-l
 
 ### File Path Pattern
 ```typescript
-const EPISODES_DIR = 'data/memory/episodes';
-const ARCHIVE_DIR = 'data/memory/episodes/.archive';
+// All paths are VFS paths under /Documents/Memory/
+const EPISODES_DIR = '/Documents/Memory/Episodes';
+const ARCHIVE_DIR = '/Documents/Memory/Episodes/.Archive';
 
 function episodePath(conversationId: string): string {
   const date = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
@@ -132,7 +133,7 @@ async function updateEpisode(conversationId: string, updates: Partial<EpisodeBod
 
 ### File Structure
 ```typescript
-// data/memory/.watermarks.json
+// /Documents/Memory/.watermarks.json (VFS)
 {
   "abc123-def456": {
     "messageId": "msg_789xyz",
@@ -317,7 +318,7 @@ async function replaceTopicEntry(topicSlug: string, entryId: string, newContent:
 
 ### Lock File Handling
 ```typescript
-const LOCK_FILE = 'data/memory/.consolidate.lock';
+const LOCK_FILE = '/Documents/Memory/.consolidate.lock'; // VFS
 const STALENESS_EXPIRY_MS = 30 * 60 * 1000; // 30 min
 
 interface Lock {
@@ -408,7 +409,7 @@ function assessComplexity(episode: Episode): boolean {
 
 async function searchSkillCandidates(taskClass: string): Promise<number> {
   // Search all episodes for matching skill-candidate tags
-  const episodesDir = 'data/memory/episodes';
+  const episodesDir = '/Documents/Memory/Episodes';
   const files = await listVfsDirectory(episodesDir);
   
   let count = 0;
@@ -431,7 +432,7 @@ async function searchSkillCandidates(taskClass: string): Promise<number> {
 ### Substring Match Implementation
 ```typescript
 interface SearchResult {
-  source: string;      // e.g., "topics/gmail-workflows.md#entry-3"
+  source: string;      // e.g., "/Documents/Memory/Topics/gmail-workflows.md#entry-3"
   content: string;
   score: number;
 }
@@ -441,7 +442,7 @@ async function memory_search(query: string, maxResults = 10): Promise<SearchResu
   const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
   
   // Search topics
-  const topicsDir = 'data/memory/topics';
+  const topicsDir = '/Documents/Memory/Topics';
   const topicFiles = await listVfsDirectory(topicsDir);
   
   for (const file of topicFiles.filter(f => f.name.endsWith('.md'))) {
@@ -453,7 +454,7 @@ async function memory_search(query: string, maxResults = 10): Promise<SearchResu
       const matchScore = scoreMatch(entry.content, queryWords);
       if (matchScore > 0) {
         results.push({
-          source: `topics/${topicSlug}.md#entry-${index + 1}`,
+          source: `${topicsDir}/${topicSlug}.md#entry-${index + 1}`,
           content: entry.content,
           score: matchScore
         });
@@ -462,7 +463,7 @@ async function memory_search(query: string, maxResults = 10): Promise<SearchResu
   }
   
   // Search episodes (pending + recent consolidated)
-  const episodesDir = 'data/memory/episodes';
+  const episodesDir = '/Documents/Memory/Episodes';
   const episodeFiles = await listVfsDirectory(episodesDir);
   
   for (const file of episodeFiles.filter(f => f.name.endsWith('.md') && !f.name.startsWith('.'))) {
@@ -475,7 +476,7 @@ async function memory_search(query: string, maxResults = 10): Promise<SearchResu
       const matchScore = scoreMatch(lessons, queryWords);
       if (matchScore > 0) {
         results.push({
-          source: `episodes/${file.name}#lessons`,
+          source: `${episodesDir}/${file.name}#lessons`,
           content: lessons.trim(),
           score: matchScore
         });
@@ -511,26 +512,59 @@ function scoreMatch(text: string, queryWords: string[]): number {
 
 ## Integration Points
 
-### Scheduler Registration
+### Scheduler Seeding (Unified Job Engine)
+
+Memory loops do **not** ship as standalone job files under `src/lib/integrations/scheduler/jobs/`. The Unified Job Engine (`src/lib/scheduler/engine.ts`, Phase 0 prerequisite) owns tick, persistence, failure isolation, and history. Memory loops just register internal handlers and seed JobDefinitions.
+
 ```typescript
-// src/lib/integrations/scheduler/jobs.ts
-import { runFastLoop } from './memory/fast-loop';
-import { runSlowLoop } from './memory/consolidate';
+// src/lib/agent/memory/fast-loop.ts
+import { registerHandler, ensureSystemJob, type JobDefinition } from '@/lib/scheduler/engine';
 
-registerJob('memory-fast-loop', async () => {
-  await runFastLoop();
-}, {
-  interval: config.memoryLoops.fastLoop.tickInterval * 1000,
-  enabled: config.memoryLoops.fastLoop.enabled
-});
+export async function runFastLoop(): Promise<void> {
+  // eligibility scan + LLM call + episode write ...
+}
 
-registerJob('memory-slow-loop', async () => {
-  await runSlowLoop();
-}, {
-  interval: config.memoryLoops.slowLoop.interval * 1000,
-  enabled: config.memoryLoops.slowLoop.enabled
-});
+registerHandler('memory.fast-loop', runFastLoop);
+
+export async function seedFastLoopJob(): Promise<void> {
+  const def: JobDefinition = {
+    id: 'system:memory.fast-loop',
+    category: 'system',
+    owner: 'memory',
+    handler: { kind: 'internal', ref: 'memory.fast-loop' },
+    scheduleType: 'recurring',
+    scheduleConfig: { interval: 2, unit: 'minute' },
+    readOnlyFields: ['handler', 'category'],
+  };
+  await ensureSystemJob(def); // idempotent: no-op if already seeded, preserves user edits
+}
 ```
+
+```typescript
+// src/lib/agent/memory/consolidate.ts
+import { registerHandler, ensureSystemJob, type JobDefinition } from '@/lib/scheduler/engine';
+
+export async function runSlowLoop(): Promise<void> {
+  // exit early if no pending episodes; respect /Documents/Memory/.consolidate.lock ...
+}
+
+registerHandler('memory.slow-loop', runSlowLoop);
+
+export async function seedSlowLoopJob(): Promise<void> {
+  const def: JobDefinition = {
+    id: 'system:memory.slow-loop',
+    category: 'system',
+    owner: 'memory',
+    handler: { kind: 'internal', ref: 'memory.slow-loop' },
+    scheduleType: 'recurring',
+    scheduleConfig: { interval: 1, unit: 'hour' },
+    readOnlyFields: ['handler', 'category'],
+  };
+  await ensureSystemJob(def);
+}
+```
+
+Both `seed*Job()` calls run on boot; both JobDefinitions land in `/Documents/System/scheduler-jobs.json`. Run history is appended by the engine to `/Documents/System/scheduler-history/system:memory.<fast|slow>-loop.jsonl`. **Do NOT** create `src/lib/integrations/scheduler/jobs/memory-*.ts` — the unified store is the only persistence.
 
 ### Config Registry
 ```typescript
@@ -609,15 +643,16 @@ it('produces episode within 2×tick interval', async () => {
 ## Debugging Tips
 
 ### Check Episode State
+All memory artifacts live under the VFS at `/Documents/Memory/`. Inspect via the Files app, `vfs-read`/`vfs-list` tools, or `/api/fs`:
 ```bash
-# List all episodes
-ls -la data/memory/episodes/
+# List all episodes (via VFS API)
+curl -s "http://localhost:3000/api/fs?op=list&path=/Documents/Memory/Episodes"
 
-# View pending episodes
-grep -l "status: pending" data/memory/episodes/*.md
+# View a single episode
+curl -s "http://localhost:3000/api/fs?op=read&path=/Documents/Memory/Episodes/2026-07-05-abc123.md"
 
 # Check watermarks
-cat data/memory/.watermarks.json
+curl -s "http://localhost:3000/api/fs?op=read&path=/Documents/Memory/.watermarks.json"
 ```
 
 ### Manual Trigger for Testing
@@ -632,9 +667,12 @@ curl -X POST http://localhost:3000/api/memory/consolidate
 
 ### Log Inspection
 ```bash
-# View recent consolidation runs
-grep "memory-slow-loop" logs/assistant.log | tail -20
+# View recent consolidation runs (unified engine writes run-history per job)
+curl -s "http://localhost:3000/api/fs?op=read&path=/Documents/System/scheduler-history/system:memory.slow-loop.jsonl" | tail -20
 
-# Check for lock file issues
-ls -la data/memory/.consolidate.lock 2>/dev/null || echo "No lock file"
+# Check for lock file (VFS)
+curl -s "http://localhost:3000/api/fs?op=read&path=/Documents/Memory/.consolidate.lock" || echo "No lock file"
+
+# Confirm memory jobs are seeded
+curl -s "http://localhost:3000/api/fs?op=read&path=/Documents/System/scheduler-jobs.json" | jq '.[] | select(.owner == "memory")'
 ```
