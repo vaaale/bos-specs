@@ -32,3 +32,16 @@ Earlier specs assumed an unsandboxed `runBash`. It is replaced by `run_command`
 `003-self-improvement` `skill_improve` is a single reflective rewrite recording a
 self-reported score, not the full GEPA loop (candidate generation + evaluation +
 Pareto selection + versioned rollback). See `003-self-improvement`.
+
+## Context compaction (022) has a soft dependency on 021 memory-loops
+
+`022-context-compaction` is authored as a self-contained view transform on the
+model input array — it does **not** require `021-memory-loops` to run. But when
+021 is installed, the compaction summarizer invokes `runFastLoop({ onlyConversationId,
+waiveIdle: true })` **before** persisting the summary so durable lessons from
+the span-about-to-be-compacted hit the memory store first ("write before
+compaction"). If the module is absent, compaction logs `fast-loop.skipped`
+(once per conversation) and proceeds. Recovery of pre-summary facts on later
+turns is via `memory_search` (021 tool surface) — spec 022 US-4.3, FR-014.
+
+Authoritative: `022-context-compaction` FR-014; recovery path: US-4.3.
