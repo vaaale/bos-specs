@@ -6,6 +6,85 @@
 
 ---
 
+## Phase 0: Unified Scheduler Engine (prerequisite)
+
+Memory Loops runs both loops as jobs on the **Unified Scheduler Engine** (spec `scheduler`, see `bos-system-specs/scheduler/plan.md` and `tasks.md`). Fast/slow loops must NOT introduce their own timer, daemon, or persistence — they register `internal` handlers on the engine and seed two `system` category jobs.
+
+Phase 0 tasks below are the alignment points between this spec and the Scheduler spec. **All of Phase 0 depends on Scheduler Phase 1 being complete.** Phase 0 itself blocks Memory Loops Phase 2 (fast-loop scheduling) and Phase 3 (slow-loop scheduling).
+
+### Task 0.1: Verify Scheduler Phase 1 landed
+- Prerequisite check: `src/lib/scheduler/engine.ts`, `src/lib/scheduler/handlers/registry.ts`, `src/lib/scheduler/store.ts`, `src/lib/scheduler/history.ts`, `src/lib/scheduler/schedule.ts`, `src/lib/scheduler/acl.ts`, and `src/lib/scheduler/types.ts` exist and export the surface described in `scheduler/tasks.md` Tasks 1.1–1.10.
+- If not, stop and complete `scheduler/tasks.md` Phase 1 first.
+- **Acceptance**: engine boots with zero jobs; `resolve('internal', 'memory-loops.fast')` returns `null` (registered later in Task 0.3).
+
+### Task 0.2: Verify Scheduler Phase 2 (Migration) landed
+- Prerequisite check: `src/lib/scheduler/migrate.ts` exists and runs at boot before `engine.start()`; legacy `state.services[svcId].poll` records for existing integrations have been migrated into `/Documents/System/scheduler-jobs.json`; `schema.migratedFromLegacy` marker present.
+- If not, stop and complete `scheduler/tasks.md` Phase 2 (Tasks 2.1–2.4) first.
+- **Acceptance**: existing integrations continue to poll via the engine; migration is idempotent on subsequent boots.
+
+### Task 0.3: Register internal handlers for both loops
+- **File**: `src/lib/agent/memory/fast-loop.ts` (module-load side effect) and `src/lib/agent/memory/consolidate.ts` (module-load side effect).
+- At module load call:
+  ```ts
+  import { register } from '@/lib/scheduler/handlers/registry';
+  register('internal', 'memory-loops.fast', fastLoopHandler);
+  register('internal', 'memory-loops.slow', slowLoopHandler);
+  ```
+- `fastLoopHandler` signature: `(job, ctx) => Promise<RunResult>` — calls `runFastLoop()` (defined in Task 1.3), returns `{ ok, durationMs, output: summary, error? }`.
+- `slowLoopHandler` similar — calls `runSlowLoop()` (Task 3.2). It MUST short-circuit and return `{ ok: true, output: 'no pending episodes' }` when no pending episodes exist, without acquiring the LLM.
+- Both handlers respect `ctx.abortSignal`.
+- **Acceptance**: after boot, `resolve('internal', 'memory-loops.fast')` and `resolve('internal', 'memory-loops.slow')` both return the registered handlers.
+
+### Task 0.4: Seed two system jobs on first boot
+- **File**: `src/lib/agent/memory/seed-jobs.ts` (new).
+- Exports `async function seedMemoryLoopJobs(): Promise<void>` — invoked from the memory-loops boot path AFTER handler registration.
+- Idempotent: check `/Documents/System/scheduler-jobs.json` for existing jobs with `owner: 'memory-loops'` and skip creation if present.
+- Seeds:
+  ```
+  { id: <ulid>, category: 'system', name: 'Memory: fast loop',
+    handler: { kind: 'internal', id: 'memory-loops.fast' },
+    inputs: {}, schedule: { type: 'recurring', interval: 2, unit: 'minute' },
+    status: 'active', owner: 'memory-loops', createdBy: 'seed', ... }
+
+  { id: <ulid>, category: 'system', name: 'Memory: slow loop',
+    handler: { kind: 'internal', id: 'memory-loops.slow' },
+    inputs: {}, schedule: { type: 'recurring', interval: 1, unit: 'hour' },
+    status: 'active', owner: 'memory-loops', createdBy: 'seed', ... }
+  ```
+- Interval values must read from the `memoryLoops` config namespace (Task 2.2) if it exists; fall back to defaults above.
+- **Acceptance**: after first boot, `GET /api/scheduler/jobs?category=system` returns both jobs; they are non-deletable (ACL, per `scheduler/plan.md` §Category-based ACL).
+
+### Task 0.5: One-time migration of any prior memory-loops timers
+- **File**: `src/lib/agent/memory/migrate.ts` (new).
+- Exports `async function migrateLegacyMemoryLoopsState(): Promise<{ migrated: boolean; note: string }>` — called once from the memory-loops boot path.
+- If the branch introduced any temporary `data/memory/.timers/` or ad-hoc persisted timer state before the unified engine landed, delete it and log the removal. This is a safety net; for a clean install the function is a no-op.
+- MUST NOT touch or migrate `state.services[svcId].poll` — that migration is owned exclusively by `src/lib/scheduler/migrate.ts` (see `scheduler/tasks.md` Task 2.1).
+- Records completion via a marker file (`data/memory/.migrated`) so re-runs are no-ops.
+- **Acceptance**: fresh install → migration is a no-op; if any legacy timer state exists, it is removed with a log entry.
+
+### Task 0.6: Scheduler UI shows memory-loops jobs correctly
+- Not a code task in this repo — a verification checkpoint.
+- Open the Scheduler app (`src/apps/scheduler/` — see `scheduler/tasks.md` Task 3.2). Confirm:
+  - Both memory-loops jobs appear in the list with the `system` badge.
+  - Delete button is hidden / disabled for both.
+  - Name and handler fields are locked (per `getEditableFields('system')` in `src/lib/scheduler/acl.ts`).
+  - Schedule field is editable; pause/resume works.
+  - `POST /api/scheduler/jobs/:id/run` triggers an immediate run and appends to `/Documents/System/scheduler-history/<jobId>.jsonl`.
+- **Acceptance**: manual test passes; screenshots or a walkthrough note recorded on the implementation PR.
+
+### Task 0.7: Wire memory-loops boot sequence
+- **File**: `src/lib/agent/memory/boot.ts` (new or existing memory-loops bootstrap point).
+- Boot order:
+  1. `migrateLegacyMemoryLoopsState()` (Task 0.5)
+  2. Handler-registration side effects fire on module import (Task 0.3)
+  3. `seedMemoryLoopJobs()` (Task 0.4)
+- Called from the same app-boot path that invokes `SchedulerEngine.start()`, but BEFORE `start()` (so the seeded jobs are present when the engine loads them).
+- **Acceptance**: cold boot on a fresh install produces both seeded jobs; engine picks them up on first tick.
+
+**Phase 0 Deliverable**: Memory Loops has zero timers of its own. Both fast and slow loops run as scheduler jobs, appear in the Scheduler UI as `system` category, and are subject to the engine's failure isolation, history logging, and central-logging integration.
+
+---
+
 ## Phase 1: Episode Store + Fast Loop Refactor
 
 ### Task 1.1: Create Episode Module
@@ -97,15 +176,15 @@
 
 ## Phase 2: Fast Loop Scheduler + Watermarks
 
-### Task 2.1: Create Fast Loop Scheduler Job
-- [ ] **File**: `src/lib/integrations/scheduler/jobs/memory-fast-loop.ts`
-- [ ] Register job with scheduler daemon
-- [ ] Default interval: 2 minutes (configurable via `memoryLoops.fastLoop.tickInterval`)
-- [ ] Job handler calls `runFastLoop()` from `fast-loop.ts`
-- [ ] Respect existing failure isolation (no blocking other jobs)
-- [ ] Log job start/complete/failure to central logging
+### Task 2.1: Wire Fast Loop into the Unified Scheduler
+- [ ] **Depends on**: Phase 0 complete (`scheduler/tasks.md` Phase 1 landed).
+- [ ] Handler registration happens in Task 0.3 — this task adds the runtime pieces:
+  - [ ] Ensure `fastLoopHandler` (registered via `register('internal', 'memory-loops.fast', ...)`) invokes `runFastLoop()` from `src/lib/agent/memory/fast-loop.ts` and returns a `RunResult` (`{ ok, durationMs, output, error? }`).
+  - [ ] Default schedule (2 min) is seeded by Task 0.4; interval is read from `memoryLoops.fastLoop.tickInterval` at seed time (Task 2.2).
+- [ ] Failure isolation is provided by the engine — this handler MUST NOT swallow errors; it re-throws (or returns `{ ok: false, error }`) so the engine can log to history and central logging.
+- [ ] History for this job is at `/Documents/System/scheduler-history/<fastLoopJobId>.jsonl` (managed by the engine, not this module).
 
-**Acceptance**: Fast loop runs every 2 min automatically; no manual trigger needed.
+**Acceptance**: Fast loop runs every 2 min via the scheduler engine's tick loop; entries appear in the job's history JSONL; central log shows one `component: 'scheduler.handler.memory-loops.fast'` entry per run.
 
 ---
 
@@ -202,16 +281,17 @@
 
 ---
 
-### Task 3.4: Create Slow Loop Scheduler Job
-- [ ] **File**: `src/lib/integrations/scheduler/jobs/memory-slow-loop.ts`
-- [ ] Register job with scheduler daemon
-- [ ] Default interval: 1 hour (configurable via `memoryLoops.slowLoop.interval`)
-- [ ] Job handler calls `runSlowLoop()` from `consolidate.ts`
-- [ ] Exit immediately if no pending episodes (zero LLM cost when idle)
-- [ ] Respect overlap lock; log lock contention
-- [ ] Log job start/complete/failure to central logging
+### Task 3.4: Wire Slow Loop into the Unified Scheduler
+- [ ] **Depends on**: Phase 0 complete (`scheduler/tasks.md` Phase 1 landed).
+- [ ] Handler registration happens in Task 0.3 — this task adds the runtime pieces:
+  - [ ] Ensure `slowLoopHandler` (registered via `register('internal', 'memory-loops.slow', ...)`) invokes `runSlowLoop()` from `src/lib/agent/memory/consolidate.ts` and returns a `RunResult`.
+  - [ ] Handler MUST short-circuit and return `{ ok: true, output: 'no pending episodes' }` when no `pending` episodes exist — zero LLM cost when idle (SC-003).
+  - [ ] Default schedule (1 hour) is seeded by Task 0.4; interval is read from `memoryLoops.slowLoop.interval` at seed time (Task 2.2).
+- [ ] Overlap lock (`data/memory/.consolidate.lock`, 30 min staleness) remains internal to `consolidate.ts` (Task 3.2) — the engine's own dispatch does not serialize handlers across ticks, so this lock is still required to prevent a manual `runNow` colliding with a scheduled tick.
+- [ ] Failure isolation is provided by the engine — this handler MUST NOT swallow errors; return `{ ok: false, error }` so the engine records history + central log.
+- [ ] History for this job is at `/Documents/System/scheduler-history/<slowLoopJobId>.jsonl` (managed by the engine).
 
-**Acceptance**: Slow loop runs hourly; zero cost when no pending episodes; lock prevents overlap.
+**Acceptance**: Slow loop runs hourly via the engine; zero LLM cost when no pending episodes; overlap lock prevents manual + scheduled collision; entries appear in the job's history JSONL.
 
 ---
 
@@ -332,12 +412,28 @@ Validate all User Stories from spec:
 
 ## Implementation Order (Recommended)
 
+**Phase 0 (Tasks 0.1–0.7): Scheduler prerequisite** — MUST complete `scheduler/tasks.md` Phase 1 first, then land Phase 0 here (handler registration + system-job seeding). Blocks all subsequent phases.
+
 1. **Phase 1** (Tasks 1.1–1.5): Episode store + fast-loop refactor → Manual trigger works
-2. **Phase 2** (Tasks 2.1–2.3): Scheduler job + watermarks → Fast loop runs automatically (**MVP shippable**)
-3. **Phase 3** (Tasks 3.1–3.5): Slow loop + topics + skill gate → Full consolidation pipeline
+2. **Phase 2** (Task 2.1–2.3): Fast loop wired to engine + config + docs update → Fast loop runs automatically as a scheduler `system` job (**MVP shippable**)
+3. **Phase 3** (Tasks 3.1–3.5): Slow loop wired to engine + topics + skill gate → Full consolidation pipeline
 4. **Phase 4** (Tasks 4.1–4.6): Search + docs + API → Feature complete
 
 Each phase is independently testable and shippable.
+
+### Dependency Chain (explicit)
+
+```
+scheduler Phase 1 (Engine Core)  ──►  021 Phase 0 (register + seed)
+                                       │
+                                       ├──►  021 Phase 1 (episodes) — independent
+                                       │
+                                       └──►  021 Phase 2 (fast loop via engine)
+                                             └──►  021 Phase 3 (slow loop via engine)
+                                                   └──►  021 Phase 4 (search + docs)
+```
+
+The Scheduler UI showing Memory Loops jobs correctly (Task 0.6) depends on `scheduler/tasks.md` Phase 3 (UI + API) — but that dependency only affects the *verification* checkpoint, not the runtime behavior. The loops will run as jobs as soon as Scheduler Phase 1 + 021 Phase 0 are complete.
 
 ---
 
