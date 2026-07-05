@@ -77,9 +77,9 @@ The user works in one conversation all day. It never hits a provider context-len
 
 **Acceptance Scenarios**:
 
-1. **Given** the memory loops (020) are installed, **When** a summarization is about to run, **Then** the fast-loop review is invoked first for this conversation (idle threshold waived) covering turns up to the compaction boundary, so durable lessons are on disk in an episode before the model's view is compressed.
+1. **Given** the memory loops (021) are installed, **When** a summarization is about to run, **Then** the fast-loop review is invoked first for this conversation (idle threshold waived) covering turns up to the compaction boundary, so durable lessons are on disk in an episode before the model's view is compressed.
 2. **Given** a compacted conversation, **When** the assistant needs a detail from the compacted span, **Then** the summary's trailing recovery note points it at `memory_search`, and `memory_search` over episodes/topics returns matches with provenance.
-3. **Given** 020 is not installed (or its module is absent), **Then** summarization still works — the review step is skipped, not failed.
+3. **Given** 021 is not installed (or its module is absent), **Then** summarization still works — the review step is skipped, not failed.
 
 ### User Story 5 - The transcript stays authoritative and debuggable (Priority: P2)
 
