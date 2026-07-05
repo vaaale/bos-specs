@@ -185,7 +185,7 @@ The user works in one conversation all day. It never hits a provider context-len
 
 Constraints: no new npm dependencies; no `package.json`/lockfile changes; feature branch `bos/context-compaction`; `npx tsc --noEmit` + `npm run lint` clean; do not run `npm run build` while `next dev` is live.
 
-Suggested implementation order (each step shippable): (1) estimation + view transform + Layer 1 with sidecar and route wiring; (2) hard-limit fallback + logging + config namespace; (3) Layer 2 async summarizer + normative prompt + API routes; (4) 020 fast-loop hook + probe-based test suite (SC-004).
+Suggested implementation order (each step shippable): (1) estimation + view transform + Layer 1 with sidecar and route wiring; (2) hard-limit fallback + logging + config namespace; (3) Layer 2 async summarizer + normative prompt + API routes; (4) 021 fast-loop hook + probe-based test suite (SC-004).
 
 ## Bundled Artifacts
 
