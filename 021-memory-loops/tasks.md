@@ -6,6 +6,88 @@
 
 ---
 
+## Phase 0: Universal Scheduler Refactor (Prerequisite)
+
+Memory Loops depends on the **Unified Job Engine** described in `bos-system-specs/scheduler/spec.md`. Phase 0 delivers that engine and migrates existing integration polling into its single store. Nothing in Phase 1+ can ship until Phase 0 lands, because the fast/slow loops are registered as System-category JobDefinitions in the unified store — there is no separate scheduler persistence for the memory subsystem.
+
+### Task 0.1: Implement the Unified Job Engine
+- [ ] **File**: `src/lib/scheduler/engine.ts`
+- [ ] Implement single background daemon that manages all JobDefinitions from **one** source of truth: `/Documents/System/scheduler-jobs.json` (VFS path; user-accessible; atomic writes).
+- [ ] Define `JobDefinition` type (mirror scheduler spec FR-002): `id`, `name`, `category: 'system' | 'user' | 'integration'`, `handler: { kind: 'prompt' | 'internal' | 'integration', ...}`, `scheduleType`, `scheduleConfig`, `status`, `nextRunAt`, `createdAt`, `updatedAt`, optional `owner`, optional `readOnlyFields`.
+- [ ] Persistence layer: load-on-boot, atomic write-through on mutation, re-read on external file change (watch/poll). All categories share this one file — NO split persistence.
+- [ ] Handler registry: register `prompt` (agent runtime), `internal` (function map), `integration` (integration adapter dispatch). Failure isolation across handlers and across jobs.
+- [ ] Run-history: append every execution to `/Documents/System/scheduler-history/<jobId>.jsonl`.
+- [ ] Central logging with `component: 'scheduler'`, always include `category` and `handler.kind`.
+- [ ] Startup: run migration (Task 0.5) before entering the main tick loop; seed System JobDefinitions requested by the codebase (Task 0.3); then start ticking.
+
+**Acceptance**: One engine, one file, three categories co-resident; failure isolation verified; history appended per job.
+
+---
+
+### Task 0.2: Migrate Existing Integration Polling to Register into the Engine
+- [ ] **Files**: existing integration polling call sites under `src/lib/integrations/**` (whichever currently owns the polling schedule)
+- [ ] Update every integration that currently self-schedules polling so that instead of running its own loop / config, it:
+  - Registers an `integration`-category JobDefinition in the unified store with a stable id (`integration:<integrationId>:<action>`).
+  - Exposes its polling function through the engine's `integration` handler dispatch (integration id + action → adapter call).
+  - Reads its schedule state (interval, active/paused) from the unified store, NOT from its own config file. If the user pauses it via the Scheduler UI, the change is reflected in the unified store and honored on the next tick.
+- [ ] Remove any code path that reads a per-integration polling config at runtime; the only remaining reader of legacy paths is the migration script (Task 0.5), which runs once and then never again.
+- [ ] **Do not** implement a "derived view" that keeps legacy config as source of truth — the unified store is authoritative; integrations that add jobs at install time write directly into it.
+
+**Acceptance**: No integration self-schedules; all polling flows through the engine's tick; pausing/editing an integration job in the Scheduler UI takes effect immediately.
+
+---
+
+### Task 0.3: System-Job Seeding API
+- [ ] **File**: `src/lib/scheduler/engine.ts` (extend) — export `ensureSystemJob(def: JobDefinition): Promise<JobDefinition>`
+- [ ] Idempotent by stable id (e.g., `system:memory.fast-loop`, `system:memory.slow-loop`, or `system:<subsystem>.<name>`): if the id already exists in the unified store, do NOT overwrite user-modifiable fields (interval, status) — only refresh the immutable ones (handler, name, `readOnlyFields`, `category: 'system'`).
+- [ ] Callers: subsystems (like memory loops) invoke this on boot to declare their System-category JobDefinitions. The engine picks them up on the next tick without a restart.
+
+**Acceptance**: Re-seeding a system job on every boot is a no-op after the first boot; user's schedule adjustments to System jobs (where category ACL allows) survive re-seeding.
+
+---
+
+### Task 0.4: Category-Based ACL Enforcement Surface
+- [ ] **File**: `src/lib/scheduler/engine.ts` (extend) — export `getEditableFields(job: JobDefinition): string[]` that returns which fields the UI may allow edits on, driven by category defaults (scheduler spec FR-017) and overridden by the job's own `readOnlyFields`.
+- [ ] Server-side write API (`updateJob(id, patch)`) MUST validate the patch against `getEditableFields`; reject with a clear error if the caller attempts to modify a locked field.
+- [ ] ACL enforcement is at the engine layer, not the UI — a rogue MCP tool call cannot delete a System job even if the UI would prevent it.
+
+**Acceptance**: System jobs cannot be deleted via any API; integration jobs' handler/target cannot be edited via the UI or MCP tools; user jobs have full control.
+
+---
+
+### Task 0.5: One-Time Migration Script (Legacy Integration Configs → Unified Store)
+- [ ] **File**: `src/lib/scheduler/migrate.ts`
+- [ ] On first startup after the unified-engine upgrade, scan for legacy integration polling configurations (previously stored per-integration under `data/integrations/**` or in the config registry — whichever the current codebase uses).
+- [ ] For each discovered polling config, synthesize an `integration`-category JobDefinition with:
+  - `id = 'integration:<integrationId>:<action>'` (stable, deterministic — this makes the migration idempotent)
+  - `category: 'integration'`, `handler: { kind: 'integration', integrationId, action }`
+  - Preserved `scheduleConfig`, `status`, `nextRunAt` (falling back to `now + interval` if the legacy state is incomplete)
+  - `owner: <integrationId>` and reasonable `readOnlyFields` (e.g., `['handler']`).
+- [ ] Write all migrated jobs into `/Documents/System/scheduler-jobs.json` in a single atomic write. Existing entries (user-created or previously-migrated) are preserved and never overwritten.
+- [ ] Mark migration done by writing `_meta.migratedSources: [<sourcePath>...]` into the unified store's top-level object (or rename each legacy source with `.migrated` suffix). Subsequent boots skip already-migrated sources.
+- [ ] Ambiguity handling: if two legacy configs describe the same `integration:<integrationId>:<action>` with conflicting schedules, HALT that one entry (do NOT choose silently), log the conflict at ERROR level, surface it via scheduler status, and continue with other entries.
+- [ ] Log a final summary: `{ scanned, migrated, skipped_already_migrated, conflicts }`.
+- [ ] Idempotency test: running the migration twice on a clean upgrade produces zero writes on the second run.
+
+**Acceptance**: All existing integrations appear as `integration`-category jobs in `/Documents/System/scheduler-jobs.json` after first boot; second boot is a no-op; conflicts halt gracefully with clear diagnostics.
+
+---
+
+### Task 0.6: Scheduler App UI — Unified List with Category Badges
+- [ ] **File**: existing/new Scheduler app (under `src/apps/scheduler/` or the current location)
+- [ ] Render all JobDefinitions from `/Documents/System/scheduler-jobs.json` — regardless of category — in a single list, sorted by `nextRunAt`.
+- [ ] Each row shows a `category` badge (System / User / Integration).
+- [ ] Row actions gated by `getEditableFields()` from Task 0.4: user rows show full CRUD; system rows hide Delete and prompt-edit; integration rows hide handler-edit and Delete.
+- [ ] "Schedule New Task" button only creates `category: 'user'` jobs.
+
+**Acceptance**: Users can view and manage jobs from **all** categories from one interface, with per-category UI restrictions applied at the engine layer.
+
+---
+
+**Phase 0 done ⇒ Phase 1 unblocked.** From this point on, both memory loops (and any future scheduled subsystem) simply call `ensureSystemJob(...)` on boot to seed their JobDefinition into the unified store; they never own their own scheduling persistence.
+
+---
+
 ## Phase 1: Episode Store + Fast Loop Refactor
 
 ### Task 1.1: Create Episode Module
@@ -18,7 +100,7 @@
   - Task & outcome, What worked / what failed, Corrections received
   - Durable lesson candidates, Profile suggestions
 - [ ] Implement `createEpisode(conversationId: string): Promise<Episode>`
-  - Atomic write (temp file + rename) to `data/memory/episodes/<yyyy-mm-dd>-<conversationId>.md`
+  - Atomic write (temp file + rename) to `/Documents/Memory/Episodes/<yyyy-mm-dd>-<conversationId>.md` (VFS path)
   - Injection scan via `looksLikeInjection()`; reject if suspicious
 - [ ] Implement `updateEpisode(conversationId: string, updates: Partial<EpisodeBody>): Promise<Episode>`
   - Idempotent: one file per conversation per day
@@ -26,7 +108,7 @@
 - [ ] Implement `getEpisode(conversationId: string): Promise<Episode | null>`
 - [ ] Implement `markEpisodeConsolidated(conversationId: string): Promise<void>`
 - [ ] Implement `archiveOldEpisodes(olderThanDays: number = 14): Promise<number>`
-  - Move to `data/memory/episodes/.archive/` (never delete)
+  - Move to `/Documents/Memory/Episodes/.Archive/` (never delete)
 - [ ] Write unit tests: `tests/memory/episodes.test.ts`
 
 **Acceptance**: Episodes created/updated atomically; injection-scanned; idempotent per conversation.
@@ -36,7 +118,7 @@
 ### Task 1.2: Create Watermark Persistence
 - [ ] **File**: `src/lib/agent/memory/watermarks.ts`
 - [ ] Implement watermark data structure: `{ [conversationId: string]: { messageId: string, reviewedAt: string } }`
-- [ ] Persist to `data/memory/.watermarks.json` (atomic writes)
+- [ ] Persist to `/Documents/Memory/.watermarks.json` (atomic writes)
 - [ ] Implement `getWatermark(conversationId: string): Promise<string | null>`
 - [ ] Implement `setWatermark(conversationId: string, messageId: string): Promise<void>`
 - [ ] Implement `resetWatermark(conversationId: string): Promise<void>`
@@ -97,15 +179,19 @@
 
 ## Phase 2: Fast Loop Scheduler + Watermarks
 
-### Task 2.1: Create Fast Loop Scheduler Job
-- [ ] **File**: `src/lib/integrations/scheduler/jobs/memory-fast-loop.ts`
-- [ ] Register job with scheduler daemon
-- [ ] Default interval: 2 minutes (configurable via `memoryLoops.fastLoop.tickInterval`)
-- [ ] Job handler calls `runFastLoop()` from `fast-loop.ts`
-- [ ] Respect existing failure isolation (no blocking other jobs)
-- [ ] Log job start/complete/failure to central logging
+### Task 2.1: Seed the Fast-Loop System JobDefinition into the Unified Store
+- [ ] **File**: `src/lib/agent/memory/fast-loop.ts` (extend) — expose an internal handler `memory.fast-loop` and register it with the engine's handler registry (Task 0.1).
+- [ ] On boot, call `ensureSystemJob(...)` from `src/lib/scheduler/engine.ts` (Task 0.3) to seed a JobDefinition into `/Documents/System/scheduler-jobs.json`:
+  - `id: 'system:memory.fast-loop'`
+  - `category: 'system'`, `owner: 'memory'`
+  - `handler: { kind: 'internal', ref: 'memory.fast-loop' }`
+  - `scheduleType: 'recurring'`, `scheduleConfig: { interval: 2, unit: 'minute' }` (default; user may adjust interval per category ACL)
+  - `readOnlyFields: ['handler', 'category']`
+- [ ] **Do NOT** create a `src/lib/integrations/scheduler/jobs/memory-fast-loop.ts` or any parallel scheduler config file — the unified store is the ONLY persistence for this job.
+- [ ] The engine's tick + failure isolation come from Task 0.1; this task just seeds the job.
+- [ ] Log seeding at INFO on first boot, DEBUG on subsequent boots (already-seeded).
 
-**Acceptance**: Fast loop runs every 2 min automatically; no manual trigger needed.
+**Acceptance**: Fast loop appears in `/Documents/System/scheduler-jobs.json` as a `system` job after first boot; runs every 2 min via the unified engine; visible in the Scheduler UI with the System badge (user cannot delete it).
 
 ---
 
@@ -147,7 +233,7 @@
 - [ ] **File**: `src/lib/agent/memory/topics.ts`
 - [ ] Implement `TopicEntry` type (timestamped bullet-listed content)
 - [ ] Implement `getOrCreateTopic(slug: string): Promise<Topic>`
-  - Create `data/memory/topics/<slug>.md` if not exists
+  - Create `/Documents/Memory/Topics/<slug>.md` if not exists
   - Parse existing entries from file
 - [ ] Implement `addTopicEntry(topicSlug: string, entry: TopicEntry): Promise<void>`
   - Append to topic file; enforce budget (default 4000 chars)
@@ -167,7 +253,7 @@
 - [ ] **File**: `src/lib/agent/memory/consolidate.ts`
 - [ ] Define `ConsolidateConfig` interface (interval, batchSize)
 - [ ] Implement `acquireLock(): Promise<Lock | null>`
-  - Create `data/memory/.consolidate.lock` with pid/start time
+  - Create `/Documents/Memory/.consolidate.lock` with pid/start time
   - Check for stale locks (>30 min); expire if needed
   - Return null if lock held by another process
 - [ ] Implement `releaseLock(lock: Lock): Promise<void>`
@@ -202,16 +288,18 @@
 
 ---
 
-### Task 3.4: Create Slow Loop Scheduler Job
-- [ ] **File**: `src/lib/integrations/scheduler/jobs/memory-slow-loop.ts`
-- [ ] Register job with scheduler daemon
-- [ ] Default interval: 1 hour (configurable via `memoryLoops.slowLoop.interval`)
-- [ ] Job handler calls `runSlowLoop()` from `consolidate.ts`
-- [ ] Exit immediately if no pending episodes (zero LLM cost when idle)
-- [ ] Respect overlap lock; log lock contention
-- [ ] Log job start/complete/failure to central logging
+### Task 3.4: Seed the Slow-Loop System JobDefinition into the Unified Store
+- [ ] **File**: `src/lib/agent/memory/consolidate.ts` (extend) — expose an internal handler `memory.slow-loop` and register it with the engine's handler registry (Task 0.1).
+- [ ] On boot, call `ensureSystemJob(...)` from `src/lib/scheduler/engine.ts` (Task 0.3) to seed a JobDefinition into `/Documents/System/scheduler-jobs.json`:
+  - `id: 'system:memory.slow-loop'`
+  - `category: 'system'`, `owner: 'memory'`
+  - `handler: { kind: 'internal', ref: 'memory.slow-loop' }`
+  - `scheduleType: 'recurring'`, `scheduleConfig: { interval: 1, unit: 'hour' }` (default; user may adjust)
+  - `readOnlyFields: ['handler', 'category']`
+- [ ] **Do NOT** create a `src/lib/integrations/scheduler/jobs/memory-slow-loop.ts` or any parallel scheduler config file — the unified store is the ONLY persistence for this job.
+- [ ] Handler body exits immediately if no pending episodes (zero LLM cost when idle) and respects the overlap lock at `/Documents/Memory/.consolidate.lock` (Task 3.2). Failure isolation comes from the engine (Task 0.1).
 
-**Acceptance**: Slow loop runs hourly; zero cost when no pending episodes; lock prevents overlap.
+**Acceptance**: Slow loop appears in `/Documents/System/scheduler-jobs.json` as a `system` job; runs hourly via the unified engine; zero cost when no pending episodes; overlap lock respected; visible in the Scheduler UI with the System badge (user cannot delete it).
 
 ---
 
@@ -233,9 +321,9 @@
 ### Task 4.1: Create Memory Search Module
 - [ ] **File**: `src/lib/agent/memory/search.ts`
 - [ ] Implement `memory_search(query: string, maxResults: number = 10): Promise<SearchResult[]>`
-  - Scan `data/memory/topics/**/*.md` and `data/memory/episodes/**/*.md`
+  - Scan `/Documents/Memory/Topics/**/*.md` and `/Documents/Memory/Episodes/**/*.md` (via VFS)
   - Case-insensitive word match; rank by match count
-  - Return provenance: `{ source: "topics/<slug>.md#entry-3", content: "...", score: number }`
+  - Return provenance: `{ source: "/Documents/Memory/Topics/<slug>.md#entry-3", content: "...", score: number }`
 - [ ] Isolate ranking logic for future BM25 swap (no interface change)
 - [ ] No new dependencies; substring/word match only
 - [ ] Write unit tests: `tests/memory/search.test.ts`
@@ -247,7 +335,7 @@
 ### Task 4.2: Extend memory_recall for Topics
 - [ ] **File**: `src/lib/agent/memory/curated.ts` (modify)
 - [ ] Extend `memory_recall(slug?: string)` to handle topic slugs
-- [ ] If slug provided: return entries from `data/memory/topics/<slug>.md`
+- [ ] If slug provided: return entries from `/Documents/Memory/Topics/<slug>.md`
 - [ ] If no slug: existing behavior (global memory)
 
 **Acceptance**: Topic retrieval via `memory_recall("gmail-workflows")` works.
@@ -332,19 +420,22 @@ Validate all User Stories from spec:
 
 ## Implementation Order (Recommended)
 
+0. **Phase 0** (Tasks 0.1–0.6): Unified Job Engine + integration-config migration + Scheduler UI unified list → **PREREQUISITE** — nothing memory-loops-specific can ship without this.
 1. **Phase 1** (Tasks 1.1–1.5): Episode store + fast-loop refactor → Manual trigger works
-2. **Phase 2** (Tasks 2.1–2.3): Scheduler job + watermarks → Fast loop runs automatically (**MVP shippable**)
-3. **Phase 3** (Tasks 3.1–3.5): Slow loop + topics + skill gate → Full consolidation pipeline
+2. **Phase 2** (Tasks 2.1–2.3): Seed fast-loop System JobDefinition + watermarks → Fast loop runs automatically via the unified engine (**MVP shippable, given Phase 0**)
+3. **Phase 3** (Tasks 3.1–3.5): Slow loop + topics + skill gate + slow-loop JobDefinition seeded into the unified store → Full consolidation pipeline
 4. **Phase 4** (Tasks 4.1–4.6): Search + docs + API → Feature complete
 
-Each phase is independently testable and shippable.
+Each phase past Phase 0 is independently testable and shippable.
 
 ---
 
 ## Notes for Developer
 
+- **Unified persistence**: All scheduled jobs — System, User, Integration — live in `/Documents/System/scheduler-jobs.json`. Memory loops MUST NOT create a parallel scheduler config file, a per-loop persistence sidecar, or a "derived view" of integration jobs. Seed via `ensureSystemJob(...)` and stop.
+- **Memory artifacts live under `/Documents/Memory/`** (VFS): episodes at `/Documents/Memory/Episodes/`, topics at `/Documents/Memory/Topics/`, watermarks at `/Documents/Memory/.watermarks.json`, overlap lock at `/Documents/Memory/.consolidate.lock`, archive at `/Documents/Memory/Episodes/.Archive/`. No `data/memory/**` paths.
 - **Atomic writes**: Use temp-file + rename pattern from `curated.ts`; all episode/topic ops must follow this
-- **Injection safety**: Every write to episodes/topics/MEMORY.md scanned via `looksLikeInjection()`; refused content logged and dropped
+- **Injection safety**: Every write to episodes/topics/MEMORY.md scanned via `looksLikeInjection()`; refused content logged and dropped. **Improvements to injection detection are a deliberate non-goal for this feature** — rely on the existing scanner.
 - **No npm dependencies**: Search uses substring/word match; ranking logic isolated for future BM25 swap
 - **Feature branch**: `bos/memory-loops` (confirm active before starting)
 - **TypeScript**: `npx tsc --noEmit` clean required; do not run `npm run build` while `next dev` is live
