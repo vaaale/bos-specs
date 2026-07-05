@@ -1,6 +1,6 @@
 # Feature Specification: Context Compaction (Layered Conversation Compactification)
 
-**Feature Branch**: `021-context-compaction`
+**Feature Branch**: `022-context-compaction`
 
 **Created**: 2026-07-05
 

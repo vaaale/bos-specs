@@ -1,6 +1,6 @@
 # Feature Specification: Memory Loops (Episodic Fast Loop & Consolidating Slow Loop)
 
-**Feature Branch**: `020-memory-loops`
+**Feature Branch**: `021-memory-loops`
 
 **Created**: 2026-07-05
 
