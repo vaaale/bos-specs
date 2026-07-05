@@ -198,6 +198,6 @@ specs/021 - context-compaction/
 
 ## Notes
 
-- Companions: `020-memory-loops` (soft dependency, FR-014/015), `002-memory`, research basis `docs/dev/assistant/context-compaction-research.md`.
+- Companions: `021-memory-loops` (soft dependency, FR-014/015), `002-memory`, research basis `docs/dev/assistant/context-compaction-research.md`.
 - Deliberate non-goals: provider server-side compaction (Anthropic `compact_20260112` / OpenAI `/responses/compact`) — BOS is multi-provider with local models first-class; MAY later become an Anthropic-only fast path behind the same sidecar interface. Token-level compression (LLMLingua) and embedding-based message retention: rejected (research doc §2.5). Compacting `runToolLoop` sub-agent loops: out of scope while bounded at 8 steps. A chat-UI compaction boundary marker: nice-to-have, not required by this spec (state is observable via `GET /api/compaction`).
 - Evidence anchors for the defaults: clear-before-summarize ordering and placeholder semantics (observation masking ≈ summarization at half cost, arXiv:2508.21433); batch clearing for cache stability (Anthropic `clear_at_least` guidance); 75% pre-emptive trigger (production systems cluster 70–85%; context rot precedes overflow); structured summary sections incl. standing constraints (constraint decay, arXiv:2606.22528; Factory.ai anchored summarization).
