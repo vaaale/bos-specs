@@ -33,7 +33,7 @@ transformParams middleware (pure view transformation, per model call)
       matches: splice  [summary user-message] + [kept tail]
    4. thresholds crossed? → schedule async work (never blocks the call):
          clearThreshold  → advance clear-watermark (batch, no LLM)
-         summarizeThreshold → lock + review-before-compact (020 fast loop)
+         summarizeThreshold → lock + review-before-compact (021 fast loop)
                               + structured summary via complete()
          hardLimit       → synchronous mechanical fallback (pair-safe
                            keep-first + keep-last), warn
