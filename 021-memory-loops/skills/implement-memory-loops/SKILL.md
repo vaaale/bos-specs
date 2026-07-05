@@ -8,9 +8,11 @@
 
 ## Overview
 
-This feature implements two automated scheduler jobs:
-1. **Fast Loop** (every ~2 min): Reviews idle conversations, writes episode files
-2. **Slow Loop** (hourly): Consolidates episodes into long-term memory topics and patches/creates skills
+This feature implements two automated **system** JobDefinitions seeded into the Unified Job Engine (`src/lib/scheduler/engine.ts`), each backed by an internal handler:
+1. **Fast Loop** (`memory.fast-loop`, every ~2 min): Reviews idle conversations, writes episode files
+2. **Slow Loop** (`memory.slow-loop`, hourly): Consolidates episodes into long-term memory topics and patches/creates skills
+
+Both jobs live alongside every other scheduled task in `/Documents/System/scheduler-jobs.json`; run history is appended to `/Documents/System/scheduler-history/<jobId>.jsonl`. Memory loops MUST NOT create their own scheduler config, sidecar, or "derived view" — the unified store is the only persistence.
 
 Key architectural changes from spec 003:
 - Voluntary `skill_reflect` trigger → automated scheduler jobs
@@ -46,7 +48,7 @@ interface Episode {
   profileSuggestions?: string[];
 }
 
-// File path: data/memory/episodes/<yyyy-mm-dd>-<conversationId>.md
+// File path: /Documents/Memory/Episodes/<yyyy-mm-dd>-<conversationId>.md (VFS)
 // Format: Markdown with frontmatter
 ```
 
@@ -55,7 +57,7 @@ interface Episode {
 - `updateEpisode(conversationId, updates)`: Idempotent; one file per conv per day
 - `getEpisode(conversationId)`: Read episode or null
 - `markEpisodeConsolidated(conversationId)`: Update status field
-- `archiveOldEpisodes(olderThanDays = 14)`: Move to `.archive/` (never delete)
+- `archiveOldEpisodes(olderThanDays = 14)`: Move to `/Documents/Memory/Episodes/.Archive/` (never delete)
 
 **Testing**: Verify atomicity, injection rejection, idempotency across multiple updates.
 
@@ -73,7 +75,7 @@ interface WatermarkStore {
   };
 }
 
-// File path: data/memory/.watermarks.json
+// File path: /Documents/Memory/.watermarks.json (VFS)
 ```
 
 **Key Functions**:
@@ -102,6 +104,15 @@ A conversation is eligible if ALL of these hold:
 **NOT available**: `skill_create`, memory ops, topic ops, file writes
 
 **System prompt**: Embed `prompts/fast-loop-system.md` verbatim as constant.
+
+**Scheduler wiring** (no separate job file!):
+- Export an internal handler function (e.g., `runFastLoop()`) and register it with the engine's handler registry under `memory.fast-loop`.
+- On boot, call `ensureSystemJob(...)` from `src/lib/scheduler/engine.ts` to seed the JobDefinition into `/Documents/System/scheduler-jobs.json`:
+  - `id: 'system:memory.fast-loop'`, `category: 'system'`, `owner: 'memory'`
+  - `handler: { kind: 'internal', ref: 'memory.fast-loop' }`
+  - `scheduleType: 'recurring'`, `scheduleConfig: { interval: 2, unit: 'minute' }`
+  - `readOnlyFields: ['handler', 'category']`
+- **Do NOT** create `src/lib/integrations/scheduler/jobs/memory-fast-loop.ts` or any parallel scheduler config file — the unified store is the only persistence.
 
 ---
 
@@ -136,7 +147,7 @@ A conversation is eligible if ALL of these hold:
   "batchId": "consolidate-20260705-143000"
 }
 
-// File path: data/memory/.consolidate.lock
+// File path: /Documents/Memory/.consolidate.lock (VFS)
 // Staleness expiry: 30 min
 ```
 
@@ -156,6 +167,16 @@ A conversation is eligible if ALL of these hold:
 
 **System prompt**: Embed `prompts/slow-loop-system.md` verbatim as constant.
 
+**Scheduler wiring** (no separate job file!):
+- Export an internal handler function (e.g., `runSlowLoop()`) and register it with the engine's handler registry under `memory.slow-loop`.
+- On boot, call `ensureSystemJob(...)` from `src/lib/scheduler/engine.ts` to seed the JobDefinition into `/Documents/System/scheduler-jobs.json`:
+  - `id: 'system:memory.slow-loop'`, `category: 'system'`, `owner: 'memory'`
+  - `handler: { kind: 'internal', ref: 'memory.slow-loop' }`
+  - `scheduleType: 'recurring'`, `scheduleConfig: { interval: 1, unit: 'hour' }`
+  - `readOnlyFields: ['handler', 'category']`
+- Handler body exits immediately if no pending episodes (zero LLM cost when idle) and respects the overlap lock at `/Documents/Memory/.consolidate.lock`. Failure isolation comes from the engine.
+- **Do NOT** create `src/lib/integrations/scheduler/jobs/memory-slow-loop.ts` or any parallel scheduler config file.
+
 ---
 
 ### Step 6: Search (`src/lib/agent/memory/search.ts`)
@@ -163,7 +184,7 @@ A conversation is eligible if ALL of these hold:
 **Initial implementation** (no new dependencies):
 - Case-insensitive word match
 - Rank by match count
-- Return provenance: `{ source: "topics/<slug>.md#entry-3", content, score }`
+- Return provenance: `{ source: "/Documents/Memory/Topics/<slug>.md#entry-3", content, score }`
 
 **Isolate ranking logic**: Structure so BM25 can replace substring match later without interface change.
 
@@ -179,18 +200,22 @@ async function memory_search(query: string, maxResults = 10): Promise<SearchResu
 
 ---
 
-### Step 7: Scheduler Jobs
+### Step 7: Scheduler Seeding (Unified Job Engine)
 
-**Fast loop job** (`src/lib/integrations/scheduler/jobs/memory-fast-loop.ts`):
-- Default interval: 2 minutes (configurable via `memoryLoops.fastLoop.tickInterval`)
-- Calls `runFastLoop()` from `fast-loop.ts`
-- Logs run summary to central logging
+Memory loops do **not** ship as standalone job files. The Unified Job Engine (`src/lib/scheduler/engine.ts`, Phase 0 prerequisite) owns the tick loop, persistence, failure isolation, and run-history for every scheduled job. Memory loops just:
 
-**Slow loop job** (`src/lib/integrations/scheduler/jobs/memory-slow-loop.ts`):
-- Default interval: 1 hour (configurable via `memoryLoops.slowLoop.interval`)
-- Calls `runSlowLoop()` from `consolidate.ts`
-- Exits immediately if no pending episodes (zero LLM cost when idle)
-- Respects overlap lock; logs contention
+1. **Register internal handlers** with the engine's handler registry:
+   - `memory.fast-loop` → `runFastLoop()` from `src/lib/agent/memory/fast-loop.ts`
+   - `memory.slow-loop` → `runSlowLoop()` from `src/lib/agent/memory/consolidate.ts`
+2. **Seed JobDefinitions on boot** via `ensureSystemJob(def: JobDefinition)` exported from `src/lib/scheduler/engine.ts`. Both jobs use:
+   - `category: 'system'`, `owner: 'memory'`
+   - `handler: { kind: 'internal', ref: 'memory.<fast|slow>-loop' }`
+   - `readOnlyFields: ['handler', 'category']`
+   - Defaults: fast = every 2 min, slow = every 1 hour (users may adjust interval per category ACL)
+3. **Persist nothing else.** No `src/lib/integrations/scheduler/jobs/memory-*.ts`, no sidecar scheduler file, no "derived view" of scheduler state. `/Documents/System/scheduler-jobs.json` is the sole store; `/Documents/System/scheduler-history/<jobId>.jsonl` is the sole run log.
+4. **Interval config** in `memoryLoops.fastLoop.tickInterval` / `memoryLoops.slowLoop.interval` is applied by the engine via the standard editable-fields path (`getEditableFields(job)`); memory-loops code does not re-implement scheduling.
+
+Log seeding at INFO on first boot, DEBUG on subsequent boots (already-seeded).
 
 ---
 

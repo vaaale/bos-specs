@@ -11,8 +11,8 @@
 Long-term memory in BrowserOS now consists of:
 1. **USER.md** - Your identity, preferences, role (always injected)
 2. **MEMORY.md** - Global index + topic references (always injected)
-3. **Topic files** (`data/memory/topics/*.md`) - Detailed knowledge on specific subjects (retrieved on demand)
-4. **Episodes** (`data/memory/episodes/*.md`) - Recent consolidation candidates (searched for lessons)
+3. **Topic files** (`/Documents/Memory/Topics/*.md`) - Detailed knowledge on specific subjects (retrieved on demand)
+4. **Episodes** (`/Documents/Memory/Episodes/*.md`) - Recent consolidation candidates (searched for lessons)
 
 This skill teaches you how to search and recall information from all these sources.
 
@@ -37,12 +37,12 @@ memory_search("Drive file monitoring best practices")
 ```json
 [
   {
-    "source": "topics/gmail-workflows.md#entry-3",
+    "source": "/Documents/Memory/Topics/gmail-workflows.md#entry-3",
     "content": "Gmail API requires OAuth scope `https://www.googleapis.com/auth/gmail.modify` for label operations. Readonly scope insufficient.",
     "score": 2.5
   },
   {
-    "source": "episodes/2026-07-05-abc123.md#lessons",
+    "source": "/Documents/Memory/Episodes/2026-07-05-abc123.md#lessons",
     "content": "Drive file monitoring is more efficient with `modifiedTime` search than folder polling",
     "score": 1.8
   }
@@ -116,10 +116,10 @@ memory_recall("drive-integration") // All Drive integration patterns
 
 ## Understanding Provenance
 
-When `memory_search` returns results, each entry has a `source` field:
+When `memory_search` returns results, each entry has a `source` field (VFS path with fragment):
 
-- `topics/gmail-workflows.md#entry-3` - From a topic file (consolidated knowledge)
-- `episodes/2026-07-05-abc123.md#lessons` - From an episode (recent, not yet consolidated)
+- `/Documents/Memory/Topics/gmail-workflows.md#entry-3` - From a topic file (consolidated knowledge)
+- `/Documents/Memory/Episodes/2026-07-05-abc123.md#lessons` - From an episode (recent, not yet consolidated)
 
 **Interpretation**:
 - **Topic sources** = Durable, cross-conversation lessons (high confidence)
@@ -218,7 +218,7 @@ Topics are organized by domain/task-class. Common topics include:
 
 ### "memory_recall(topic) says topic not found"
 - Check the topic slug spelling (lowercase, kebab-case)
-- List available topics: search for files in `data/memory/topics/`
+- List available topics: search for files in `/Documents/Memory/Topics/`
 - The topic might not have been created yet; lessons about this topic are still in episodes
 
 ### "I'm seeing duplicate or contradictory entries"
@@ -234,8 +234,10 @@ If you're curious about how memory works under the hood:
 
 1. **Fast Loop** (every 2 min): Reviews idle conversations → writes episodes
 2. **Slow Loop** (hourly): Consolidates episodes → updates topics + patches/creates skills
-3. **Episode**: Short-term buffer (`data/memory/episodes/<date>-<convId>.md`)
-4. **Topic**: Long-term storage (`data/memory/topics/<slug>.md`)
-5. **Watermark**: Tracks which messages have been reviewed (in `data/memory/.watermarks.json`)
+3. **Episode**: Short-term buffer (`/Documents/Memory/Episodes/<date>-<convId>.md`)
+4. **Topic**: Long-term storage (`/Documents/Memory/Topics/<slug>.md`)
+5. **Watermark**: Tracks which messages have been reviewed (in `/Documents/Memory/.watermarks.json`)
+
+Both loops are `system` JobDefinitions in the Unified Job Engine, seeded into `/Documents/System/scheduler-jobs.json` on boot via `ensureSystemJob(...)`.
 
 You don't need to interact with these directly—use `memory_search` and `memory_recall`. But knowing the pipeline helps you understand why lessons might take an hour to appear in topics (they're waiting for consolidation).
