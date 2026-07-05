@@ -163,7 +163,7 @@ The user works in one conversation all day. It never hits a provider context-len
 - **SC-001**: Randomized-boundary tests (compaction forced at arbitrary points over recorded tool-heavy transcripts) produce zero provider 400s for orphaned tool pairs or message-order violations, on both provider families.
 - **SC-002**: A conversation below `clearThreshold` incurs zero compaction LLM calls and zero sidecar writes; the middleware output is byte-identical to its input.
 - **SC-003**: Between consecutive watermark/summary events, the transformed prefix is byte-identical across turns (asserted by test; proxy for prompt-cache hits).
-- **SC-004**: With thresholds test-lowered to 10–25% of budget: a constraint probe ("never do X" stated pre-boundary) and a needle probe (fact stated pre-boundary) both survive forced summarization — the constraint is honored and the fact is either in the summary or retrieved via `memory_search` (with 020 installed).
+- **SC-004**: With thresholds test-lowered to 10–25% of budget: a constraint probe ("never do X" stated pre-boundary) and a needle probe (fact stated pre-boundary) both survive forced summarization — the constraint is honored and the fact is either in the summary or retrieved via `memory_search` (with 021 installed).
 - **SC-005**: A conversation grown past `hardLimit` with the summarizer disabled still completes turns via the fallback — no provider context-length error is ever surfaced to the user.
 - **SC-006**: `/Documents/Chats/**` shows zero writes attributable to compaction across the full test suite; discarding the entire sidecar directory at any time yields a working (uncompacted or recomputed) conversation.
 
