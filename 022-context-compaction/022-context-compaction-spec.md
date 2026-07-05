@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-05
 
-**Status**: Spec Ready
+**Status**: Implementation Ready (Spec, Clarify, Plan, and Tasks complete)
 
 **Input**: "Long conversations must keep working past the model's usable context. Compaction is a server-side view transformation on what is SENT to the model — the client-owned transcript is never rewritten. Layered: (1) mechanical tool-result clearing with no LLM call, (2) asynchronous structured summarization past a threshold, (3) write-before-compaction via the memory loops so durable facts survive lossy summarization. System instructions are never compacted (constraint pinning)."
 
