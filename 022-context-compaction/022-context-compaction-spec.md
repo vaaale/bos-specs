@@ -194,6 +194,13 @@ specs/022 - context-compaction/
     └── compaction-summary-system.md            normative system prompt, summarizer (FR-013)
 ```
 
+## Build Studio Workflow Status
+
+- [x] **Spec**: Complete and aligned with 021-memory-loops
+- [x] **Clarify**: No clarifications needed; spec is self-contained
+- [x] **Plan**: `plan.md` created with phased implementation strategy
+- [x] **Tasks**: `tasks.md` created with 21 actionable tasks across 4 phases
+
 ## Notes
 
 - Companions: `021-memory-loops` (soft dependency, FR-014/015), `002-memory`, research basis `docs/dev/assistant/context-compaction-research.md`.
