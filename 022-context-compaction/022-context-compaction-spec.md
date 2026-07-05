@@ -41,7 +41,7 @@ transformParams middleware (pure view transformation, per model call)
 provider (system prompt from composeInstructions() is untouched — pinned)
 
 state: data/memory/compaction/<convId>.json   (sidecar, atomic writes)
-recovery: episodes + topics via memory_search (020)
+recovery: episodes + topics via memory_search (021)
 ```
 
 ---
