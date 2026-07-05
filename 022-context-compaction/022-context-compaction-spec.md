@@ -131,8 +131,6 @@ The user works in one conversation all day. It never hits a provider context-len
 ### Functional Requirements — Memory-loop integration (soft dependency on 021)
 
 - **FR-014**: If the 021 fast-loop module is present, the summarization job MUST first invoke the fast-loop review for this conversation (idle threshold waived, same code path as 021 FR-009) covering turns up to the boundary, and only then summarize. If absent or failing, proceed without it (log the skip) — compaction MUST NOT hard-depend on 021.
-
-- **FR-014**: If the 021 fast-loop module is present, the summarization job MUST first invoke the fast-loop review for this conversation (idle threshold waived, same code path as 021 FR-009) covering turns up to the boundary, and only then summarize. If absent or failing, proceed without it (log the skip) — compaction MUST NOT hard-depend on 021.
 - **FR-015**: Automated compaction never writes `USER.md`, `MEMORY.md`, topics, episodes, or skills directly — durable extraction is exclusively the memory loops' job. Compaction owns only its sidecar.
 
 ### Functional Requirements — Placement & invariants
