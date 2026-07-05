@@ -8,7 +8,7 @@
 
 **Input**: "Long conversations must keep working past the model's usable context. Compaction is a server-side view transformation on what is SENT to the model — the client-owned transcript is never rewritten. Layered: (1) mechanical tool-result clearing with no LLM call, (2) asynchronous structured summarization past a threshold, (3) write-before-compaction via the memory loops so durable facts survive lossy summarization. System instructions are never compacted (constraint pinning)."
 
-> Companion to `020-memory-loops` (episodes = write-before-compaction store; `memory_search` = post-compaction recovery path). Research basis: `docs/dev/assistant/context-compaction-research.md` — this spec implements its layered recommendation (observation masking ≈ LLM summarization at half the cost; in-context constraints decay 0%→30% violation when summarized, hence pinning; compact early, in large stable chunks, for prompt-cache friendliness).
+> Companion to `021-memory-loops` (episodes = write-before-compaction store; `memory_search` = post-compaction recovery path). Research basis: `docs/dev/assistant/context-compaction-research.md` — this spec implements its layered recommendation (observation masking ≈ LLM summarization at half the cost; in-context constraints decay 0%→30% violation when summarized, hence pinning; compact early, in large stable chunks, for prompt-cache friendliness).
 
 ---
 
