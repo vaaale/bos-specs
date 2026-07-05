@@ -126,9 +126,9 @@ The user works in one conversation all day. It never hits a provider context-len
 - **FR-010**: The sidecar stores `{ boundary: { count, spanHash }, summary, clearWatermark, lock, updatedAt, stats }`. `spanHash` is a content hash of the summarized span; on any mismatch at apply time the state is discarded (US-5.2). Writes are atomic (temp-file + rename, as in `memory/curated.ts`); the summary text is injection-scanned before persisting.
 - **FR-011**: **Hard-limit fallback**: if a request arrives with estimated tokens ≥ `hardLimit` and no applicable summary, the middleware synchronously applies a mechanical, pair-safe truncation — keep the first user message and the largest recent tail that fits — logs a warning, and still schedules Layer 2. A provider context-length 400 due to unmanaged growth is a spec violation.
 - **FR-012**: Summary injection shape: one user-role message whose text is wrapped in `<conversation_summary>…</conversation_summary>`, ending with the fixed recovery note ("Earlier details from this conversation were compacted. Durable lessons may be retrievable via memory_search."), spliced immediately before the kept tail. Nothing else is inserted or reordered.
-- **FR-013**: The bundled prompt is **normative**: the implementation MUST embed its body verbatim (leading HTML comment stripped) as a module constant; any wording change is a spec change made in the bundled file first (same rule as 020 FR-021).
+- **FR-013**: The bundled prompt is **normative**: the implementation MUST embed its body verbatim (leading HTML comment stripped) as a module constant; any wording change is a spec change made in the bundled file first (same rule as 021 FR-021).
 
-### Functional Requirements — Memory-loop integration (soft dependency on 020)
+### Functional Requirements — Memory-loop integration (soft dependency on 021)
 
 - **FR-014**: If the 021 fast-loop module is present, the summarization job MUST first invoke the fast-loop review for this conversation (idle threshold waived, same code path as 021 FR-009) covering turns up to the boundary, and only then summarize. If absent or failing, proceed without it (log the skip) — compaction MUST NOT hard-depend on 021.
 - **User Story 4 - Compacted details remain recoverable (Priority: P2)**
