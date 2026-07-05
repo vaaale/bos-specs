@@ -188,8 +188,8 @@ Suggested implementation order (each step shippable): (1) estimation + view tran
 ## Bundled Artifacts
 
 ```
-specs/021 - context-compaction/
-├── 021-context-compaction-spec.md              this spec
+specs/022 - context-compaction/
+├── 022-context-compaction-spec.md              this spec
 └── prompts/
     └── compaction-summary-system.md            normative system prompt, summarizer (FR-013)
 ```
