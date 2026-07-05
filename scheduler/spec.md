@@ -4,7 +4,7 @@
 
 **Created**: 2026-01-XX
 
-**Status**: Clarify
+**Status**: Spec Green
 
 **Input**: User request for a scheduling app that allows users to schedule tasks (prompts to agents) on various schedules (once, recurring). The app must have a daemon for background execution, a UI for managing tasks, and MCP tools for agent interaction.
 
