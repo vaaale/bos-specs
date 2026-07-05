@@ -176,8 +176,8 @@ The user works in one conversation all day. It never hits a provider context-len
 | Middleware + wiring | new `src/lib/agent/compaction/middleware.ts`; edit `src/app/api/copilotkit/route.ts` (wrap at the `getLanguageModel()` site) | `wrapLanguageModel` + `transformParams` from `ai` v6; conv id already in scope |
 | View transform | new `src/lib/agent/compaction/view.ts` | pure function (messages, sidecar) → messages; all pair-safety/boundary walking here — unit-test this hardest |
 | Estimation | new `src/lib/agent/compaction/estimate.ts` | chars/4; FR-001 isolation |
-| Sidecar store | new `src/lib/agent/compaction/sidecar.ts` | atomic-write + `looksLikeInjection` patterns from `memory/curated.ts`; lock with staleness like 020 FR-011 |
-| Summarizer job | new `src/lib/agent/compaction/summarize.ts` | `complete()` from `llm.ts`; optional 020 fast-loop invocation (dynamic import / feature-detect, FR-014) |
+| Sidecar store | new `src/lib/agent/compaction/sidecar.ts` | atomic-write + `looksLikeInjection` patterns from `memory/curated.ts`; lock with staleness like 021 FR-011 |
+| Summarizer job | new `src/lib/agent/compaction/summarize.ts` | `complete()` from `llm.ts`; optional 021 fast-loop invocation (dynamic import / feature-detect, FR-014) |
 | Config | `src/lib/config/registry.ts` namespace `compaction` | settings tab + agent visibility for free |
 | API | new `src/app/api/compaction/route.ts` (GET state / POST force) | mirror curator on-demand pattern |
 | Prompt | `prompts/compaction-summary-system.md` (bundled) | normative, FR-013 — embed verbatim as module constant |
