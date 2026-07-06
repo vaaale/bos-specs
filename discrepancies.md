@@ -45,3 +45,29 @@ compaction"). If the module is absent, compaction logs `fast-loop.skipped`
 turns is via `memory_search` (021 tool surface) — spec 022 US-4.3, FR-014.
 
 Authoritative: `022-context-compaction` FR-014; recovery path: US-4.3.
+
+## Memory app (023) API surface drift
+
+Spec `023-memory-app` FR-030 lists a set of API endpoints the redesigned Memory
+app must consume. The following diverge from the implemented routes; the app
+must be written against the code, and the spec should be treated as intent
+rather than literal contract until a follow-up updates it:
+
+- **Config API is `PATCH`, not `POST`.** `src/app/api/config/route.ts` exports
+  `GET` + `PATCH`; the body shape is `{ namespace, values, secretsSet? }` and
+  the response is `{ namespace, values, secretsSet }` after re-masking secrets.
+  Spec FR-030 says `POST /api/config` with `{ namespace, values }` — read that
+  as PATCH.
+- **Logs filter is `component`, not `category`.** `src/app/api/logs/route.ts`
+  accepts `component=` (plus `session`, `stream`, `level`, `conversation`,
+  `since`, `limit`). Loop run history for spec `023` FR-023 must query the
+  actual component names emitted by the loops: `memory.fast-loop`,
+  `memory.slow-loop` (and related — see `src/lib/agent/memory/*` for
+  authoritative component strings).
+- **Search result navigation (FR-029) is deferred.** The search endpoint
+  returns provenance strings, but the redesigned app does not currently
+  navigate to the source entry in the appropriate tab. Tracked as a Phase-8
+  follow-up; results render read-only.
+
+Authoritative code paths: `src/app/api/config/route.ts`,
+`src/app/api/logs/route.ts`, `src/app/api/memory/search/route.ts`.
