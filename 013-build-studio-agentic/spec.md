@@ -4,7 +4,7 @@
 
 **Created**: 2026-06-28
 
-**Status**: Implemented (v1)
+**Status**: Implemented (v1) / In Progress (v2)
 
 **Input**: "Make Build Studio an agentic studio: embed the assistant (scoped to the Build Studio agent) so the user works conversationally to create/refine specs and build features end-to-end (idea → spec → clarify → plan → tasks → implemented by the Developer), alongside the spec tree."
 
@@ -110,3 +110,94 @@ The chat is aware of the selected feature/artifact; the agent can also **drive t
 - Depends on `011-per-agent-capabilities` (scoped BS agent) and `012-embeddable-assistant` (the embed).
 - Builds on `001-build-studio` (the spec tree, the BS agent, spec tools, `delegate_to_developer`, the Build Studio skill).
 - The self-modification pipeline (`005`–`008`) handles testing + promote/discard unchanged.
+
+---
+
+## V2: Iterative App Design Process with Live UI Preview
+
+**Status**: In Progress
+
+**Input**: Extend Build Studio so the agent can lead the user through an iterative design process for BrowserOS apps, starting with apps that have a UI. The agent interviews the user for requirements, designs functionality and UI, writes the spec live, renders the UI via an A2UI surface, and delegates implementation to the Developer. This phase also introduces a two-tier system for app-registered assistant tools: installed-app tools (static, permissioned per agent in Settings) and runtime surface tools (dynamic, available only when an app window is open).
+
+### V2 User Scenarios & Testing
+
+#### User Story 7 - Categorize the request (Priority: P1)
+
+The agent first determines whether the user wants to build a `bos-app`, `bos-integration`, `bos-feature`, or `bos-core` artifact. For v2 the scope is `bos-app` (apps with a UI).
+
+**Acceptance Scenarios**:
+
+1. **Given** a user request, **When** the agent starts the design process, **Then** it confirms the category is `bos-app`; if not, it explains which skill/category applies and offers to switch or delegate.
+
+#### User Story 8 - Interview-driven requirements (Priority: P1)
+
+The agent interviews the user to gather requirements. Each confirmed requirement is appended to the spec live, and the spec viewer scrolls to and highlights the new requirement.
+
+**Acceptance Scenarios**:
+
+1. **Given** the agent has gathered a requirement, **When** it writes it to the spec, **Then** it opens the spec in Build Studio and highlights the newly added section.
+2. **Given** the user revises a requirement, **When** the agent edits the spec, **Then** the viewer reflects the change and highlights the updated section.
+
+#### User Story 9 - Live UI design via A2UI (Priority: P1)
+
+For apps with a UI, the agent opens the UI Preview app and renders/updates mockups using the A2UI protocol. The user sees the design evolve as the interview progresses.
+
+**Acceptance Scenarios**:
+
+1. **Given** the design process has reached the UI phase, **When** the agent opens the UI Preview app, **Then** a sandboxed A2UI surface is visible in a BOS window.
+2. **Given** the user requests a UI change, **When** the agent regenerates the design, **Then** the surface updates in place without opening an additional window.
+3. **Given** the user provides feedback on a rendered component, **When** the agent updates only that area, **Then** the change is reflected while the rest of the surface remains stable.
+
+#### User Story 10 - Two-tier app-registered assistant tools (Priority: P1)
+
+Apps can register assistant-facing tools. Installed apps contribute static tools that appear in Settings → Agents → [agent] → Tools, grouped by app name. Runtime app surfaces contribute dynamic tools that are only available while the app's window is open.
+
+**Acceptance Scenarios**:
+
+1. **Given** the UI Preview app is installed, **Then** its Tier 1 tools (e.g. `ui_preview_open`) appear in the agent capability picker grouped under "UI Preview" and can be allowed/revoked per agent.
+2. **Given** the UI Preview window is open, **Then** its Tier 2 tools (e.g. `ui_preview_update_surface`) are available to the agent and dispatched to the correct window.
+3. **Given** the UI Preview window is closed, **Then** its Tier 2 tools are no longer offered in new runs.
+
+#### User Story 11 - Delegate to Developer (Priority: P1)
+
+Once the spec and UI design are approved, the agent delegates implementation to the Developer sub-agent, using the existing self-modification pipeline.
+
+**Acceptance Scenarios**:
+
+1. **Given** the user approves the spec and UI, **When** the agent delegates, **Then** the Developer receives the spec, plan, tasks, and UI artifacts and begins implementation.
+2. **Given** the Developer finishes, **Then** the Build Studio agent runs analyze + converge and reports the result.
+
+### V2 Requirements
+
+#### Functional Requirements
+
+- **FR-011**: The Build Studio agent MUST support an iterative design process for `bos-app` features. The process MUST include: orient, categorize, interview, write spec live, design UI live (when applicable), finalize plan + tasks, and delegate implementation.
+- **FR-012**: The agent MUST load and follow the `bos-app` skill. The skill MUST reference the constitution, design heuristics (`docs/dev/design-heuristics.md`), architecture overview (`docs/dev/architecture-overview.md`), BOS UI style guide (`docs/dev/guides/style-guide.md`), apps guide (`docs/dev/guides/apps.md`), features & components guide (`docs/dev/guides/features-and-components.md`), spec templates (`.specify/templates/`), and app-specific references (`references/design-interview-script.md`, `references/ui-conventions.md`, `references/a2ui-catalog.md`).
+- **FR-013**: The agent MUST categorize the request before starting detailed design. For v2 it MUST confirm the category is `bos-app` (or explain that a different skill is needed for `bos-integration`, `bos-feature`, or `bos-core`).
+- **FR-014**: The agent MUST write spec content live: after gathering each significant requirement or design decision it MUST append it to the spec using `spec_write`/`spec_edit`, then call `buildstudio_artifact_open` with an anchor/section identifier so the user can see what was written.
+- **FR-015**: Build Studio's artifact viewer MUST support opening a spec at a specific section and transiently highlighting that section, using stable heading/section anchors.
+- **FR-016**: When the app has a UI, the agent MUST open the UI Preview app via `bos_app_launch` at the start of the UI phase and keep it open for the remainder of the design session.
+- **FR-017**: The UI Preview app MUST render A2UI v0.9 surfaces using `@copilotkit/a2ui-renderer`. It MUST accept A2UI operations pushed by the agent and apply them to update the live surface.
+- **FR-018**: The system MUST provide a server tool `a2ui_render` (or equivalent) that uses `@ag-ui/a2ui-toolkit` to run a sub-agent producing A2UI operations. The tool MUST use the configured BOS provider/model and return a validated operations envelope.
+- **FR-019**: Apps MUST be able to register assistant tools through a two-tier system:
+  - **Tier 1 — installed-app tools**: declared in the app manifest or a static `agent-tools.ts`, registered in the capabilities inventory, grouped by app name in Settings → Agents → [agent] → Tools, and permissioned per agent.
+  - **Tier 2 — runtime surface tools**: declared by a mounted app window via `registerAppSurfaceTools`, sent as `surfaceTools` at run start, and only available while the app window is open.
+- **FR-020**: The UI Preview app MUST register tools in both tiers. Tier 1 MUST include at minimum `ui_preview_open` (open/raise the preview window). Tier 2 MUST include at minimum `ui_preview_render` (push operations to the surface) and `ui_preview_show_requirement` (scroll the paired spec viewer to a requirement).
+- **FR-021**: The UI Preview app SHOULD display the current design surface plus a lightweight "design context" panel showing the active requirement, iteration history, and user notes.
+- **FR-022**: The `bos-app` skill MUST instruct the agent to delegate implementation to the Developer sub-agent once the spec and UI are approved, using the existing `delegate_to_developer`/`dev_delegate` flow and the self-modification pipeline.
+
+### V2 Success Criteria
+
+- **SC-009**: A user can describe an app idea and the agent interviews them, producing a visible, continuously updated spec.
+- **SC-010**: The agent can open the UI Preview app and render/update a UI mockup live using A2UI.
+- **SC-011**: Build Studio's spec viewer can scroll to and highlight a specific section on demand.
+- **SC-012**: App tools are discoverable and permissioned: installed-app tools appear in Settings → Agents → Tools grouped by app; runtime tools work only while the app window is open.
+- **SC-013**: The end-to-end flow (interview → spec → UI → delegate) works from Build Studio and from the default Assistant delegating to the Build Studio agent.
+
+### V2 Assumptions & Dependencies
+
+- Depends on `011-per-agent-capabilities` (scoped agent tools) and `012-embeddable-assistant` (chat surface + surface tools).
+- Depends on `009-installed-apps` (app manifest/installation model) for Tier 1 tool registration.
+- Uses the existing `@copilotkit/a2ui-renderer` and `@ag-ui/a2ui-toolkit` packages already present in `node_modules`.
+- A2UI starts with the basic catalog; a BOS-native design catalog may be added later.
+- BOS source modifications are delegated to the Developer sub-agent per `005`–`008`.

@@ -1,6 +1,6 @@
 ---
-name: Feature Wizard
-description: Proactive end-to-end guide that drives the user through building a BOS feature: Requirements → UI Design → Spec → Branch → Plan → Implementation → Tests → Promote/Discard.
+name: feature-wizard
+description: Proactive end-to-end guide that drives the user through building a BOS feature. Requirements → UI Design → Spec → Branch → Plan → Implementation → Tests → Promote/Discard.
 when_to_use: When the user wants to build a new feature from scratch and needs guided support through the full lifecycle, or when they say "I want to build X" without an existing spec.
 created_by: seed
 pinned: true
