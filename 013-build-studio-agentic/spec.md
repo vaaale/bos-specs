@@ -115,7 +115,7 @@ The chat is aware of the selected feature/artifact; the agent can also **drive t
 
 ## V2: Iterative App Design Process with Live UI Preview
 
-**Status**: In Progress
+**Status**: Implemented, pending live end-to-end validation (tasks.md T031)
 
 **Input**: Extend Build Studio so the agent can lead the user through an iterative design process for BrowserOS apps, starting with apps that have a UI. The agent interviews the user for requirements, designs functionality and UI, writes the spec live, renders the UI via an A2UI surface, and delegates implementation to the Developer. This phase also introduces a two-tier system for app-registered assistant tools: installed-app tools (static, permissioned per agent in Settings) and runtime surface tools (dynamic, available only when an app window is open).
 

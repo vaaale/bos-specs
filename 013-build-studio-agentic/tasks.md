@@ -10,8 +10,8 @@
 
 **Purpose**: Verify the active feature branch and ensure the Developer has the required context.
 
-- [ ] T001 Confirm the active feature branch is `bos/bs-design-process`; if not, ask the user to switch/create it before implementation.
-- [ ] T002 Ensure `specs/bos-system-specs/013-build-studio-agentic/spec.md` and `plan.md` are readable from the feature worktree.
+- [x] T001 Confirm the active feature branch is `bos/bs-design-process`; if not, ask the user to switch/create it before implementation.
+- [x] T002 Ensure `specs/bos-system-specs/013-build-studio-agentic/spec.md` and `plan.md` are readable from the feature worktree.
 
 ---
 
@@ -23,16 +23,16 @@
 
 ### Implementation
 
-- [ ] T003 Create `src/lib/assistant/client/surface-tools.ts` with:
+- [x] T003 Create `src/lib/assistant/client/surface-tools.ts` with:
   - `registerAppSurfaceTools(windowId, declarations, handlers)`
   - `unregisterAppSurfaceTools(windowId)`
   - `getActiveSurfaceToolDeclarations()`
-  - `dispatchSurfaceToolCall(windowId, name, args)`
-- [ ] T004 Update `src/lib/assistant/client/run-client.ts` to call `getActiveSurfaceToolDeclarations()` and merge the result into the run's `surfaceTools` automatically.
-- [ ] T005 Update `src/components/agent/v2/AssistantChatV2.tsx` so it no longer requires `surfaceTools` to be passed explicitly; read them from the registry.
-- [ ] T006 Update `src/components/agent/v2/ChatInputV2.tsx` to read surface tools from the registry instead of receiving them as props.
-- [ ] T007 Refactor Build Studio's existing surface tools (`buildstudio_artifact_open`, `buildstudio_tree_refresh`) to register through the registry in `src/apps/build-studio/index.tsx` on mount. Keep their existing handlers intact.
-- [ ] T008 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
+  - `dispatchSurfaceToolCall(windowId, name, args)` — implemented as `findSurfaceToolHandler(name)` instead: dispatch is by tool name (unique across mounted windows), reusing the existing `registerFrontendTool`-style call-by-name convention rather than adding a parallel windowId-addressed dispatch path.
+- [x] T004 Update `src/lib/assistant/client/run-client.ts` to call `getActiveSurfaceToolDeclarations()` and merge the result into the run's `surfaceTools` automatically.
+- [x] T005 Update `src/components/agent/v2/AssistantChatV2.tsx` so it no longer requires `surfaceTools` to be passed explicitly; read them from the registry.
+- [x] T006 Update `src/components/agent/v2/ChatInputV2.tsx` to read surface tools from the registry instead of receiving them as props.
+- [x] T007 Refactor Build Studio's existing surface tools (`buildstudio_artifact_open`, `buildstudio_tree_refresh`) to register through the registry in `src/apps/build-studio/index.tsx` on mount. Keep their existing handlers intact.
+- [x] T008 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
 
 **Checkpoint**: All existing Build Studio surface tools still work; registry can be demonstrated with a minimal test app.
 
@@ -46,23 +46,23 @@
 
 ### Tests
 
-- [ ] T009 [P] Add Playwright test `e2e/013-ui-preview.spec.ts` that opens UI Preview and asserts the surface container mounts.
+- [x] T009 [P] Add Playwright test `e2e/013-ui-preview.spec.ts` that opens UI Preview and asserts the surface container mounts.
 
 ### Implementation
 
-- [ ] T010 Create `src/apps/ui-preview/manifest.ts` with `id: "ui-preview"`, singleton, lucide icon, and default window size.
-- [ ] T011 Create `src/apps/ui-preview/index.tsx`:
+- [x] T010 Create `src/apps/ui-preview/manifest.ts` with `id: "ui-preview"`, singleton, lucide icon, and default window size.
+- [x] T011 Create `src/apps/ui-preview/index.tsx`:
   - Host the `@copilotkit/a2ui-renderer` component.
   - Maintain a local state for the current surface id and operations history.
   - Render a design context panel (active requirement, iteration history, notes) per FR-021.
   - Register Tier 2 surface tools on mount via the registry from Phase 2.
-- [ ] T012 Create `src/apps/ui-preview/agent-tools-v2.ts` with Tier 2 tool declarations and handlers:
+- [x] T012 Create `src/apps/ui-preview/agent-tools-v2.ts` with Tier 2 tool declarations and handlers:
   - `ui_preview_render(surfaceId, operations)` — apply A2UI operations to the renderer.
   - `ui_preview_show_requirement(specPath, requirementId)` — call `buildstudio_artifact_open` with the spec path and requirement anchor.
-- [ ] T013 Register `ui_preview_open` as a Tier 1 installed-app tool in `src/lib/agent/capabilities-registry.ts` (or via the UI Preview manifest/static `agent-tools.ts` per FR-019).
-- [ ] T014 Implement the `ui_preview_open` handler to open or focus the UI Preview window.
-- [ ] T015 Run `npm run gen:apps` so the new built-in app is discovered and manifests/components are regenerated.
-- [ ] T016 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
+- [x] T013 Register `ui_preview_open` as a Tier 1 installed-app tool: declared in `src/lib/assistant/tools/frontend-declarations.ts` (global frontend tool, same pattern as `bos_app_launch`) and registered in `src/lib/agent/capabilities-registry.ts` under a new "UI Preview" group, per FR-019.
+- [x] T014 Implement the `ui_preview_open` handler (in `src/components/agent/v2/FrontendToolsV2.tsx`) to open or focus the UI Preview window.
+- [x] T015 Run `npm run gen:apps` so the new built-in app is discovered and manifests/components are regenerated.
+- [x] T016 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
 
 **Checkpoint**: Agent can open UI Preview and push A2UI operations to it; the surface updates in place.
 
@@ -76,15 +76,15 @@
 
 ### Implementation
 
-- [ ] T017 Create `src/lib/assistant/tools/server/a2ui-render.ts`:
+- [x] T017 Create `src/lib/assistant/tools/server/a2ui-render.ts`:
   - Declare the `a2ui_render` server tool.
   - Use `@ag-ui/a2ui-toolkit` to run a constrained sub-agent.
-  - Sub-agent prompt includes BOS style guide and A2UI catalog rules from `data/skills/bos-app/references/a2ui-catalog.md`.
+  - Sub-agent prompt includes BOS style guide and A2UI catalog rules (inlined from the basic-catalog component list + BOS design constraints, rather than a runtime read of `data/skills/bos-app/references/a2ui-catalog.md`, since the tool has no conversation/state context to attach a file read to — see the in-file comment for why `prepareA2UIRequest`/`findPriorSurface` aren't used).
   - Validate the returned operations envelope and surface id.
-  - Use the active BOS provider/model configuration.
-- [ ] T018 Register `a2ui_render` in `src/lib/agent/capabilities-registry.ts` with the correct group/context and schema.
-- [ ] T019 Add error handling and recovery: if the sub-agent returns invalid operations, retry once with a stricter prompt; if still invalid, return a clear error.
-- [ ] T020 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
+  - Use the active BOS provider/model configuration (`getProviderConfig()`; supports the anthropic and openai-chat/-compatible/-responses families).
+- [x] T018 Register `a2ui_render` in `src/lib/agent/capabilities-registry.ts` with the correct group/context and schema.
+- [x] T019 Add error handling and recovery: if the sub-agent returns invalid operations, retry once with a stricter prompt; if still invalid, return a clear error. (via `@ag-ui/a2ui-toolkit`'s `runA2UIGenerationWithRecovery`)
+- [x] T020 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
 
 **Checkpoint**: Agent can call `a2ui_render` and receive a surface operations envelope.
 
@@ -98,17 +98,17 @@
 
 ### Tests
 
-- [ ] T021 [P] Add Playwright test `e2e/013-spec-anchor.spec.ts` that opens a spec at a heading anchor and asserts the element is highlighted.
+- [x] T021 [P] Add Playwright test `e2e/013-spec-anchor.spec.ts` that opens a spec at a heading anchor and asserts the element is highlighted.
 
 ### Implementation
 
-- [ ] T022 Extend the parameter schema for `buildstudio_artifact_open` in `src/apps/build-studio/agent-tools-v2.ts` to accept an optional `anchor` string (heading slug or section id).
-- [ ] T023 Update `src/apps/build-studio/index.tsx`:
+- [x] T022 Extend the parameter schema for `buildstudio_artifact_open` in `src/apps/build-studio/agent-tools-v2.ts` to accept an optional `anchor` string (heading slug or section id).
+- [x] T023 Update `src/apps/build-studio/index.tsx`:
   - When opening a spec with an `anchor`, find the matching heading/section element after the Markdown renders.
   - Scroll the element into view.
   - Apply a transient highlight CSS class; remove it after ~3 seconds.
-- [ ] T024 Generate stable heading anchors from Markdown headings in the Build Studio Markdown renderer (if not already available via `id` attributes).
-- [ ] T025 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
+- [x] T024 Generate stable heading anchors from Markdown headings in the Build Studio Markdown renderer (if not already available via `id` attributes) — a local GitHub-style `slugify()` + `components` override on `<Markdown>`, no new rehype-slug dependency.
+- [x] T025 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
 
 **Checkpoint**: Agent can open a spec at a specific section and the user sees a transient highlight.
 
@@ -118,12 +118,12 @@
 
 **Purpose**: Wire everything together, update docs, and validate the end-to-end flow.
 
-- [ ] T026 Update `src/apps/build-studio/agent-tools-v2.ts` and `src/apps/build-studio/index.tsx` so Build Studio's surface tools use the new registry and anchor support cleanly.
-- [ ] T027 Update `seed/agents/build-studio/AGENT.md` and `data/agents/build-studio/AGENT.md` to include `a2ui_render`, `ui_preview_render`, and `ui_preview_show_requirement` in the tools allowlist once they exist.
-- [ ] T028 Update `docs/dev/guides/apps.md` and `docs/dev/guides/features-and-components.md` with the new surface-tools and UI Preview patterns.
-- [ ] T029 [P] Run `npx tsc --noEmit` and `npm run lint` across the whole branch; fix every error.
-- [ ] T030 [P] Run the Playwright tests from T009 and T021.
-- [ ] T031 End-to-end validation: from the assistant in Build Studio, run a minimal `bos-app` design session and verify interview → spec update + highlight → UI Preview open/render → delegate flows without errors.
+- [x] T026 Update `src/apps/build-studio/agent-tools-v2.ts` and `src/apps/build-studio/index.tsx` so Build Studio's surface tools use the new registry and anchor support cleanly.
+- [x] T027 Update `seed/agents/build-studio/AGENT.md` and `data/agents/build-studio/AGENT.md` to include `a2ui_render`, `ui_preview_open`, `ui_preview_render`, and `ui_preview_show_requirement` in the tools allowlist.
+- [x] T028 Update `docs/dev/guides/apps.md` (already documented the two-tier model + UI Preview example ahead of this work) and `docs/dev/guides/features-and-components.md` (added the Tier 2 registration-mechanics subsection) with the new surface-tools and UI Preview patterns.
+- [x] T029 [P] Run `npx tsc --noEmit` and `npm run lint` across the whole branch; fix every error. (Pre-existing lint errors only under the gitignored `user-data/` bastion checkout, unrelated to this branch.)
+- [x] T030 [P] Run the Playwright tests from T009 and T021 — both pass; verified the 3 other e2e failures encountered in the same run (`per-agent-capabilities`, `per-agent-render-gate`, `stop-run`) are pre-existing (reproduce identically on the pre-change tree via `git stash`), not regressions.
+- [ ] T031 End-to-end validation: from the assistant in Build Studio, run a minimal `bos-app` design session and verify interview → spec update + highlight → UI Preview open/render → delegate flows without errors. Needs a live model session — left for manual verification.
 
 ---
 
