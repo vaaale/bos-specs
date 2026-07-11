@@ -102,13 +102,15 @@
 
 ### Implementation
 
-- [x] T022 Extend the parameter schema for `buildstudio_artifact_open` in `src/apps/build-studio/agent-tools-v2.ts` to accept an optional `anchor` string (heading slug or section id).
-- [x] T023 Update `src/apps/build-studio/index.tsx`:
-  - When opening a spec with an `anchor`, find the matching heading/section element after the Markdown renders.
-  - Scroll the element into view.
-  - Apply a transient highlight CSS class; remove it after ~3 seconds.
-- [x] T024 Generate stable heading anchors from Markdown headings in the Build Studio Markdown renderer (if not already available via `id` attributes) — a local GitHub-style `slugify()` + `components` override on `<Markdown>`, no new rehype-slug dependency.
-- [x] T025 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
+- [x] T022 Create a new `buildstudio_artifact_scroll(anchor)` surface tool in `src/apps/build-studio/agent-tools-v2.ts`.
+- [x] T023 Update `buildstudio_artifact_open` in `src/apps/build-studio/agent-tools-v2.ts` to remove the `anchor` parameter; its only job is opening artifacts.
+- [x] T024 Update `src/apps/build-studio/index.tsx`:
+  - Split `openFile(path, branch, anchor)` into `openFile(path, branch)` and `scrollToAnchor(anchor)`.
+  - Pass both callbacks to `buildStudioSurfaceTools`.
+- [x] T025 Update `src/apps/ui-preview/agent-tools-v2.ts` so `ui_preview_show_requirement` calls `buildstudio_artifact_open(path)` then `buildstudio_artifact_scroll(anchor)`.
+- [x] T026 Add `buildstudio_artifact_scroll` to `src/lib/agent/capabilities-registry.ts` and to `seed/agents/build-studio/AGENT.md` + `data/agents/build-studio/AGENT.md`.
+- [x] T027 Update `src/apps/build-studio/index.tsx` so the scroll/highlight useEffect is triggered by `buildstudio_artifact_scroll`.
+- [x] T028 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
 
 **Checkpoint**: Agent can open a spec at a specific section and the user sees a transient highlight.
 

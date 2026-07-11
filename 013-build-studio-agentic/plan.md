@@ -133,10 +133,8 @@ Tier 1 tools (registered at install time):
 
 ### P4 — Spec viewer anchors and highlights
 
-- Extend `buildstudio_artifact_open` parameter schema with an optional `anchor` (heading slug or section id).
-- In `BuildStudioApp`, parse the anchor and scroll the Markdown viewer to the matching element.
-- Add a transient highlight class to the target element; remove it after a few seconds.
-- Use stable heading anchors derived from Markdown headings.
+- Extend `buildstudio_artifact_open` parameter schema with an optional `anchor` parameter (deprecated convenience), but primary scrolling is handled by a new `buildstudio_artifact_scroll(anchor)` tool.
+- In `BuildStudioApp`, parse the anchor from `buildstudio_artifact_scroll` and scroll/highlight the matching element.
 
 ## Complexity Tracking
 
