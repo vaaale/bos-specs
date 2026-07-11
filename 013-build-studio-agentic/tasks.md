@@ -98,18 +98,18 @@
 
 ### Tests
 
-- [ ] T021 [P] Add Playwright test `e2e/013-spec-anchor.spec.ts`: open a spec, call `buildstudio_artifact_highlight`, assert the target section is visible/centered and carries the highlight styling, then click it and assert the highlight is gone. Also assert an unknown anchor and a "no artifact open" call both return an error.
+- [x] T021 [P] Add Playwright test `e2e/013-spec-anchor.spec.ts`: open a spec, call `buildstudio_artifact_highlight`, assert the target section is visible/centered and carries the highlight styling, then click it and assert the highlight is gone. Also assert an unknown anchor and a "no artifact open" call both return an error.
 
 ### Implementation
 
-- [ ] T022 Create a new `buildstudio_artifact_highlight(anchor)` surface tool in `src/apps/build-studio/agent-tools-v2.ts`, alongside the existing `buildstudio_artifact_open`/`buildstudio_tree_refresh`. Do NOT add an anchor parameter to `buildstudio_artifact_open` — leave it exactly as-is (open-only).
-- [ ] T023 Generate stable heading-slug anchors from the rendered Markdown in `src/apps/build-studio/index.tsx` (GitHub-style `slugify()` — lowercase, spaces→hyphens, punctuation stripped — via a `components` override on the Markdown renderer; no new rehype-slug dependency).
-- [ ] T024 In `src/apps/build-studio/index.tsx`, compute each heading's SECTION BOUNDARY — the heading plus its rendered siblings up to (not including) the next heading of equal-or-higher level — so the whole section can be wrapped in one container, not just the heading line.
-- [ ] T025 Wire `buildstudio_artifact_highlight`'s handler: error clearly if no artifact is open or `anchor` doesn't resolve to a known heading; otherwise scroll the section's wrapper into view CENTERED (`scrollIntoView({ block: "center", behavior: "smooth" })`) and set it as the single highlighted section in state. Render the highlighted wrapper with the highlight styling and an `onClick` that clears the highlight — this is the ONLY dismissal path (no `setTimeout`/auto-fade).
-- [ ] T026 Register `buildstudio_artifact_highlight` in `src/lib/agent/capabilities-registry.ts` (group "Build Studio") and add it to the Build Studio agent's tools allowlist in `seed/agents/build-studio/AGENT.md` + `data/agents/build-studio/AGENT.md`.
-- [ ] T027 Update `src/apps/ui-preview/agent-tools-v2.ts` so `ui_preview_show_requirement` calls `buildstudio_artifact_open(specPath)` (if that artifact isn't already open) then `buildstudio_artifact_highlight(requirementId)`.
-- [ ] T028 Update the `bos-app` skill (`skills/bos-app/SKILL.md`): Phase 1 ("After each confirmed requirement...") must call `buildstudio_artifact_highlight` after writing a section, not the old combined `buildstudio_artifact_open(path, section)`.
-- [ ] T029 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
+- [x] T022 Create a new `buildstudio_artifact_highlight(anchor)` surface tool in `src/apps/build-studio/agent-tools-v2.ts`, alongside the existing `buildstudio_artifact_open`/`buildstudio_tree_refresh`. Do NOT add an anchor parameter to `buildstudio_artifact_open` — leave it exactly as-is (open-only).
+- [x] T023 Generate stable heading-slug anchors from the rendered Markdown in `src/apps/build-studio/index.tsx` (GitHub-style `slugify()` — lowercase, spaces→hyphens, punctuation stripped — via a `components` override on the Markdown renderer; no new rehype-slug dependency).
+- [x] T024 In `src/apps/build-studio/index.tsx`, compute each heading's SECTION BOUNDARY — the heading plus its rendered siblings up to (not including) the next heading of equal-or-higher level — so the whole section can be wrapped in one container, not just the heading line.
+- [x] T025 Wire `buildstudio_artifact_highlight`'s handler: error clearly if no artifact is open or `anchor` doesn't resolve to a known heading; otherwise scroll the section's wrapper into view CENTERED (`scrollIntoView({ block: "center", behavior: "smooth" })`) and set it as the single highlighted section in state. Render the highlighted wrapper with the highlight styling and an `onClick` that clears the highlight — this is the ONLY dismissal path (no `setTimeout`/auto-fade). Also fixed a real race found via e2e testing: a real agent calling `buildstudio_artifact_open` then immediately `buildstudio_artifact_highlight` can have the second call arrive before the first's content fetch resolves — `highlightSection` now waits (up to 10s, polling refs mirrored synchronously from `openFile`) for the in-flight load before validating the anchor, instead of validating against stale/empty content.
+- [x] T026 Register `buildstudio_artifact_highlight` in `src/lib/agent/capabilities-registry.ts` (group "Build Studio") and add it to the Build Studio agent's tools allowlist in `seed/agents/build-studio/AGENT.md` + `data/agents/build-studio/AGENT.md`.
+- [x] T027 Update `src/apps/ui-preview/agent-tools-v2.ts` so `ui_preview_show_requirement` calls `buildstudio_artifact_open(specPath)` (if that artifact isn't already open) then `buildstudio_artifact_highlight(requirementId)`.
+- [x] T028 Update the `bos-app` skill (`skills/bos-app/SKILL.md`): Phase 1 ("After each confirmed requirement...") must call `buildstudio_artifact_highlight` after writing a section, not the old combined `buildstudio_artifact_open(path, section)`. (Done directly in seed/data by the user.)
+- [x] T029 Run `npx tsc --noEmit` and `npm run lint`; fix every error before finishing this phase.
 
 **Checkpoint**: Agent can highlight a specific section on demand; the section is obviously highlighted (whole section, centered in the viewport) and the highlight disappears only when the user clicks it.
 
@@ -119,11 +119,11 @@
 
 **Purpose**: Wire everything together, update docs, and validate the end-to-end flow.
 
-- [ ] T030 Update `src/apps/build-studio/agent-tools-v2.ts` and `src/apps/build-studio/index.tsx` so Build Studio's surface tools use the new registry and the open/highlight split cleanly.
-- [ ] T031 Update `seed/agents/build-studio/AGENT.md` and `data/agents/build-studio/AGENT.md` to include `a2ui_render`, `ui_preview_open`, `ui_preview_render`, `ui_preview_show_requirement`, and `buildstudio_artifact_highlight` in the tools allowlist.
-- [ ] T032 Update `docs/dev/guides/apps.md` and `docs/dev/guides/features-and-components.md` with the surface-tools and UI Preview patterns (two-tier tool model, registry mechanics).
-- [ ] T033 [P] Run `npx tsc --noEmit` and `npm run lint` across the whole branch; fix every error.
-- [ ] T034 [P] Run the Playwright tests from T009 and T021.
+- [x] T030 Update `src/apps/build-studio/agent-tools-v2.ts` and `src/apps/build-studio/index.tsx` so Build Studio's surface tools use the new registry and the open/highlight split cleanly.
+- [x] T031 Update `seed/agents/build-studio/AGENT.md` and `data/agents/build-studio/AGENT.md` to include `a2ui_render`, `ui_preview_open`, `ui_preview_render`, `ui_preview_show_requirement`, and `buildstudio_artifact_highlight` in the tools allowlist.
+- [x] T032 `docs/dev/guides/apps.md` and `docs/dev/guides/features-and-components.md` already document the two-tier tool model + registry mechanics generically (no specific tool names to update).
+- [x] T033 [P] Run `npx tsc --noEmit` and `npm run lint` across the whole branch; fix every error.
+- [x] T034 [P] Run the Playwright tests from T009 and T021 — both pass consistently (verified repeatedly against fresh dev-server instances; occasional multi-minute-long-server slowness traced to accumulated e2e-test conversation files in `data/vfs/Documents/Chats/`, not a code issue).
 - [ ] T035 End-to-end validation: from the assistant in Build Studio, run a minimal `bos-app` design session and verify interview → spec update + highlight → UI Preview open/render → delegate flows without errors. Needs a live model session — manual verification.
 
 ---
