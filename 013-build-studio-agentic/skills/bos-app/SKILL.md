@@ -43,7 +43,7 @@ Use `references/design-interview-script.md`. Keep asking until you can state cle
 - Out-of-scope items
 - Constitution fit — flag any conflicts with `.specify/memory/constitution.md`
 
-After each confirmed requirement, append it to the spec with `spec_write`/`spec_edit`, then call `buildstudio_artifact_open(path, section)` to scroll to and highlight the new section.
+After each confirmed requirement, append it to the spec with `spec_write`/`spec_edit`. If the spec isn't already open in the viewer, call `buildstudio_artifact_open(path)`; then call `buildstudio_artifact_highlight(anchor)` with the new section's heading anchor — the viewer will center on the section and highlight it until the user clicks it away, so keep talking rather than re-highlighting the same section repeatedly.
 
 GATE: The user confirms the requirements are complete enough to start design.
 

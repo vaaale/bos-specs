@@ -11,7 +11,7 @@ This plan implements the V2 scope of spec `013-build-studio-agentic`: an iterati
 1. **P1 — Surface-tools registry**: let mounted app windows register runtime (Tier 2) assistant tools so the agent can dispatch to the correct window.
 2. **P2 — UI Preview app**: a built-in app that renders A2UI v0.9 surfaces and accepts live operations pushed by the agent.
 3. **P3 — `a2ui_render` server tool**: a sub-agent-based tool that generates validated A2UI operations using `@ag-ui/a2ui-toolkit`.
-4. **P4 — Spec viewer anchors/highlights**: extend `buildstudio_artifact_open` to open a spec at a section and transiently highlight it.
+4. **P4 — Spec viewer anchors/highlights**: a dedicated `buildstudio_artifact_highlight(anchor)` surface tool that centers the viewport on a section and highlights the whole section (not just the heading) until the user clicks it away. `buildstudio_artifact_open` stays anchor-free — opening and highlighting are separate tools.
 
 The `bos-app` skill, Build Studio agent prompt, and developer guides are already in place.
 
@@ -75,8 +75,8 @@ src/
 │   │   ├── index.tsx             # Main React component: A2UI renderer host
 │   │   └── agent-tools-v2.ts     # Tier 2 surface tools (ui_preview_render, ui_preview_show_requirement)
 │   └── build-studio/
-│       ├── index.tsx             # Extend artifact viewer with anchor/highlight
-│       └── agent-tools-v2.ts     # Extend buildstudio_artifact_open with section anchor
+│       ├── index.tsx             # Section-aware artifact viewer: center-scroll + whole-section highlight, click-to-dismiss
+│       └── agent-tools-v2.ts     # NEW buildstudio_artifact_highlight(anchor) tool; buildstudio_artifact_open stays anchor-free
 ├── lib/
 │   ├── assistant/
 │   │   ├── client/
@@ -118,7 +118,7 @@ Target state: a small client-side registry keyed by app window id.
 - Includes a lightweight "design context" panel showing the active requirement, iteration history, and user notes (FR-021).
 - Tier 2 tools registered on mount:
   - `ui_preview_render(surfaceId, operations)` — apply A2UI operations.
-  - `ui_preview_show_requirement(specPath, requirementId)` — ask Build Studio to scroll/highlight (delegates to `buildstudio_artifact_open`).
+  - `ui_preview_show_requirement(specPath, requirementId)` — ask Build Studio to show a requirement: calls `buildstudio_artifact_open(specPath)` (if not already the open artifact) then `buildstudio_artifact_highlight(requirementId)`.
 
 Tier 1 tools (registered at install time):
 - `ui_preview_open()` — open/raise the preview window.
@@ -133,8 +133,14 @@ Tier 1 tools (registered at install time):
 
 ### P4 — Spec viewer anchors and highlights
 
-- Extend `buildstudio_artifact_open` parameter schema with an optional `anchor` parameter (deprecated convenience), but primary scrolling is handled by a new `buildstudio_artifact_scroll(anchor)` tool.
-- In `BuildStudioApp`, parse the anchor from `buildstudio_artifact_scroll` and scroll/highlight the matching element.
+- `buildstudio_artifact_open(path)` stays exactly as-is: opens an artifact, no anchor parameter. Opening and highlighting are two separate tools/concerns — do not reintroduce an anchor param here.
+- New surface tool `buildstudio_artifact_highlight(anchor)`, registered alongside Build Studio's other surface tools (`buildstudio_artifact_open`, `buildstudio_tree_refresh`):
+  - Resolves `anchor` against the currently-open artifact's rendered heading ids (stable GitHub-style slugs derived from heading text — lowercase, spaces→hyphens, punctuation stripped).
+  - Errors clearly if no artifact is open, or if `anchor` doesn't match any heading in the open artifact — never a silent no-op.
+  - Scrolls the viewer so the target section is **centered**: `element.scrollIntoView({ block: "center", behavior: "smooth" })`, not `block: "start"`.
+  - Highlights the **whole section**, not just the heading: determine the section's boundary by walking rendered siblings from the heading until the next heading of equal-or-higher level (h1 < h2 < h3 …), and wrap that range in a container that gets the highlight styling.
+  - The highlighted container has an `onClick` that clears the highlight — this is the ONLY dismissal path. No `setTimeout`/auto-fade.
+- In `BuildStudioApp`, track a single `highlightedAnchor: string | null` in state; render section-wrapper containers keyed by anchor so exactly one can be highlighted at a time, and clear it via the click handler rather than a timer.
 
 ## Complexity Tracking
 
@@ -146,3 +152,5 @@ No complexity violations.
 2. **Sub-agent model reuse**: `a2ui_render` must use the same provider/model as the current run; verify how to read the active agent/model configuration from a server tool context.
 3. **Surface tool dispatch security**: Ensure a tool invocation cannot be routed to a window that has unregistered but not yet re-rendered.
 4. **Feature branch state**: The plan assumes `bos/bs-design-process` remains the active branch for all P1–P4 work.
+5. **Section-boundary detection**: react-markdown renders a flat list of sibling elements, not a nested section tree, so "heading + its content up to the next heading of equal-or-higher level" must be computed from that flat list (walk siblings, stop at the next heading whose level is ≤ the target's). Get this right or the highlight will either under- or over-select content.
+6. **Click-target coverage**: the whole wrapped section (not just the heading) must be clickable to dismiss the highlight — including any padding/margin added for the highlight styling — so the user doesn't have to hunt for the exact dismiss spot.

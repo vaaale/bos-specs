@@ -131,12 +131,13 @@ The agent first determines whether the user wants to build a `bos-app`, `bos-int
 
 #### User Story 8 - Interview-driven requirements (Priority: P1)
 
-The agent interviews the user to gather requirements. Each confirmed requirement is appended to the spec live, and the spec viewer scrolls to and highlights the new requirement.
+The agent interviews the user to gather requirements. Each confirmed requirement is appended to the spec live, and the spec viewer automatically scrolls to and centers the new requirement, highlighting the whole section so the user notices it. The highlight is not time-based — it stays until the user dismisses it by clicking on it.
 
 **Acceptance Scenarios**:
 
-1. **Given** the agent has gathered a requirement, **When** it writes it to the spec, **Then** it opens the spec in Build Studio and highlights the newly added section.
-2. **Given** the user revises a requirement, **When** the agent edits the spec, **Then** the viewer reflects the change and highlights the updated section.
+1. **Given** the agent has gathered a requirement, **When** it writes it to the spec, **Then** it opens the spec in Build Studio, scrolls the viewer so the new section is centered in the viewport (when possible), and highlights the whole section (not just the heading line).
+2. **Given** the user revises a requirement, **When** the agent edits the spec, **Then** the viewer reflects the change and highlights the updated section the same way.
+3. **Given** a highlighted section, **When** the user clicks anywhere on it, **Then** the highlight is removed immediately (no auto-timeout).
 
 #### User Story 9 - Live UI design via A2UI (Priority: P1)
 
@@ -155,7 +156,7 @@ Apps can register assistant-facing tools. Installed apps contribute static tools
 **Acceptance Scenarios**:
 
 1. **Given** the UI Preview app is installed, **Then** its Tier 1 tools (e.g. `ui_preview_open`) appear in the agent capability picker grouped under "UI Preview" and can be allowed/revoked per agent.
-2. **Given** the UI Preview window is open, **Then** its Tier 2 tools (e.g. `ui_preview_update_surface`) are available to the agent and dispatched to the correct window.
+2. **Given** the UI Preview window is open, **Then** its Tier 2 tools (e.g. `ui_preview_render`) are available to the agent and dispatched to the correct window.
 3. **Given** the UI Preview window is closed, **Then** its Tier 2 tools are no longer offered in new runs.
 
 #### User Story 11 - Delegate to Developer (Priority: P1)
@@ -174,17 +175,20 @@ Once the spec and UI design are approved, the agent delegates implementation to 
 - **FR-011**: The Build Studio agent MUST support an iterative design process for `bos-app` features. The process MUST include: orient, categorize, interview, write spec live, design UI live (when applicable), finalize plan + tasks, and delegate implementation.
 - **FR-012**: The agent MUST load and follow the `bos-app` skill. The skill MUST reference the constitution, design heuristics (`docs/dev/design-heuristics.md`), architecture overview (`docs/dev/architecture-overview.md`), BOS UI style guide (`docs/dev/guides/style-guide.md`), apps guide (`docs/dev/guides/apps.md`), features & components guide (`docs/dev/guides/features-and-components.md`), spec templates (`.specify/templates/`), and app-specific references (`references/design-interview-script.md`, `references/ui-conventions.md`, `references/a2ui-catalog.md`).
 - **FR-013**: The agent MUST categorize the request before starting detailed design. For v2 it MUST confirm the category is `bos-app` (or explain that a different skill is needed for `bos-integration`, `bos-feature`, or `bos-core`).
-- **FR-014**: The agent MUST write spec content live: after gathering each significant requirement or design decision it MUST append it to the spec using `spec_write`/`spec_edit`, then call `buildstudio_artifact_open` with an anchor/section identifier so the user can see what was written.
-- **FR-015**: Build Studio's artifact viewer MUST support opening any spec artifact. The agent MUST expose this via the `buildstudio_artifact_open(path)` surface tool, where `path` is a store-prefixed artifact path.
-- **FR-015a**: Build Studio's artifact viewer MUST support scrolling to a stable heading/section anchor in the currently-open artifact and transiently highlighting it. The agent MUST expose this via the `buildstudio_artifact_scroll(anchor)` surface tool. If no artifact is open, the tool SHOULD return an error asking the agent to call `buildstudio_artifact_open` first.
-- **FR-015b**: The `buildstudio_artifact_open` tool MAY accept an optional `anchor` parameter as a convenience, but its primary purpose is opening artifacts; scrolling/highlighting is owned by `buildstudio_artifact_scroll`.
+- **FR-014**: The agent MUST write spec content live: after gathering each significant requirement or design decision it MUST append it to the spec using `spec_write`/`spec_edit`, then call `buildstudio_artifact_open` (if the spec isn't already open) followed by `buildstudio_artifact_highlight` with the section's anchor so the user can see what was written.
+- **FR-015**: Build Studio's artifact viewer MUST support opening any spec artifact. The agent MUST expose this via the `buildstudio_artifact_open(path)` surface tool, where `path` is a store-prefixed artifact path. This tool MUST NOT accept an anchor or perform any scrolling/highlighting — opening and highlighting are separate concerns (see FR-015a).
+- **FR-015a**: Build Studio's artifact viewer MUST support scrolling to and highlighting a stable heading/section anchor in the currently-open artifact. The agent MUST expose this via a `buildstudio_artifact_highlight(anchor)` surface tool. Calling it MUST:
+  1. Smooth-scroll the viewer so the target section is **centered** in the viewport when possible (not merely scrolled into view at the top/bottom).
+  2. Highlight the **whole section** — the heading plus its body content up to (but not including) the next heading of equal or higher level — not just the heading line, so the highlighted region is obviously visible.
+  3. Keep the highlight visible with **no auto-timeout**; it is dismissed only when the user clicks anywhere inside the highlighted section, at which point it MUST be removed immediately.
+  If no artifact is currently open, or `anchor` does not match any heading in the open artifact, the tool MUST return a clear error to the agent instead of silently doing nothing.
 - **FR-016**: When the app has a UI, the agent MUST open the UI Preview app via `bos_app_launch` at the start of the UI phase and keep it open for the remainder of the design session.
-- **FR-017**: The UI Preview app MUST render A2UI v0.9 surfaces using `@copilotkit/a2ui-renderer`. It MUST accept A2UI operations pushed by the agent via the `ui_preview_render(surfaceId, operations)` runtime surface tool and apply them to update the live surface.
+- **FR-017**: The UI Preview app MUST render A2UI v0.9 surfaces using `@copilotkit/a2ui-renderer`. It MUST accept A2UI operations pushed by the agent and apply them to update the live surface.
 - **FR-018**: The system MUST provide a server tool `a2ui_render` (or equivalent) that uses `@ag-ui/a2ui-toolkit` to run a sub-agent producing A2UI operations. The tool MUST use the configured BOS provider/model and return a validated operations envelope.
 - **FR-019**: Apps MUST be able to register assistant tools through a two-tier system:
   - **Tier 1 — installed-app tools**: declared in the app manifest or a static `agent-tools.ts`, registered in the capabilities inventory, grouped by app name in Settings → Agents → [agent] → Tools, and permissioned per agent.
   - **Tier 2 — runtime surface tools**: declared by a mounted app window via `registerAppSurfaceTools`, sent as `surfaceTools` at run start, and only available while the app window is open.
-- **FR-020**: The UI Preview app MUST register tools in both tiers. Tier 1 MUST include at minimum `ui_preview_open` (open/raise the preview window). Tier 2 MUST include at minimum `ui_preview_render` (push operations to the surface) and `ui_preview_show_requirement` (scroll the paired spec viewer to a requirement).
+- **FR-020**: The UI Preview app MUST register tools in both tiers. Tier 1 MUST include at minimum `ui_preview_open` (open/raise the preview window). Tier 2 MUST include at minimum `ui_preview_render` (push operations to the surface) and `ui_preview_show_requirement` (open the paired spec artifact if needed, then scroll to and highlight a requirement — composing `buildstudio_artifact_open` and `buildstudio_artifact_highlight`).
 - **FR-021**: The UI Preview app SHOULD display the current design surface plus a lightweight "design context" panel showing the active requirement, iteration history, and user notes.
 - **FR-022**: The `bos-app` skill MUST instruct the agent to delegate implementation to the Developer sub-agent once the spec and UI are approved, using the existing `delegate_to_developer`/`dev_delegate` flow and the self-modification pipeline.
 
@@ -192,7 +196,7 @@ Once the spec and UI design are approved, the agent delegates implementation to 
 
 - **SC-009**: A user can describe an app idea and the agent interviews them, producing a visible, continuously updated spec.
 - **SC-010**: The agent can open the UI Preview app and render/update a UI mockup live using A2UI.
-- **SC-011**: Build Studio's spec viewer can scroll to and highlight a specific section on demand.
+- **SC-011**: Build Studio's spec viewer can scroll to, center, and highlight a whole section on demand; the highlight persists until the user clicks it away (no auto-timeout).
 - **SC-012**: App tools are discoverable and permissioned: installed-app tools appear in Settings → Agents → Tools grouped by app; runtime tools work only while the app window is open.
 - **SC-013**: The end-to-end flow (interview → spec → UI → delegate) works from Build Studio and from the default Assistant delegating to the Build Studio agent.
 
