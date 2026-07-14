@@ -174,7 +174,7 @@ The dev-harness settings let the user provide the Claude Code and OpenCode crede
 
 #### Bastion — admin portal
 
-- **FR-007**: The admin portal MUST provide a **Users** view: list users; create user; remove user; toggle admin (last-admin protected). Removing a user MUST wipe `user-data/<user>` (src + data + node_modules volume) after an explicit confirmation, and MUST stop/remove a running container first.
+- **FR-007**: The admin portal MUST provide a **Users** view: list users; create user; remove user; toggle admin (last-admin protected). Removing a user MUST stop/remove a running container first, then, after an explicit confirmation, wipe `user-data/<user>` (src + data + node_modules volume) **and** the per-user log (`{dataDir}/logs/<username>.log`) and avatar (`{dataDir}/avatars/<username>`) from the Bastion data dir.
 - **FR-008**: The admin portal MUST provide an **Images** view to configure and **build** the user-container image via the Docker SDK (`dockerode`, per `024` FR-003 — no shelling out to the docker CLI). The build MUST stream its log to the client in real time and end in an explicit success/fail state. On success the admin MAY set the built tag as the active `bosImage`.
 - **FR-009**: The admin portal MUST provide a **Containers** view listing all user containers with live status and last-active time, with **Start**, **Stop** (graceful), and **Kill** (force-remove) actions.
 - **FR-010**: The admin portal MUST also surface the per-user provisioning log (FR-004) for diagnosis.
@@ -185,12 +185,12 @@ The dev-harness settings let the user provide the Claude Code and OpenCode crede
 - **FR-012**: The account page MUST let a user **set/change their password** (simple auth only; hidden for Keycloak).
 - **FR-013**: The account page MUST let a user **set a profile image**; images are stored under the Bastion data dir (`{dataDir}/avatars/<username>`) and served by the Bastion. A bundled **system default avatar** MUST be used when none is set. Uploads MUST be validated (type + size).
 - **FR-014**: The account page MUST expose instance **Start / Stop / Restart**, **Re-provision**, and **Open my BrowserOS**.
-- **FR-015**: The account page MUST expose **Wipe my data** behind a confirmation dialog whose text clearly warns that VFS content and conversations are permanently destroyed. Wipe MUST stop the container first, wipe `data/`, and offer restart.
+- **FR-015**: The account page MUST expose **Wipe my data** behind a confirmation dialog whose text clearly warns that VFS content and conversations are permanently destroyed. Wipe MUST stop the container first, wipe the user's BOS `data/` directory (inside `user-data/<user>`), and offer restart. The Bastion-managed avatar and provisioning log are **not** wiped here — they are PII that persists for admin diagnosis and is only wiped when the user is fully deleted (FR-007).
 - **FR-016**: The account page UI MUST match the redesigned admin portal's look and feel.
 
 #### BOS — run_command backend selection
 
-- **FR-017**: BOS MUST detect Bastion (multi-user) mode via `BOS_PUBLIC_PORT`. In Bastion mode, `run_command` MUST use the **`local`** backend inside the user's own container; the Command Execution settings MUST hide image build/selection and MUST NOT offer the Docker backend.
+- **FR-017**: BOS MUST detect Bastion (multi-user) mode via `process.env.BOS_PUBLIC_PORT` (server-only code). In Bastion mode, `run_command` MUST use the **`local`** backend inside the user's own container; the Command Execution settings MUST hide image build/selection and MUST NOT offer the Docker backend.
 - **FR-018**: In **standalone** mode, the Command Execution settings MUST let the user (a) select an existing local Docker image, or (b) build one from a Dockerfile (default `docker/run-command/Dockerfile`) + build context, with a **streamed** build log. The selected/built tag becomes `run-command.dockerImage`.
 - **FR-019**: Image listing and building for standalone mode MUST be exposed via BOS API routes (server-only) that use the Docker SDK/CLI already assumed by `019`; builds MUST stream output and be guarded (single concurrent build, clear errors when Docker is unavailable).
 
@@ -202,7 +202,7 @@ The dev-harness settings let the user provide the Claude Code and OpenCode crede
 
 #### BOS — toolbar
 
-- **FR-023**: In multi-user mode (`BOS_PUBLIC_PORT` set, detected via `/api/system/session`), the desktop toolbar MUST show a **My profile** control linking to `/app/account`, ideally showing the user's avatar. In standalone mode it MUST NOT be shown.
+- **FR-023**: In multi-user mode, the desktop toolbar MUST show a **My profile** control linking to `/app/account`, ideally showing the user's avatar. In standalone mode it MUST NOT be shown. Detection uses both mechanisms: `process.env.BOS_PUBLIC_PORT` in server-only code (e.g. to gate SSR props), and the `/api/system/session` endpoint in client components (to obtain the current username and confirm multi-user context at runtime).
 
 #### Image contents
 

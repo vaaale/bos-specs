@@ -14,7 +14,7 @@ Make a `docker compose up` deployment of BOS usable by non-experts. The bulk of 
 
 **Primary Dependencies (bastion)**:
 - Existing: `express`, `http-proxy-middleware`, `dockerode`, `jsonwebtoken`, `cookie-parser`, `bcryptjs`, `js-yaml`, `chokidar`, `openid-client`, `react`, `vite`.
-- New: `tailwindcss` (+ `postcss`, `autoprefixer`) for the SPA; `multer` (or a small hand-rolled parser) for avatar upload. `dockerode` already supports `buildImage` (streamed) — no new build dep.
+- New: `tailwindcss` (+ `postcss`, `autoprefixer`) for the SPA. `dockerode` already supports `buildImage` (streamed) — no new build dep. Avatar upload is handled by a **hand-rolled multipart parser** (single bounded file field, ~30 lines) to avoid adding a `multer` dependency; `busboy` is available in Node ≥ 20 via the `stream` module so no extra install is needed.
 
 **Primary Dependencies (BOS changes)**: none new. Reuses `readNamespace`/`writeNamespace`/`patchNamespace` config store, existing `docker` CLI usage from `run-command.ts`, and Next.js route handlers for streaming (`ReadableStream`).
 
@@ -123,7 +123,7 @@ A minimal append-only store: `append(username, line)`, `read(username, {tail})`,
 ### Admin portal (`bastion/ui` + `routers/admin.ts`)
 
 Tailwind + a small shared component set replace inline styles. Views:
-- **Users** — create/remove/toggle-admin. Remove → confirm dialog → `DELETE /admin/users/:user` with `wipeData` (default true here) → stop/remove container → wipe `user-data/<user>` (`deprovisionUser` with all wipes).
+- **Users** — create/remove/toggle-admin. Remove → confirm dialog → `DELETE /admin/users/:user` with `wipeData` (default true here) → stop/remove container → wipe `user-data/<user>` (`deprovisionUser` with all wipes) → **also** delete `{dataDir}/logs/<username>.log` and `{dataDir}/avatars/<username>` (PII cleanup). In **Keycloak mode** (`AUTH_PROVIDER=keycloak`) the **Users tab is hidden entirely** — users and roles are owned by the IdP and the Bastion has no authority to create or delete them. The admin portal still shows Images, Containers, and Logs views, but user management is replaced by a message directing the admin to the Keycloak console.
 - **Images** — `POST /admin/image/build` streams `dockerode.buildImage(tarContext, { t, dockerfile })` output line-by-line to the client (chunked/SSE); `GET /admin/images` lists local images; "Set active" persists `bosImage` via `saveConfig`. Single concurrent build guard.
 - **Containers** — `GET /admin/instances` (existing) + live status; Start (`getOrProvision`), Stop (`stopInstance`), NEW Kill (`killContainer` = force remove + clear state).
 - **Logs** — per-user log viewer.
@@ -140,9 +140,17 @@ Redesigned with the same components. Adds: password (simple only), **avatar** up
 
 `dev-harness` gains secret fields for Claude (`~/.claude` credentials/config JSON) and OpenCode (`auth.json`). On save they are written into a dedicated harness `HOME` (e.g. `${BOS_DATA_ROOT}/dev-harness/home/{.claude,.local/share/opencode}`). `envForCwd(cwd)` sets `HOME` to that dir (and `XDG_*` as needed) so `claude -p` / `opencode run` pick up the credentials non-interactively. The API returns only a set/unset indicator for these fields (write-only); values are never logged.
 
+**Filesystem permissions**: on first write, the harness `HOME` directory MUST be created with `fs.mkdir(path, { mode: 0o700 })` and each credential file written with mode `0o600` so they are readable only by the BOS process user. This is the concrete meaning of "config store's protection" for credential material.
+
 ### User-container image (`Dockerfile` root)
 
 Extend the image the admin builds so it doubles as the run_command `local` environment and the harness host: add the `docker/run-command/Dockerfile` toolchain (python venv, node + NODE_PATH, LibreOffice, poppler, python-pptx/pptxgenjs) and install the `claude` and `opencode` CLIs on PATH.
+
+**Image size**: LibreOffice alone adds ~400 MB; the full image will be substantially larger than the existing BOS image. Mitigate with: (a) a multi-stage `Dockerfile` so build-time tooling (compilers, pip cache) is not in the final layer, (b) `apt-get clean && rm -rf /var/lib/apt/lists/*` in every `apt-get install` `RUN` block, (c) a single combined `RUN` for apt layer squashing where possible. Task X1 MUST record the resulting compressed image size as a reference number and note whether it fits within the operator's expected envelope; if it exceeds 3 GB compressed, document a slim-variant approach (e.g. separate LibreOffice layer or optional install).
+
+### BOS toolbar "My profile" link (`Topbar.tsx`)
+
+The toolbar component must know the current username to construct the avatar URL (`/avatar/<me>`). It MUST call `/api/system/session` (the existing session endpoint, already used by `024`) at mount time to obtain the username rather than hard-coding or guessing it. The session response also confirms multi-user context at the client level (presence of `username` field). The `GET /avatar/:username` route in the Bastion MUST validate the `username` path parameter against the `[a-z0-9_-]` charset constraint before constructing the file path, as defense-in-depth against path traversal even though the charset bound is already enforced at user creation.
 
 ## Out of scope (v1)
 
