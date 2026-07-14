@@ -40,10 +40,10 @@ Feature branch: `026-multiuser-usability`. Tasks are grouped by phase; `[P]` mar
 
 ## Phase E — BOS dev-harness credentials — P2
 
-- [ ] E1. Extend `dev-harness` registry schema + `harness-config.ts` with Claude/OpenCode credential material (secret, write-only).
-- [ ] E2. On save, write credentials into a dedicated harness `HOME` (Claude `~/.claude`, OpenCode `auth.json`); update `envForCwd()` in `claude-runner.ts` to set `HOME`/env. Create the harness HOME directory with `mode: 0o700` and each credential file with `mode: 0o600` (owner-read-only).
-- [ ] E3. DevHarnessTab UI: credential inputs (write-only, set/unset indicator) + container guidance.
-- [ ] E4. Typecheck + lint green.
+- [x] E1. Credential material for Claude/OpenCode is managed via a dedicated write-only route (`GET/POST /api/dev-harness/credentials`) + helpers in `harness-config.ts` (`hasClaudeCreds`/`hasOpenCodeAuth`/`writeClaudeCreds`/`writeOpenCodeAuth`/`clear*`). Kept out of the generic config namespace so raw secrets are never stored there or returned to the client — only a set/unset indicator.
+- [x] E2. Credentials are written into a dedicated harness `HOME` (`{dataDir}/dev-harness/home/.claude/.credentials.json`, `.../.local/share/opencode/auth.json`) with dir `0o700` and files `0o600`; `harnessCredentialEnv()` sets `HOME`/`XDG_*` and is merged into `envForCwd()` in `claude-runner.ts` — only when credentials exist, so local dev with a real `~/.claude` is unaffected.
+- [x] E3. DevHarnessTab UI: write-only credential textareas with SET/NOT SET indicators, Save + Clear per CLI, shown for CLI/OpenCode modes with container guidance.
+- [x] E4. Typecheck + lint green.
 
 ## Phase F — BOS toolbar My profile — P2
 
