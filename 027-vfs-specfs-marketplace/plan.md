@@ -1,367 +1,124 @@
 # Implementation Plan: VFS Mount Points, SpecFS, Feature Context, Provider Registry, and Marketplace
 
-**Branch**: `027-vfs-specfs-marketplace` | **Date**: 2026-07-15 | **Spec**: [spec.md](./spec.md) | **Tasks**: [tasks.md](./tasks.md)
+**Branch**: `027-vfs-specfs-marketplace` | **Date**: 2026-07-15 (revised post-review) | **Spec**: [spec.md](./spec.md) | **Review**: [spec-review.md](./spec-review.md) | **Tasks**: [tasks.md](./tasks.md)
 
 ## Summary
 
-Replace the siloed, scan-based spec store architecture with a uniform VFS-backed system. The VFS gains a **mount table** that routes path prefixes to pluggable `FSBackend` implementations. `Documents/Specs/` is mounted to `SpecFS` — a `GitFS` subclass that enforces a **Feature Context** on every write, manages git branches automatically, and generates LLM commit messages via debounced flush. Both specs and apps adopt a **Provider Registry** pattern (Builtin / User-or-Local / Marketplace) replacing the compiled-in app list and the `BOS_SPECS_ROOT` directory scan. A **Marketplace** built-in app lets users register remote git repos that deliver pre-built apps and adoptable spec templates. `BOS_SPECS_ROOT` is removed; all paths are fixed under `dataDir()`.
+Give the VFS a **mount table** routing path prefixes to pluggable `FSBackend` implementations. `Documents/Specs/` mounts to **SpecFS** — an *adapter* over the existing `src/lib/dev/spec-fs.ts` + Supervisor worktree engine (020), **not** a new git engine. SpecFS enforces a **Feature Context** on every write, resolves the active `bos/feat/<id>` branch, and routes writes to a worktree (Supervisor-provisioned, or self-provisioned for spec-only features). Reads are ref-pinned. Commits are debounced with bounded-diff LLM messages. Promotion force-flushes, reconciles `main` into the branch (conflicts first-class), and prunes the worktree. **User specs** live in `data/specs/user/` (VFS-writable, wipe-safe); **system specs** are read-only, edited as source via the Developer agent. Specs and apps adopt a **Provider Registry** pattern; the app side splits an async *manifest* registry from the static *native-component* map. A **Marketplace** delivers apps and adoptable spec templates from git repos; untrusted apps run in an **opaque-origin sandbox** (`sandbox` without `allow-same-origin`) so the `postMessage` capability broker is the *only* channel to BOS — no DNS/cert/port infrastructure. Because opaque origins have no browser storage, the **iframe SDK is promoted to a TypeScript library** (`src/lib/iframe-sdk/`, built to a served artifact) that adds a broker-backed `storage` capability and a `localStorage`/`sessionStorage` shim, so unmodified open-web apps still work. `BOS_SPECS_ROOT` is removed *last*, gated on migrating every consumer.
 
 ## Technical Context
 
 **Language/Version**: TypeScript, Node ≥ 20. Next.js App Router. Zustand vanilla store.
 
-**Primary Dependencies**:
-- `simple-git` (already likely present; verify before adding) — git operations in GitFS/SpecFS. If absent, use `child_process.execFile` with `git` directly.
-- No new runtime deps anticipated for Phases 1–4. Marketplace cloning reuses git.
+**Primary Dependencies**: git via `execFile` (no shell). Reuse existing `store-git.ts` helpers (`readFileAtBranch`, `commitOnSave`, `DRAFT_BRANCH` regex) and `src/lib/dev/spec-fs.ts`. No new runtime deps anticipated.
 
-**Storage**:
+**Storage** (fixed under `dataDir()`; no env var):
 ```
-data/specs/system/            ← seeded at startup from seed/spec-store/, read-only
-data/specs/user/              ← user-specs git repo (SpecFS backing store)
-data/specs/marketplace/<id>/  ← cloned marketplace repos, read-only
-data/apps/local/              ← user-developed local apps (Phase 4, scaffold only)
-data/apps/marketplace/<id>/   ← cloned for offline use (Phase 5)
-data/config/feature-context.json  ← active Feature Context (server-readable)
-data/config/marketplaces.json     ← registered marketplace URLs
+data/specs/user/                 ← user-specs canonical git repo (SpecFS backing)
+data/specs/user-worktrees/<br>/  ← self-provisioned worktrees for spec-only features
+data/specs/system/               ← seeded from seed/spec-store/, READ-ONLY
+data/specs/marketplace/<id>/     ← cloned marketplace repos, read-only
+data/apps/local/                 ← user-developed local apps (scaffold)
+data/apps/marketplace/<id>/      ← canonical clone location for marketplace apps
+data/config/feature-context.json ← server-owned active Feature Context
+data/config/marketplaces.json    ← registered marketplace URLs
 ```
+`data/vfs/Documents/Specs/` is a mount-point stub so it appears in listings; reads/writes route to SpecFS.
 
-`data/vfs/Documents/Specs/` is a real directory (mount point stub) so it appears in directory listings. Reads and writes through it are intercepted by the mount table and routed to `data/specs/user/`.
+**Server boundary**: git ops, SpecFS, feature-context I/O, LLM commit-message calls are server-only. The Zustand store holds a read-only mirror of the active context; all mutations go through the server-authoritative `feature-context.ts` module.
 
-**Server boundary**: All git operations, SpecFS logic, and feature context persistence run server-side behind API routes. The Zustand OS store holds a client-side mirror of the active Feature Context; changes are persisted via `POST /api/feature-context`.
+**Testing**: unit tests (not just tsc/lint) for the security- and correctness-critical boundaries — mount path-escape, no-context error, debounce coalescing, wipe-survival, `id` sanitization, git-URL allowlist. A new e2e spec for the Marketplace app. `npx tsc --noEmit` + `npm run lint` per phase.
 
-**Testing**: `npx tsc --noEmit` and `npm run lint` after each phase. Manual verification per User Story acceptance scenarios. No new e2e spec required for Phase 1–3 (covered by existing VFS e2e infrastructure). Phase 5 (Marketplace app) warrants a new e2e spec.
-
-**Migration**: Existing user-specs under `BOS_SPECS_ROOT` are migrated to `data/specs/user/` on first boot in `seed.ts`. One-time migration: if `data/specs/user/` is absent but `$BOS_SPECS_ROOT/user-specs` exists, copy + log. System specs are re-seeded from `seed/spec-store/` into `data/specs/system/`.
+**Migration**: one-time in `seed.ts` — if `data/specs/user/` is absent but a legacy `BOS_SPECS_ROOT/user-specs` exists, copy + log. System specs re-seed into `data/specs/system/`. `BOS_SPECS_ROOT` removal is the final step, gated on the consumer enumeration (Phase 3).
 
 ## Constitution Check
 
-- **I. Spec-Driven — SAAP**: this plan derives from `spec.md`; implementation follows `tasks.md`. PASS.
-- **II. Server Authority & SSR Boundary**: all git operations, SpecFS, and feature context I/O are server-only (behind API routes or within `src/os/fs/`). The LLM commit-message call goes through the existing AI provider client (server-side). No secrets or git internals are exposed to the client. PASS.
-- **III. Always Delegate; Claude Codes**: implementation runs via the Developer sub-agent on the feature branch. PASS.
-- **IV. Minimize Blast Radius**: changes are additive — new files (`src/os/fs/`, `src/lib/specs/providers/`, `src/lib/apps/providers/`, `src/lib/marketplace/`, `src/apps/marketplace/`). Existing VFS callers are unaffected (unmounted paths fall through to LocalFS, identical behaviour). `stores.ts` public API is preserved during migration. `BOS_SPECS_ROOT` removal is the only breaking change, and it is gated on a migration path. PASS.
-- **V. The VFS Is Not the Source**: `Documents/Specs/` is user-spec content, not BOS source. The mount point routes to `data/specs/user/`, not `src/`. BOS source is modified only by the Developer agent on the correlated feature branch. PASS.
-- **VI. Specs & Docs Stay in Sync**: closeout merges 027 into the relevant specs (018, 020, 009), updates `discrepancies.md` and `overview.md`, and updates `docs/dev/architecture-overview.md` + `docs/usage/` as needed. PASS.
-- **VII. Respect Boundaries**: `package.json` / lockfiles are untouched unless `simple-git` is confirmed absent. `BOS_SPECS_ROOT` removal is explicit and intentional. PASS.
-
-No violations. No complexity exceptions needed.
-
-## Project Structure
-
-```
-specs/bos-system-specs/027-vfs-specfs-marketplace/
-├── spec.md       ← done
-├── plan.md       ← this file
-└── tasks.md      ← done
-
-src/os/
-├── fs-types.ts                 ← NEW: FSBackend, MountPoint
-├── fs/
-│   ├── local-fs.ts             ← NEW: LocalFS implements FSBackend
-│   ├── git-fs.ts               ← NEW: GitFS abstract class
-│   └── spec-fs.ts              ← NEW: SpecFS extends GitFS
-└── vfs.ts                      ← MODIFY: add mount table
-
-src/os/types.ts                 ← MODIFY: FeatureContext type + AppManifest extensions
-
-src/store/os-store.ts           ← MODIFY: featureContext slice
-
-src/app/api/
-├── feature-context/route.ts    ← NEW
-└── marketplace/route.ts        ← NEW
-
-src/lib/specs/
-├── provider.ts                 ← NEW: SpecProvider interface + SpecRegistry
-├── providers/
-│   ├── builtin.ts              ← NEW
-│   ├── user.ts                 ← NEW
-│   └── marketplace.ts          ← NEW
-├── promote.ts                  ← NEW: promoteFeature()
-└── stores.ts                   ← REWRITE (same public API)
-
-src/lib/apps/
-├── provider.ts                 ← NEW: AppProvider interface + AppRegistry
-└── providers/
-    ├── builtin.ts              ← NEW
-    ├── local.ts                ← NEW
-    └── marketplace.ts          ← NEW
-
-src/lib/marketplace/
-├── schema.ts                   ← NEW: marketplace.json + marketplaces.json types
-└── client.ts                   ← NEW: MarketplaceClient (clone, sync, adopt, install)
-
-src/apps/marketplace/
-├── manifest.ts                 ← NEW
-└── index.tsx                   ← NEW
-
-src/os/apps.ts                  ← MODIFY: use AppRegistry
-src/components/apps/registry.tsx ← MODIFY: use AppRegistry
-src/os/specs-dir.ts             ← DELETE
-bastion/src/provision.ts        ← MODIFY: remove BOS_SPECS_ROOT, create data/specs/user/
-bastion/src/docker.ts           ← MODIFY: remove BOS_SPECS_ROOT env injection
-```
-
-## Phase 1 — VFS Mount Points + Feature Context (Foundation)
-
-Critical path. All subsequent phases depend on this.
-
-### T001 — `src/os/fs-types.ts` (new)
-Define `FSBackend` interface mirroring the existing VFS API surface:
-```typescript
-interface FSBackend {
-  list(path: string): Promise<VfsEntry[]>
-  stat(path: string): Promise<VfsEntry>
-  readText(path: string): Promise<string>
-  readBuffer(path: string): Promise<Buffer>
-  writeText(path: string, content: string): Promise<void>
-  writeBuffer(path: string, data: Buffer): Promise<void>
-  mkdir(path: string): Promise<void>
-  remove(path: string): Promise<void>
-  rename(from: string, to: string): Promise<void>
-  exists(path: string): Promise<boolean>
-}
-interface MountPoint { vfsPrefix: string; backend: FSBackend }
-```
-`path` passed to a backend is relative to the mount root.
-
-### T002 — `src/os/fs/local-fs.ts` (new)
-`LocalFS implements FSBackend`. Mechanical extraction of the current `vfs.ts` path-resolution + `fs/promises` calls. No logic change — this is a refactor target.
-
-### T003 — `src/os/vfs.ts` (modify)
-Add mount table:
-```typescript
-const mounts: MountPoint[] = []
-export function registerMount(prefix: string, backend: FSBackend): void
-function resolveMount(vfsPath: string): { backend: FSBackend; rel: string } | null
-```
-Update all nine public VFS functions to call `resolveMount()` first; if matched, delegate to the backend with the relative path; otherwise fall through to existing LocalFS behaviour. Unmounted paths must behave identically to today.
-
-### T004 — `src/os/types.ts` (modify)
-Add:
-```typescript
-interface FeatureContext {
-  id: string
-  branchName: string        // always "bos/feat/<id>"
-  description?: string
-  touchedSpecs: string[]    // VFS paths of spec folders written to
-  touchedSourcePaths: string[]
-  startedAt: string
-}
-interface FeatureContextFile { active: FeatureContext | null }
-```
-
-### T005 — `src/store/os-store.ts` (modify)
-Add `activeFeature: FeatureContext | null` to `OSState`. Add actions:
-- `setFeature(ctx: FeatureContext)` — sets active, persists via API
-- `clearFeature()` — clears active, persists via API
-- `touchSpec(vfsPath: string)` — appends to `touchedSpecs` if not present, persists
-- `touchSource(filePath: string)` — appends to `touchedSourcePaths` if not present, persists
-
-All persist actions call `fetch('/api/feature-context', { method: 'POST', … })` fire-and-forget.
-
-### T006 — `src/app/api/feature-context/route.ts` (new)
-- `GET` → read and return `data/config/feature-context.json`
-- `POST` → validate body as `FeatureContextFile`, write to file
-- `DELETE` → write `{ active: null }`
-
-### T007 — Ensure `Documents/Specs/` stub exists
-In the VFS initialisation that creates the default directory structure (where `Documents`, `Pictures`, `Desktop` are created), add `Documents/Specs` as a standard directory. This makes it visible in the file browser even before SpecFS is mounted.
-
----
-
-## Phase 2 — GitFS + SpecFS
-
-### T008 — `src/os/fs/git-fs.ts` (new)
-`abstract class GitFS implements FSBackend` with `repoPath: string` constructor parameter.
-
-Git operations (shell out via `execFile('git', [...], { cwd: repoPath })`):
-- `ensureBranch(name)` — `git checkout <name>` || `git checkout -b <name>`
-- `currentBranch()` — `git rev-parse --abbrev-ref HEAD`
-- `getDiff()` — `git diff HEAD`
-- `stagedDiff()` — `git diff --cached`
-- `stageAll()` — `git add -A`
-- `commit(message)` — `git commit -m <message> --allow-empty-message`
-- `merge(from, to)` — checkout `to`, merge `from` (fast-forward preferred)
-- `hasUncommitted()` — `git status --porcelain`
-
-FSBackend methods: `fs/promises` operations rooted at `repoPath`. Identical to LocalFS but scoped to the repo directory.
-
-### T009 — `src/os/fs/spec-fs.ts` (new)
-`class SpecFS extends GitFS`
-
-Key behaviour:
-1. `writeText` / `writeBuffer`: read active feature context from `data/config/feature-context.json`. Throw `SpecFSNoContextError` if absent. Call `ensureBranch(ctx.branchName)`. Write file. Append spec folder to `touchedSpecs` in the context file (direct file write, not via the client store). Schedule debounced commit.
-2. Debounce queue: `Map<branchName, { timer, changedPaths[] }>`. Each write resets the 2 s timer. On flush: `stageAll()` → `getDiff()` → `generateCommitMessage(diff)` → `commit(message)`.
-3. `generateCommitMessage(diff)`: calls the configured AI provider (same client used by the assistant). Prompt: `"Write a concise git commit message (imperative mood, ≤72 chars) for this diff:\n\n<diff>"`. On any error returns `"Update specs"`.
-4. `read*`, `list`, `stat`, `remove`, `rename`, `mkdir`: delegate to GitFS base (no branch enforcement on reads).
-
-### T010 — Seed `data/specs/user/` (modify `src/lib/specs/seed.ts`)
-On first run:
-- If `data/specs/user/` is absent: init a new git repo there with `git init && git commit --allow-empty -m "init"`. Create a minimal `spec-store.json` (`{ "label": "My Specs", "owner": "user", "writable": true, "requiresPromote": true }`).
-- One-time migration: if `BOS_SPECS_ROOT` is set and `$BOS_SPECS_ROOT/user-specs` exists, `cp -r` it to `data/specs/user/` and log the migration.
-- Redirect system spec seeding from `BOS_SPECS_ROOT` to `data/specs/system/`.
-
-### T011 — Register SpecFS mount at server startup
-In the server initialisation path (called from `src/app/page.tsx` or equivalent server entry):
-```typescript
-registerMount('/Documents/Specs', new SpecFS(path.join(dataDir(), 'specs/user')))
-```
-
-### T012 — Update spec-write tool
-`tools/server/spec-write.ts` (exact location TBD by Developer): replace direct `fs.writeFile` / `specsRoot()` calls with `vfs.writeText('Documents/Specs/<store>/<file>', content)`. The tool no longer handles git or branches.
-
----
-
-## Phase 3 — Spec Provider Registry
-
-### T013 — `src/lib/specs/provider.ts` (new)
-```typescript
-interface SpecProvider {
-  readonly id: string
-  readonly type: 'builtin' | 'user' | 'marketplace'
-  readonly canWrite: boolean
-  listStores(): Promise<SpecStore[]>
-  getStore(id: string): Promise<SpecStore | undefined>
-}
-class SpecRegistry {
-  register(provider: SpecProvider): void
-  listAll(): Promise<SpecStore[]>        // builtin → user → marketplace
-  getStore(id: string): Promise<SpecStore | undefined>
-  defaultWritable(): Promise<SpecStore | undefined>
-}
-```
-
-### T014 — `src/lib/specs/providers/builtin.ts` (new)
-`BuiltinSpecProvider`: scans `data/specs/system/` for directories containing `spec-store.json`. `canWrite: false`. Same discovery logic as current `stores.ts` but rooted at the fixed system path.
-
-### T015 — `src/lib/specs/providers/user.ts` (new)
-`UserSpecProvider`: reads `data/specs/user/spec-store.json`. Returns a single store. `canWrite: true`.
-
-### T016 — `src/lib/specs/providers/marketplace.ts` (new)
-`MarketplaceSpecProvider`: reads `data/config/marketplaces.json`, scans each `data/specs/marketplace/<id>/` for spec-store subdirectories. `canWrite: false`.
-
-### T017 — `src/lib/specs/stores.ts` (rewrite)
-Replace directory scan with calls to `SpecRegistry.listAll()`. Public API (`listStores`, `getStore`, `defaultWritableStore`) is preserved — all callers continue to work without changes.
-
-### T018 — Delete `src/os/specs-dir.ts`
-Remove file. Update the two callers (`stores.ts` rewrite in T017 eliminates the only references).
-
----
-
-## Phase 4 — App Provider Registry
-
-### T019 — `src/lib/apps/provider.ts` + type extensions (new)
-`AppProvider` interface and `AppRegistry` class (same pattern as SpecRegistry). Extend `AppManifest` in `src/os/types.ts`:
-```typescript
-runtime: 'native' | 'iframe'       // 'native' = compiled React component; builtin only
-source: 'builtin' | 'local' | 'marketplace'
-marketplaceId?: string
-marketplaceItemId?: string
-canAdoptSpec?: boolean
-```
-
-### T020 — `src/lib/apps/providers/builtin.ts` (new)
-`BuiltinAppProvider`: wraps `_manifests.generated` import. Marks all as `runtime: 'native'`, `source: 'builtin'`.
-
-### T021 — `src/lib/apps/providers/local.ts` (new)
-`LocalAppProvider`: scans `data/apps/local/` for `app-manifest.json` files. Returns apps with `runtime: 'iframe'`, `source: 'local'`. Creates `data/apps/local/` if absent.
-
-### T022 — `src/lib/apps/providers/marketplace.ts` (new)
-`MarketplaceAppProvider`: reads cloned marketplace repos from `data/apps/marketplace/<id>/`, parses `marketplace.json`, exposes items with an `app` entry. `runtime: 'iframe'`.
-
-### T023 — `src/os/apps.ts` + `src/components/apps/registry.tsx` (modify)
-Replace `BUILTIN_APPS` import with `AppRegistry.listAll()`. `getApp(id)` delegates to `AppRegistry.resolveApp(id)`. SSR seed in `src/app/page.tsx` no longer appends runtime apps manually.
-
----
-
-## Phase 5 — Marketplace
-
-### T024 — `src/lib/marketplace/schema.ts` (new)
-Types: `MarketplaceManifest`, `MarketplaceItem`, `RegisteredMarketplace`.
-
-```typescript
-interface MarketplaceManifest {
-  id: string; name: string; version: string; description?: string
-  items: MarketplaceItem[]
-}
-interface MarketplaceItem {
-  id: string; name: string; description: string; tags?: string[]
-  app?: { entrypoint: string; runtime: 'iframe'; version: string; icon?: string }
-  spec?: { path: string; version: string }
-}
-interface RegisteredMarketplace {
-  id: string; url: string; name: string; addedAt: string; lastSynced: string | null
-}
-```
-
-### T025 — `src/lib/marketplace/client.ts` (new)
-`MarketplaceClient`:
-- `addMarketplace(url)` — clone to `data/specs/marketplace/<id>/` + `data/apps/marketplace/<id>/` (same repo, two symlinks or one clone), append to `marketplaces.json`, update `lastSynced`.
-- `syncMarketplace(id)` — `git pull` in clone, update `lastSynced`.
-- `listItems(id)` — parse `marketplace.json` from clone.
-- `adoptSpec(marketplaceId, itemId)` — copy `items/<itemId>/spec/` into `data/specs/user/<itemId>-adopted/`, write `spec-store.json`, git-commit ("Adopt <name> from <marketplace>").
-- `installApp(marketplaceId, itemId)` — verify `app` entry exists; `LocalAppProvider` discovery will pick it up from `data/apps/marketplace/<id>/items/<itemId>/app/`.
-
-### T026 — `src/app/api/marketplace/route.ts` (new)
-- `GET /api/marketplace` — list registered marketplaces + their items
-- `POST /api/marketplace` — add by URL
-- `DELETE /api/marketplace/:id` — remove (delete from `marketplaces.json`, optionally purge clone)
-- `POST /api/marketplace/:id/sync`
-- `POST /api/marketplace/:id/items/:itemId/adopt-spec`
-- `POST /api/marketplace/:id/items/:itemId/install-app`
-
-### T027 — `src/apps/marketplace/` (new built-in app)
-`manifest.ts`: `id: "marketplace"`, `name: "Marketplace"`, `icon: "Store"`, `singleton: true`, `builtin: true`.  
-`index.tsx`: Three-panel layout:
-- **Left**: registered marketplaces list + "Add marketplace" (URL input + Add button).
-- **Centre**: item grid with search input and tag filter chips. Each card shows name, description, tags, and action buttons appropriate to item capabilities.
-- **Right**: item detail — description, version, [Run App] / [Install App] / [Adopt Spec] with confirmation where destructive.
-
----
-
-## Phase 6 — Docker / Bastion
-
-### T028 — `bastion/src/provision.ts` (modify)
-Remove `BOS_SPECS_ROOT` env var injection. On first-run provisioning per user, ensure `data/config/` exists. `data/specs/user/` is created and git-initialised by BOS itself (`seed.ts`), not the bastion — no bastion change needed for that path.
-
-### T029 — `bastion/src/docker.ts` (modify)
-Remove `BOS_SPECS_ROOT` from the env array passed to container create. The per-user `data/` bind mount already covers `data/specs/` — no separate volume is needed.
-
-### T030 — Remove `BOS_SPECS_ROOT` documentation
-Update `.env.example` (if present), `docs/dev/deployment.md`, and any other references. Add a migration note in `docs/dev/architecture-overview.md` describing the new fixed paths.
-
----
-
-## Phase 7 — Promotion + Developer Agent Wiring
-
-### T031 — `src/lib/specs/promote.ts` (new)
-```typescript
-async function promoteFeature(ctx: FeatureContext): Promise<PromoteResult>
-```
-- Merge `bos/feat/<id>` → `main` in user-specs via SpecFS git operations.
-- If `ctx.touchedSourcePaths.length === 0`: return `{ kind: 'spec-only' }`.
-- Else: return `{ kind: 'source-included', branchName: ctx.branchName }`.
-- After successful merge: write `{ active: null }` to `data/config/feature-context.json` and call `clearFeature()` via the feature-context API.
-
-### T032 — Build Studio promote UI (modify)
-Before showing the "Promote" confirmation dialog:
-- Read `activeFeature.touchedSourcePaths` from OS store.
-- Display: "Spec-only — no rebuild required" (fast path) or "Source files modified — branch `<name>` will remain open for PR review" (full path).
-- Both paths available as a single "Promote" button; the dialog communicates consequences.
-
-### T033 — Developer agent: feature branch wiring
-When the Developer agent begins modifying BOS source files and a feature context is active:
-1. Read `data/config/feature-context.json`.
-2. If `active` is set: `git checkout -b <branchName>` in the BOS source repo (no-op if already on that branch).
-3. After each file commit: `PATCH /api/feature-context` with the modified source file path to append to `touchedSourcePaths`.
-
----
-
-## Closeout Checklist
-
-- [ ] Merge 027 spec into `018-external-spec-store` (update FR-005/FR-007 status to Superseded)
-- [ ] Merge 027 spec into `020-branch-coupled-specs` (mark Fulfilled)
-- [ ] Merge 027 spec into `009-installed-apps` (update installed-apps model to three-source)
-- [ ] Update `discrepancies.md` — remove any BOS_SPECS_ROOT drift entries
-- [ ] Update `overview.md` — add 027 summary
-- [ ] Update `docs/dev/architecture-overview.md` — new VFS, SpecFS, Feature Context, Provider Registry sections
-- [ ] Update `docs/usage/` — end-user guide for Feature Context, Marketplace, and spec writing
+- **I. Spec-Driven — SAAP**: plan derives from `spec.md`; tasks in `tasks.md`. PASS.
+- **II. Server Authority & SSR Boundary**: all FS/git/context/LLM work is server-only; the client holds a read-only context mirror; untrusted apps run in an opaque-origin sandbox with no ambient access to BOS — every call is broker-mediated and capability-gated. PASS.
+- **III. Always Delegate; Claude Codes**: system-spec edits and all source work run via the Developer sub-agent on the feature branch — this is now the *only* system-spec path (Option B), strengthening the principle. PASS.
+- **IV. Minimize Blast Radius**: SpecFS *adopts* the existing worktree engine (no parallel git model); unmounted VFS paths are unchanged; `stores.ts` public API preserved; env-var removal gated on full consumer migration. PASS.
+- **V. The VFS Is Not the Source**: `Documents/Specs/` routes to `data/specs/user/`, never `src/`. System specs (source) are edited only via the Developer agent. PASS.
+- **VI. Specs & Docs Stay in Sync**: closeout updates `overview.md`, `docs/dev/self-modification/live-version-control.md`, and `docs/dev/repository-and-data-layout.md` *as part of* the Supervisor repoint, not after. PASS.
+- **VII. Respect Boundaries**: `package.json`/lockfiles untouched (git via `execFile`); destructive marketplace ops require confirmation. PASS.
+
+No violations.
+
+## Phase 1 — VFS Mount Points + server-authoritative Feature Context
+
+Critical path.
+
+- **Mount table** (`src/os/fs-types.ts`, `src/os/vfs.ts`): `FSBackend` interface mirroring the current VFS surface; `MountPoint`; `registerMount`/`resolveMount`. All nine VFS functions check the mount first, else fall through to `LocalFS` (extracted, no behaviour change). **Unit test the path-escape jail on `resolveMount`.**
+- **Feature Context module** (`src/lib/specs/feature-context.ts`, server-only): single writer over `data/config/feature-context.json` with an in-process async mutex and atomic RMW. API: `getActive`, `setActive(id)`, `clear`, `patch(fn)`. `setActive` is the one activation verb — it flushes any currently-active feature first, then ensures `id`'s branch/worktree (create-or-reuse, idempotent), then records `id` active. "Start new" vs "resume existing" is a **UI distinction only** (both call `setActive`), not separate module methods. **`id` sanitized against `^[a-z0-9-]+$` in `setActive`.**
+- **Types** (`src/os/types.ts`): `FeatureContext`, `FeatureContextFile`.
+- **OS store** (`src/store/os-store.ts`): `activeFeature` read-only mirror + intent actions that call the API and **await** the response before dependent writes; cross-tab sync (storage event / refresh-on-focus).
+- **API** (`src/app/api/feature-context/route.ts`): `GET`/`POST`(set)/`DELETE`(clear)/`PATCH`(append touched path) — each delegates to the module (no whole-file replace from the client).
+
+## Phase 2 — SpecFS adapter + worktree writes + Promotion
+
+Promotion lives here (not last) because it is P1 (US3) and depends only on the branch model settled in this phase.
+
+- **SpecFS** (`src/os/fs/spec-fs.ts`): an `FSBackend` **adapter** over `src/lib/dev/spec-fs.ts`. No `git checkout`.
+  - Resolve active branch from the feature-context module; refuse writes with `SpecFSNoContextError` when none.
+  - **Reads ref-pinned** via `readFileAtBranch` (active branch, else `main`).
+  - **Writes → worktree**: Supervisor worktree when a preview exists; else self-provision `data/specs/user-worktrees/<branch>/` via `git worktree add`.
+  - **Debounced commit** (2 s) via `commitOnSave`; message from `generateCommitMessage(diff)` with the **diff bounded** (truncate + cap file count) and deterministic fallback.
+  - `patch(touchedSpecs)` through the feature-context module (shared mutex).
+- **editFile stays a spec-layer op** (not on `FSBackend`), rewired to route through the active branch.
+- **flushPending(branch)**: cancel debounce, synchronous `stageAll → commit`. Precondition for any committed-state read.
+- **Startup sweep**: on init / first access, `hasUncommitted` on the canonical repo + active worktrees → recovery commit.
+- **Mount registration** (explicit ordering): ensure `data/specs/user/` exists (seed) **before** `registerMount('/Documents/Specs', new SpecFS(...))`.
+- **Promotion** (`src/lib/specs/promote.ts`): `flushPending` → reconcile `main` into the feature branch in its worktree → on conflict `git merge --abort` and return `{ kind: 'conflict', files }` → else fast-forward `main`, prune worktree, `clear()` context. Returns `spec-only | source-included | conflict`.
+- **Feature-context entry points**: Build Studio "New feature" action, assistant `start_feature` tool, one-click quick-edit (pre-filled id). Behaviour-change note documented: no-branch commit-on-save is gone.
+- **spec-write tool** → `vfs.writeText('Documents/Specs/…')`.
+- **Tests**: no-context error; debounce coalescing (US1.3); wipe-survival (US4); promote conflict contract (US3.3).
+
+## Phase 3 — Spec Provider Registry + BOS_SPECS_ROOT migration
+
+- **SpecProvider / SpecRegistry** (`src/lib/specs/provider.ts`): aggregate builtin → user → marketplace.
+- **BuiltinSpecProvider** — `data/specs/system/`, `canWrite: false` (**single source of truth**: provider `canWrite` derives from the store manifest `writable`; system manifest set to `writable: false`).
+- **UserSpecProvider** — `data/specs/user/`, `canWrite: true`.
+- **MarketplaceSpecProvider** — `data/specs/marketplace/<id>/`, `canWrite: false`.
+- **`stores.ts` rewrite** — delegate to the registry; preserve public API.
+- **Consumer enumeration (gate)**: grep every `BOS_SPECS_ROOT` / `specsRoot` consumer — at least `stores.ts`, `seed.ts`, `specs-dir.ts`, `pipeline.ts`, `skills/store.ts`, and `tools/supervisor/supervisor.mjs` — and migrate each to the fixed layout. **Supervisor repoint**: point its per-preview/base spec-store paths and promote-merge logic at `data/specs/…` (a repoint, not a rewrite).
+- **Remove `src/os/specs-dir.ts` and `BOS_SPECS_ROOT`** — *last*, only after every consumer is migrated.
+
+## Phase 4 — App Provider Registry (manifest vs. component split)
+
+- **AppProvider / AppRegistry** (`src/lib/apps/provider.ts`): async, provider-aggregated **manifests only**. Extend `AppManifest` with `runtime`, `source`, `marketplaceId`, `marketplaceItemId`, `canAdoptSpec`.
+- **`registry.tsx` stays static** — native builtin components from `_components.generated`, unchanged. The window renderer branches on `runtime`: `native` → `getAppComponent(id)`; `iframe` → iframe with the manifest entrypoint. Invariant enforced: `native` only for `builtin`.
+- **BuiltinAppProvider / LocalAppProvider / MarketplaceAppProvider** — manifests for `data/apps/local/` and `data/apps/marketplace/<id>/`.
+- **`src/os/apps.ts`** — drive the manifest list from `AppRegistry`; SSR seed uses it server-side.
+
+## Phase 5 — Marketplace (client + providers + adopt/install)
+
+- **Schemas** (`src/lib/marketplace/schema.ts`): `MarketplaceManifest`, `MarketplaceItem`, `RegisteredMarketplace`. **Schema-validate before use.**
+- **MarketplaceClient** (`src/lib/marketplace/client.ts`): `addMarketplace` (**git-URL allowlist**: `https://` only, optional `ssh`; reject `file://`/`ext::`; `execFile` clone to the single canonical location `data/…/marketplace/<id>/`), `syncMarketplace`, `listItems`, `adoptSpec` (fork into user-specs + commit), `installApp`.
+- **Lifecycle contracts**: `removeMarketplace` (unregister + delete clones; **does not touch adopted specs**), `uninstallApp` (delist + delete local copy). Adoption is a fork; un-adopt = delete a user spec store (spec management, not marketplace). All destructive ops confirmed.
+- **API** (`src/app/api/marketplace/route.ts`): list / add / remove / sync / adopt-spec / install-app / uninstall-app.
+- **Marketplace app** (`src/apps/marketplace/`): three-panel UI (marketplaces + add; item grid; detail with Run/Install/Adopt/Uninstall). **New e2e spec.**
+
+## Phase 6 — App sandboxing (opaque-origin) + iframe SDK library + Docker/Bastion
+
+The trust boundary is the **opaque-origin sandbox**, not a separate origin — no DNS, certs, or ports.
+
+- **Opaque-origin sandbox**: untrusted apps (local + marketplace) render with `sandbox` **without** `allow-same-origin`, so each frame is a unique throwaway origin walled off from BOS and from every other frame. The `postMessage` broker is the only channel; it already authenticates by `e.source === iframe.contentWindow` (`IframeApp.tsx:83`), which is correct for opaque frames (whose `e.origin` is `"null"`). Native builtin + first-party trusted apps may keep the existing same-origin path.
+- **iframe SDK as a TypeScript library** (`src/lib/iframe-sdk/`): promote the hard-coded string in `src/app/__bos/sdk.js/route.ts` to a real TS source tree, bundled to a served artifact by a build step (`tools/build-sdk.mjs` via esbuild — verify the bundler is already a dep from `src/lib/apps/build.ts` before adding). The route reads the built artifact. The SDK gains: a `storage` namespace, a ready-promise, capability introspection, and error types — over the same private `call()` transport.
+- **`storage` capability + shim**: a broker method `storage:get/set/remove/keys` backed by a **per-app, BOS-assigned namespace** in the user's data volume (capability-gated). The SDK installs a `localStorage`/`sessionStorage` shim (hydrate-then-write-through: hydrate the namespace into an in-memory `Map` at load, sync reads, async write-through, flush on `pagehide`/`visibilitychange`; `sessionStorage` is pure in-memory). IndexedDB is not shimmed. Per-app namespacing gives app-to-app isolation *with* persistence despite opaque origins.
+- **Wire the `[...slug]` route** (or a sibling) to serve `data/apps/local/` and `data/apps/marketplace/<id>/`, not only `appsDir()`.
+- **Bastion**: remove `BOS_SPECS_ROOT` injection (`provision.ts`, `docker.ts`); ensure `data/config/` exists. **No apps-origin proxy/hostname wiring needed** — opaque-origin removes that infrastructure.
+- **Escape hatch (not built)**: if hosting unmodified open-web apps that require a *stable browser origin* (service workers, native IndexedDB at scale) ever becomes necessary, a wildcard-subdomain apps origin can be added later. Documented, not implemented.
+
+## Phase 7 — Developer-agent feature-branch wiring (via Supervisor)
+
+- When a feature context is active and the Developer agent edits BOS source, it works through the **Supervisor** for `bos/feat/<id>` (worktree + port pool) — **never a raw checkout of the running tree** (fragile-main hazard). After each commit it PATCHes `touchedSourcePaths`.
+
+## #8 hygiene (folded into the phases above)
+
+- LLM commit diff bounded (Phase 2).
+- `writable`/`canWrite` single source of truth (Phase 3).
+- Docs (`live-version-control.md`, `repository-and-data-layout.md`) updated with the Supervisor repoint (Phase 3 / closeout).
+
+## Closeout
+
+- Update `overview.md`; mark 018 FR-005/FR-007 Superseded and 020 Adopted; update 009 to three-source.
+- Update `docs/dev/architecture-overview.md`, `docs/dev/self-modification/live-version-control.md`, `docs/dev/repository-and-data-layout.md`, and `docs/usage/` (Feature Context workflow, Marketplace, writing specs from any app).

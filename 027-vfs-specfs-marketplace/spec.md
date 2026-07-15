@@ -4,102 +4,139 @@
 
 **Created**: 2026-07-15
 
-**Status**: Draft
+**Status**: Draft (revised after design review — see `spec-review.md`)
 
 **Input**: "Relocate user-specs into the user's VFS (Documents/Specs/) so any app or agent can write to them via standard VFS file operations — not just through the spec-write tool. The git repo must survive a full VFS wipe. BOS should provide an internal service (no GitHub required). Additionally: implement a general VFS mount-point abstraction, a SpecFS backend with auto-branching and LLM-generated commits, a Feature Context for correlating branches across repos, a Provider Registry for pluggable spec and app discovery, and a Marketplace where remote git repos deliver both apps and adoptable spec templates."
 
-> This feature supersedes **018-external-spec-store FR-005/FR-007** (global branch and symlink mount) and fulfils **020-branch-coupled-specs** (one branch name spanning BOS source and all spec stores). It also extends **009-installed-apps** into a full three-source app model (builtin / local / marketplace).
+> This feature supersedes **018-external-spec-store FR-005/FR-007** (global branch and symlink mount) and builds on the **already-implemented** branch-coupled worktree model of **020-branch-coupled-specs** (it *adopts* that engine rather than replacing it). It extends **009-installed-apps** into a three-source app model (builtin / local / marketplace) with a real opaque-origin sandbox trust boundary for untrusted apps.
 
 ## Why this exists (context)
 
 Three independent problems converge into one architectural opportunity:
 
-**1. Specs are siloed behind a single tool.** The only way to write to a spec is the `spec-write` server tool. Any app that wants to deposit an artifact into a spec — the UI Preview designer writing a mockup, an agent generating a schema, a future Image Editor saving an asset — must go through that one tool. There is no general write path. Real operating systems don't have this problem: `open()`, `read()`, `write()` work the same regardless of the underlying filesystem. BOS's VFS should work the same way.
+**1. Specs are siloed behind a single tool.** The only way to write to a spec is the `spec-write` server tool. Any app that wants to deposit an artifact into a spec — the UI Preview designer writing a mockup, an agent generating a schema — must go through that one tool. Real operating systems don't have this problem: `open()`, `read()`, `write()` work the same regardless of the underlying filesystem. BOS's VFS should work the same way.
 
-**2. User-specs live in the wrong place.** `BOS_SPECS_ROOT` points into the source clone — not the per-user data volume. In a multi-user Docker deployment this means user-spec data is entangled with BOS source. A VFS wipe or container rebuild risks losing specs. The user-specs must live in a location that is: (a) per-user, (b) protected from VFS wipes, and (c) accessible through standard VFS operations.
+**2. User-specs live in the wrong place.** `BOS_SPECS_ROOT` points into the source clone — not the per-user data volume. A VFS wipe or container rebuild risks losing specs. User-specs must live somewhere (a) per-user, (b) protected from VFS wipes, and (c) reachable through standard VFS operations.
 
-**3. App discovery is static and closed.** The app list is a compiled-in manifest. There is no runtime path for user-developed apps or third-party apps. The only "installed apps" mechanism is GitFS-served iframes with no discovery story. BOS needs a pluggable provider pattern that scales from "just built-in apps" to a thriving marketplace.
+**3. App discovery is static and closed.** The app list is a compiled-in manifest. There is no runtime path for user-developed or third-party apps, and the existing iframe path is same-origin — which means an installed app can bypass the capability broker and call BOS APIs directly with the user's session. That is tolerable for hand-installed first-party apps but unacceptable for a marketplace.
 
-The solution treats the VFS the way a real OS treats its filesystem: a uniform interface (`list`, `stat`, `readText`, `writeText`, …) backed by pluggable providers. Specs become a first-class VFS path. Git versioning is a backend concern, invisible to the caller.
+The solution treats the VFS the way a real OS treats its filesystem: a uniform interface backed by pluggable providers, layered on top of the branch-coupled git engine that already exists.
+
+## Ownership split (decided in review — foundational)
+
+- **User specs** (`data/specs/user/`) are edited through the VFS/SpecFS fast path, branch-coupled to a Feature Context, promoted spec-only without a rebuild. This is the "internal service" — no GitHub required.
+- **System specs** (`bos-system-specs`) are **read-only at runtime**, seeded from the source tree (`seed/spec-store/`). Editing a system spec is a *source* change: it flows through the Developer agent on the same `bos/feat/<id>` branch as code and promotes via PR + rebuild. There is no writable system store at runtime. This collapses the old "writable system store" special case and aligns system-spec authoring with "always delegate; Claude codes."
+
+## Branch model (decided in review — adopts 020, does not replace it)
+
+SpecFS is an **adapter over the existing `src/lib/dev/spec-fs.ts` + Supervisor worktree engine**, not a new git engine. Specifically:
+- **No `git checkout`** of any base tree. Ever.
+- **Reads are ref-pinned** (`git show <ref>:path`, via the existing `readFileAtBranch`), so listing/reading is never dependent on mutable working-tree state.
+- **Writes on an active feature branch go to a worktree**: the Supervisor-provisioned worktree when a code preview exists (source-inclusive feature), or a SpecFS-self-provisioned worktree under `data/specs/.worktrees/<branch>/` when there is no preview (spec-only feature).
+- **Promote** flushes pending writes, reconciles `main` into the feature branch (conflicts resolved on the branch), fast-forwards `main`, and prunes the worktree.
 
 ## Clarifications
 
-### Session 2026-07-15
+### Session 2026-07-15 (initial design)
 
-- Q: Where should user-specs live? → A: **Inside the VFS** at `Documents/Specs/`, backed by `data/specs/user/` (outside `data/vfs/`, so a VFS wipe does not destroy them). A VFS mount point routes the path to SpecFS transparently.
-- Q: Must user-specs survive a full wipe? → A: **Yes.** The backing git repo lives at `data/specs/user/` which is never touched by the "clear VFS" operation (which only clears `data/vfs/`). In the Docker deployment this path is inside the per-user `data/` bind mount — still surviving container recreation.
-- Q: Should the VFS mount-point abstraction be general or just for SpecFS? → A: **General.** Define an `FSBackend` interface. `LocalFS` wraps current behaviour. `SpecFS` is one implementation. Future backends (`LocalAppFS`, `SharedFS`) plug in the same way.
-- Q: When should a git commit happen? → A: **Debounced flush on the write side** (2 s window). Multiple rapid writes to the same feature branch (e.g. an agent generating several spec files) coalesce into one commit. Commits are async and never block the `writeText()` caller.
-- Q: How is the commit message generated? → A: **LLM call with fallback.** SpecFS computes `git diff HEAD`, sends it to the configured AI provider with a short prompt, uses the response as the commit message. On any LLM error the fallback is a deterministic message (`"Update <filename> in <spec-id>"`).
-- Q: What is the branch name for a feature that spans multiple specs? → A: **The Feature Context determines the branch.** A Feature Context is a named OS-level object with `id`, `branchName` (`bos/feat/<id>`), and lists of touched specs and source paths. All SpecFS writes use the active context's branch — not the spec folder name. If two specs are edited in the same feature context they land on the same branch.
-- Q: Is a Feature Context required for every write? → A: **Always.** No implicit/anonymous context. If no context is active, SpecFS returns a clear error to the caller. This keeps the branch-coupling invariant: every spec write belongs to a named feature.
-- Q: How does the BOS source branch relate? → A: **Same branch name.** When the Developer agent starts modifying BOS source files, it checks the active Feature Context and works on `bos/feat/<id>` in the BOS source repo. Branch name is the correlation key across all repos.
-- Q: How should promotion work? → A: **Two paths based on `touchedSourcePaths`.** If empty (spec-only change): merge spec branch → main, no rebuild required, instant. If non-empty: merge spec branch AND leave source branch open for PR + rebuild. Build Studio shows which path will be taken before the user confirms.
-- Q: Should BOS_SPECS_ROOT be kept? → A: **No — convention over configuration.** All spec paths are fixed relative to `dataDir()`. The env var is removed.
-- Q: What is the unified marketplace format? → A: **A git repo** with a `marketplace.json` at the root. Each item can have an `app/` subtree (pre-built, iframe-served), a `spec/` subtree (adoptable spec template), or both. Registered marketplaces are listed in `data/config/marketplaces.json`.
-- Q: What is the difference between installing an app and adopting a spec? → A: **Install** = run the pre-built iframe app directly from the cloned marketplace repo (or a cached copy). **Adopt** = fork the spec subtree into `data/specs/user/`, giving the user full ownership to modify and promote. The adopted spec has no ongoing link to the marketplace source.
+- Q: Where should user-specs live? → A: Inside the VFS at `Documents/Specs/`, backed by `data/specs/user/` (outside `data/vfs/`, surviving a VFS wipe). A mount point routes the path to SpecFS.
+- Q: When should a git commit happen? → A: Debounced flush (2 s) on the write side, coalescing rapid writes into one commit; async, never blocks the caller.
+- Q: How is the commit message generated? → A: LLM call over the (bounded) diff, with a deterministic fallback on any error.
+- Q: What is the branch for a multi-spec feature? → A: The Feature Context's `bos/feat/<id>`, shared across all touched specs and BOS source.
+- Q: Is a Feature Context required for every write? → A: Always. No implicit/anonymous context.
+- Q: Keep `BOS_SPECS_ROOT`? → A: No — convention over configuration. Fixed paths under `dataDir()`.
+- Q: Unified marketplace format? → A: A git repo with `marketplace.json`; items expose `app/`, `spec/`, or both.
+- Q: Install vs adopt? → A: Install = run the pre-built app. Adopt = fork the spec into user-specs (no ongoing link).
+
+### Session 2026-07-15 (design review resolutions)
+
+- Q: What is the write path to system specs? → A: **None at runtime (Option B).** System specs are read-only, seeded from source; edits go through the Developer agent as source changes. Closeout cross-spec merges (018/020/009) become ordinary source edits.
+- Q: How does SpecFS's branch model coexist with the Supervisor's worktree model (020)? → A: **It adopts it.** SpecFS is an adapter — no checkout, ref-pinned reads, worktree writes (Supervisor's or self-provisioned), promote reconciles into main. The Supervisor's `BOS_SPECS_ROOT` reads are *repointed* to the fixed layout (bounded), not rewritten.
+- Q: Who owns `feature-context.json`? → A: A **server-authoritative single-writer module** with an in-process mutex and atomic read-modify-write. The client issues intent actions (set/clear/patch) and holds a read-only mirror; SpecFS mutates via the same module in-process. `setFeature` is awaited before dependent writes.
+- Q: How is a Feature Context created (so always-require isn't a dead end)? → A: Three entry points — Build Studio "New feature", an assistant `start_feature` tool, and a one-click quick-edit that pre-fills a suggested id. No silent fallback.
+- Q: How do native and iframe apps differ in the registry? → A: **Two registries.** An async manifest registry (provider-aggregated) drives metadata; a static component map (`registry.tsx`, unchanged) resolves native builtin components. Invariant: native ⇔ static import ⇔ builtin; iframe ⇔ dynamic ⇔ local/marketplace.
+- Q: How are untrusted marketplace apps isolated? → A: **Opaque-origin sandbox** — `sandbox` without `allow-same-origin`, so each frame is a unique throwaway origin and the `postMessage` capability broker (`IframeApp.tsx`) is the only channel to BOS. No DNS/cert/port infrastructure. The same-origin path is reserved for native + first-party trusted apps. (A wildcard-subdomain origin remains a documented, unbuilt escape hatch for unmodified open-web apps that need a stable browser origin.)
+- Q: Opaque origins have no browser storage — how do apps persist? → A: A broker-backed **`storage` capability** (per-app BOS-assigned namespace in the user's data volume, capability-gated). The **iframe SDK** (promoted to a TS library at `src/lib/iframe-sdk/`, built to a served artifact) installs a `localStorage`/`sessionStorage` shim over it (hydrate-then-write-through), so unmodified open-web apps still work. Per-app namespacing yields app-to-app isolation *with* persistence.
+- Q: What happens on a promote merge conflict? → A: A first-class result. Promote reconciles `main` into the feature branch; on conflict it aborts and returns `{ kind: 'conflict', files }` for resolution on the branch. `main` only ever fast-forwards.
+- Q: What about the debounce-vs-promote race and crashes? → A: Promote force-flushes pending writes first. Startup sweeps any uncommitted worktree state into a recovery commit. No silent data loss.
+- Q: Concurrent contexts / multiple tabs? → A: One active context per instance; features are durable branches; a single `setActive(id)` moves the active pointer (flushing the current one first, create-or-reusing the target). "Start new" vs "resume existing" is a UI distinction only. A synchronized "active feature" indicator keeps tabs consistent.
+- Q: Adoption vs marketplace lifecycle? → A: Adoption is a **fork**, so removing a marketplace or uninstalling an app never touches adopted specs. Un-adopting is deleting a user spec store, not a marketplace operation.
+- Q: Marketplace URL safety? → A: Protocol allowlist (`https://` only, optional `ssh`), reject `file://`/`ext::`; schema-validate `marketplace.json` before use; clone via `execFile` (no shell).
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 — Any app can write to a spec (Priority: P1)
+### User Story 1 — Any app can write to a user spec (Priority: P1)
 
-A running BOS app (e.g. UI Preview) calls `vfs.writeText('Documents/Specs/95-myapp/ui-mockup.json', content)` without knowing anything about git. The file lands in the user's spec git repo on the correct feature branch, and a commit is generated automatically.
+A running app calls `vfs.writeText('Documents/Specs/95-myapp/ui-mockup.json', content)` with no git knowledge. With an active Feature Context, the file lands on the feature branch's worktree and a commit is generated automatically.
 
-**Why this priority**: This is the core motivating use-case; if this doesn't work the whole feature has no value.
-
-**Independent Test**: From a server route, call `vfs.writeText('Documents/Specs/test-spec/file.json', '{}')` with an active feature context set. Confirm the file appears on `data/specs/user/` at the expected path, `git log` shows a commit on `bos/feat/<id>`, and no git operations are visible to the calling code.
+**Independent Test**: Set a feature context; from a server route call `vfs.writeText('Documents/Specs/test/file.json', '{}')`. Confirm the file is on the feature worktree, `git log` shows a commit on `bos/feat/<id>`, and no git API is visible to the caller.
 
 **Acceptance Scenarios**:
+1. **Given** an active feature context, **When** `vfs.writeText('Documents/Specs/…')` is called, **Then** the file is written to the branch's worktree and a debounced commit is scheduled.
+2. **Given** no active feature context, **When** the same call is made, **Then** a `SpecFSNoContextError` is thrown with guidance to create one (no silent commit to a default branch).
+3. **Given** five rapid writes within 2 s, **When** the window closes, **Then** exactly one commit contains all five changes.
+4. **Given** a commit is generated, **When** the LLM call fails or the diff is oversized, **Then** the commit still happens with the bounded/fallback message (no write lost).
 
-1. **Given** an active feature context, **When** any code calls `vfs.writeText('Documents/Specs/…')`, **Then** the file is written and a debounced commit is scheduled — with no git API in the calling code.
-2. **Given** no active feature context, **When** `vfs.writeText('Documents/Specs/…')` is called, **Then** a `SpecFSNoContextError` is thrown and the caller receives a clear error message.
-3. **Given** five rapid writes within 2 s, **When** the debounce window closes, **Then** exactly one commit is generated containing all five changes.
-4. **Given** a commit is generated, **When** the LLM call fails, **Then** the commit still happens with the fallback message (no write is lost).
+### User Story 2 — A feature spans multiple specs and correlates with source (Priority: P1)
 
-### User Story 2 — A feature spans multiple specs (Priority: P1)
+A developer starts feature "backend-with-ui" touching specs `040` and `041`. Both land on `bos/feat/backend-with-ui`. When the Developer agent implements it, it works on the same branch in BOS source **via the Supervisor** (never a raw checkout of the running tree).
 
-A developer starts a feature called "backend-with-ui" that touches spec `040-backend-service` and spec `041-ui`. Both specs land on branch `bos/feat/backend-with-ui` in the user-specs repo. When the Developer agent later implements the feature, it also works on `bos/feat/backend-with-ui` in the BOS source repo.
-
-**Independent Test**: Set feature context `{ id: "backend-with-ui" }`. Write to `Documents/Specs/040-backend-service/spec.md` and then `Documents/Specs/041-ui/spec.md`. Confirm both commits are on branch `bos/feat/backend-with-ui` in `data/specs/user/`. Confirm `touchedSpecs` contains both paths in the persisted feature context.
-
-**Acceptance Scenarios**:
-
-1. **Given** an active feature context, **When** two different spec folders are written, **Then** both commits land on the same branch.
-2. **Given** the same active feature context, **When** the Developer agent modifies a BOS source file, **Then** it creates/switches to `bos/feat/backend-with-ui` in the BOS source repo before making changes.
-3. **Given** the feature context file, **When** the server restarts mid-feature, **Then** subsequent writes resume on the same branch (context persisted to disk).
-
-### User Story 3 — Spec-only promotion is instant (Priority: P1)
-
-A user edits specs, nothing else. Promoting the feature takes under 3 seconds and does not trigger a BOS rebuild.
-
-**Independent Test**: Create feature context, write specs, promote. Measure time. Confirm `git log main` in `data/specs/user/` shows the new commits. Confirm no rebuild was requested.
+**Independent Test**: Set context `{ id: "backend-with-ui" }`. Write to two spec folders; confirm both commits share the branch and `touchedSpecs` lists both. Have the Developer agent modify a source file; confirm it operates on the Supervisor worktree for the same branch and `touchedSourcePaths` is appended.
 
 **Acceptance Scenarios**:
+1. **Given** an active context, **When** two spec folders are written, **Then** both commits are on the same branch.
+2. **Given** the same context, **When** the Developer agent modifies BOS source, **Then** the work happens on the Supervisor's worktree for `bos/feat/<id>`, not the running source tree.
+3. **Given** the context file, **When** the server restarts mid-feature, **Then** writes resume on the same branch (context persisted; uncommitted worktree state swept into a recovery commit).
 
-1. **Given** `touchedSourcePaths` is empty, **When** promote is triggered, **Then** spec branch is merged to main with no rebuild.
-2. **Given** `touchedSourcePaths` is non-empty, **When** promote is triggered, **Then** spec branch is merged AND the source branch name is surfaced for PR review; user is not surprised.
-3. **Given** a successful promotion, **When** the feature context is cleared, **Then** subsequent writes to `Documents/Specs/` require a new feature context.
+### User Story 3 — Spec-only promotion is instant; conflicts are first-class (Priority: P1)
+
+A user edits only specs and promotes. It completes in seconds with no rebuild. If `main` advanced and the merge conflicts, the user gets a clear conflict result, not a silent overwrite.
+
+**Independent Test**: Create context, write specs, promote. Confirm merge to `main` in `data/specs/user/` and no rebuild. Separately, advance `main` to force a conflict; confirm promote returns `{ kind: 'conflict', files }` and `main` is untouched.
+
+**Acceptance Scenarios**:
+1. **Given** `touchedSourcePaths` empty, **When** promote runs, **Then** pending writes are flushed, the branch is reconciled and fast-forwarded to `main`, no rebuild.
+2. **Given** `touchedSourcePaths` non-empty, **When** promote runs, **Then** the spec branch merges and the source branch is surfaced for PR review.
+3. **Given** `main` advanced with an overlapping change, **When** promote runs, **Then** it returns a conflict result listing the files and leaves `main` unchanged.
 
 ### User Story 4 — VFS wipe does not destroy specs (Priority: P1)
 
-A user resets their VFS (clears `Documents`, `Pictures`, etc.). Their specs remain intact.
+Clearing the VFS leaves specs intact.
 
-**Independent Test**: Write a spec file. Wipe `data/vfs/`. Confirm `data/specs/user/` still contains the spec file and its git history.
-
-**Acceptance Scenarios**:
-
-1. **Given** specs written to `Documents/Specs/`, **When** `data/vfs/` is cleared, **Then** `data/specs/user/` is unaffected.
-2. **Given** a fresh VFS (post-wipe), **When** `vfs.list('Documents/Specs/')` is called, **Then** the spec files are visible again (mount point re-established).
-
-### User Story 5 — Marketplace: browse, install, adopt (Priority: P2)
-
-A user opens the Marketplace app, browses items from a registered marketplace repo, installs an app to run it immediately, and adopts a spec to customise it in Build Studio.
-
-**Independent Test**: Register a local git repo as a marketplace (with a valid `marketplace.json`). Open the Marketplace app. Confirm items are listed. Install an app — confirm it appears in the app launcher. Adopt a spec — confirm it appears in `data/specs/user/` and Build Studio opens it.
+**Independent Test**: Write a spec, wipe `data/vfs/`, confirm `data/specs/user/` and its history remain and reappear under `Documents/Specs/`.
 
 **Acceptance Scenarios**:
+1. **Given** specs written, **When** `data/vfs/` is cleared, **Then** `data/specs/user/` is unaffected.
+2. **Given** a fresh VFS, **When** `vfs.list('Documents/Specs/')` runs, **Then** specs are visible again (mount re-established at startup, after the repo is ensured).
 
-1. **Given** a registered marketplace, **When** the Marketplace app loads, **Then** all items from `marketplace.json` are displayed with correct names, descriptions, and available actions (Run / Install / Adopt).
-2. **Given** an item with an `app` entry, **When** "Run" is clicked, **Then** the app opens as an iframe in BOS.
-3. **Given** an item with a `spec` entry, **When** "Adopt" is clicked, **Then** the spec is copied to `data/specs/user/`, a commit is made ("Adopt X from Y"), and Build Studio opens it.
-4. **Given** an adopted spec, **When** the user modifies and promotes it, **Then** it behaves identically to a user-authored spec (no marketplace link remains).
+### User Story 5 — System-spec edits flow through the Developer agent (Priority: P2)
+
+A maintainer changes a system spec (e.g. merging 027 into `overview.md`). Because system specs are source, the change is made on the feature branch via the Developer agent and promoted with code.
+
+**Independent Test**: Attempt `vfs.writeText('Documents/Specs/…')` targeting a system store → refused (read-only). Delegate the same edit to the Developer agent on the active feature branch; confirm it lands in `seed/spec-store/` on `bos/feat/<id>`.
+
+**Acceptance Scenarios**:
+1. **Given** a system store, **When** a VFS write targets it, **Then** it is refused as read-only.
+2. **Given** an active feature context, **When** a system-spec edit is delegated, **Then** it is applied as a source change on the correlated branch.
+
+### User Story 6 — Marketplace: browse, install (sandboxed), adopt (Priority: P2)
+
+A user registers a marketplace repo, runs an app (opaque-origin sandbox, capability-gated), and adopts a spec into user-specs.
+
+**Independent Test**: Register a local git repo as a marketplace. Confirm items list. Install/run an app — confirm it runs in an opaque-origin frame and can reach BOS only via granted capabilities. Confirm an app using `localStorage` still works (SDK shim persists via the `storage` capability). Adopt a spec — confirm it appears in `data/specs/user/` and Build Studio opens it.
+
+**Acceptance Scenarios**:
+1. **Given** a registered marketplace, **When** the app loads, **Then** items render with correct actions (Run / Install / Adopt).
+2. **Given** an item with an `app`, **When** "Run" is clicked, **Then** it runs in an opaque-origin sandbox; it cannot reach BOS except through granted capability calls via the broker; an ungranted call is rejected.
+3. **Given** a sandboxed app that writes to `localStorage`, **When** it reloads, **Then** the value persists (SDK shim → `storage` capability → per-app namespace); another app cannot read it.
+4. **Given** an item with a `spec`, **When** "Adopt" is clicked, **Then** the spec is forked into user-specs with a commit, and Build Studio opens it.
+5. **Given** a malicious/broken `marketplace.json` or a `file://`/`ext::` URL, **When** registration is attempted, **Then** it is rejected before any clone.
+
+### User Story 7 — Marketplace lifecycle: remove / uninstall / un-adopt (Priority: P3)
+
+**Independent Test**: Remove a marketplace — its apps disappear, its clones are deleted, adopted specs remain. Uninstall an app — it leaves the launcher; adopted specs remain. Un-adopt — delete the user spec store via spec management.
+
+**Acceptance Scenarios**:
+1. **Given** an adopted spec, **When** its source marketplace is removed, **Then** the adopted spec is unaffected.
+2. **Given** a marketplace with running apps, **When** it is removed (with confirmation), **Then** its clones are deleted and its apps are no longer listed.
+3. **Given** an installed app, **When** uninstalled, **Then** it leaves the launcher and any local copy is deleted.
