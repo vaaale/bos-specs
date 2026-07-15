@@ -51,12 +51,20 @@ SpecFS is an **adapter over the existing `src/lib/dev/spec-fs.ts` + Supervisor w
 
 - Q: What is the write path to system specs? → A: **None at runtime (Option B).** System specs are read-only, mirrored from source; edits go through the Developer agent as source changes.
 - Q: How does SpecFS's branch model coexist with the Supervisor's worktree model (020)? → A: **It adopts it.** No checkout, ref-pinned reads, worktree writes (Supervisor's preferred; self-provisioned fallback pruned on hand-off), promote reconciles into `main`. The Supervisor's `BOS_SPECS_ROOT` reads are *repointed* to the fixed layout (bounded), not rewritten.
-- Q: Who owns `feature-context.json`? → A: A **server-authoritative single-writer module** with an in-process mutex and atomic read-modify-write. The client issues awaited intent actions (set/clear/patch) and holds a read-only mirror; SpecFS mutates via the same module in-process.
-- Q: How is a Feature Context created (so always-require isn't a dead end)? → A: Three entry points — Build Studio "New feature", an assistant `start_feature` tool, and a one-click quick-edit that pre-fills a suggested id. One activation verb (`setActive(id)`); "start new" vs "resume existing" is UI-only.
+- Q: How is a Feature Context created (so always-require isn't a dead end)? → A: See the 2026-07-15 (redesign) note below — the feature is per **conversation**, and apps inherit or select a feature branch.
 - Q: How does the read-only system store stay current across releases? → A: **Mirror, not merge.** `data/specs/system/` is overwritten/pruned from `seed/spec-store/` on each boot (not additive `copyMissing`), so system-spec changes shipped in a release reach existing users. Scoped to the system store only; the user store is untouched.
 - Q: What happens on a promote merge conflict? → A: A first-class result. Promote reconciles `main` into the feature branch; on conflict it aborts and returns `{ kind: 'conflict', files }` for resolution on the branch. `main` only ever fast-forwards.
 - Q: Debounce-vs-promote race and crashes? → A: Promote force-flushes pending writes first. Startup sweeps any uncommitted worktree state into a recovery commit. No silent data loss.
-- Q: Concurrent contexts / multiple tabs? → A: One active context per instance; features are durable branches; a single `setActive(id)` moves the active pointer (flushing the current one first, create-or-reusing the target). A synchronized "active feature" indicator keeps tabs consistent.
+- Q: Concurrent contexts / multiple tabs? → A: See the redesign note — the feature is scoped per conversation, so conversations/tabs each carry their own active feature branch (no global pointer to keep in sync).
+
+### Session 2026-07-15 (redesign: per-conversation feature scope)
+
+The active feature is **per conversation**, not a single global per-instance context — matching the existing 020 model where each conversation persists an `activeFeatureBranch` (`Documents/Chats/<id>.json`). There are good reasons to keep it that way (parallel features across conversations, no global contention). The earlier global `feature-context.json` + `setActive`/`clear` API route + OS-store mirror were removed.
+
+- **Source of truth**: the conversation's `activeFeatureBranch` (convention `bos/<kebab>`, validated by `src/lib/agent/feature-branch.ts`).
+- **Resolution**: a VFS write (`vfs.writeText('Documents/Specs/…')`) has no conversation argument, so the current conversation/branch is carried in a **request-scoped AsyncLocalStorage feature scope** (`withFeatureScope`, mirroring `logging/context.ts`). SpecFS resolves via `getActiveBranch()`: an explicit `scope.branch` wins, else `scope.conversationId` → the conversation's `activeFeatureBranch`, else none (writes throw `SpecFSNoContextError`).
+- **App association (option b)**: an app operates *within* a feature/conversation context it inherits (its window/requests carry the conversation or branch). Apps launched **without** a conversation MUST provide UI to select or create a feature branch, which seeds the scope for their writes.
+- **Promote** takes the branch explicitly; spec-only vs source-inclusive is derived from git (a same-named branch in the BOS source repo), not a tracked `touchedSourcePaths` list.
 
 ## User Scenarios & Testing *(mandatory)*
 

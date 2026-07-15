@@ -9,13 +9,12 @@ Feature branch: `027-vfs-specfs-marketplace`. Task ids match the plan phases. `[
 - [ ] P1.1. `src/os/fs-types.ts` (new) — `FSBackend` (mirrors the current VFS surface) + `MountPoint`. Backend paths are mount-relative.
 - [ ] P1.2. `src/os/fs/local-fs.ts` (new) — `LocalFS implements FSBackend`; mechanical extraction of current `vfs.ts` resolution + `fs/promises`. No behaviour change.
 - [ ] P1.3. `src/os/vfs.ts` (modify) — `registerMount`, `resolveMount`; all nine functions delegate on match, else fall through to `LocalFS`.
-- [ ] P1.4. [T] Unit test — `resolveMount` path-escape jail (`..`, absolute, encoded traversal) at the mount boundary.
-- [ ] P1.5. `src/os/types.ts` (modify) — `FeatureContext`, `FeatureContextFile`.
-- [ ] P1.6. `src/lib/specs/feature-context.ts` (new, server-only) — single-writer module over `data/config/feature-context.json`: in-process async mutex + atomic RMW. `getActive`/`setActive(id)`/`clear`/`patch`. `setActive` flushes any current feature, then create-or-reuses `id`'s branch/worktree, then records it active (one verb; "start new" vs "resume existing" is UI-only). Sanitize `id` against `^[a-z0-9-]+$`.
-- [ ] P1.7. [T] Unit test — `id` sanitization rejects invalid ids; concurrent `patch` calls do not lose updates.
-- [ ] P1.8. `src/app/api/feature-context/route.ts` (new) — GET / POST(set) / DELETE(clear) / PATCH(append touched path); all via the module. No whole-file replace from the client.
-- [ ] P1.9. `src/store/os-store.ts` (modify) — `activeFeature` read-only mirror; intent actions that **await** the API; cross-tab sync (storage event / refresh-on-focus).
-- [ ] P1.10. `npx tsc --noEmit` + `npm run lint` green.
+- [x] P1.4. [T] Unit test — `resolveMount` path-escape jail (`..`, absolute, encoded traversal) at the mount boundary.
+- [x] P1.5. `src/lib/specs/feature-context.ts` (new, server-only) — request-scoped AsyncLocalStorage feature scope: `withFeatureScope`, `currentFeatureScope`, `getActiveBranch()` (explicit `scope.branch` → conversation `activeFeatureBranch` → none). Per-conversation; NO global file/API/mutation verbs.
+- [x] P1.6. `src/lib/specs/feature-id.ts` (new) — `sanitizeFeatureId` (slug for create-branch UI) + `encodeBranchDir` (worktree dir, N6). [T] unit-tested.
+- [x] P1.7. `npx tsc --noEmit` + `npm run lint` green; unit tests pass.
+
+> Removed vs the original global design: `src/os/types.ts` FeatureContext types, the `/api/feature-context` route, and the OS-store `activeFeature` mirror + BroadcastChannel are NOT part of the per-conversation model.
 
 ## Phase 2 — SpecFS adapter + worktree writes + Promotion
 

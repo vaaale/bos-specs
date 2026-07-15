@@ -19,11 +19,11 @@ Give the VFS a **mount table** routing path prefixes to pluggable `FSBackend` im
 data/specs/user/                        ← user-specs canonical git repo (SpecFS backing)
 data/specs/.worktrees/<enc-branch>/     ← self-provisioned worktrees, spec-only features (flat-encoded name, N6)
 data/specs/system/                      ← MIRRORED from seed/spec-store/ on boot, READ-ONLY (N2)
-data/config/feature-context.json        ← server-owned active Feature Context
+(active feature is per-conversation: Documents/Chats/<id>.json activeFeatureBranch)
 ```
 `data/vfs/Documents/Specs/` is a mount-point stub so it appears in listings; reads/writes route to SpecFS.
 
-**Server boundary**: git ops, SpecFS, feature-context I/O, LLM commit-message calls are server-only. The Zustand store holds a read-only mirror of the active context; all mutations go through the server-authoritative `feature-context.ts` module.
+**Server boundary**: git ops, SpecFS, feature-scope resolution, and LLM commit-message calls are server-only. The active feature is per conversation (its `activeFeatureBranch`); a request-scoped AsyncLocalStorage carries the conversation/branch so generic VFS writes resolve it (no global state, no OS-store mirror).
 
 **Testing**: unit tests for correctness/security boundaries — mount path-escape, no-context error, debounce coalescing, wipe-survival, `id` sanitization. Plus a **manual/e2e LVC checklist** for the Supervisor repoint (N5). `npx tsc --noEmit` + `npm run lint` per phase.
 
@@ -50,10 +50,8 @@ No violations.
 Critical path.
 
 - **Mount table** (`src/os/fs-types.ts`, `src/os/vfs.ts`): `FSBackend` interface mirroring the current VFS surface; `MountPoint`; `registerMount`/`resolveMount`. All nine VFS functions check the mount first, else fall through to `LocalFS` (extracted, no behaviour change). **Unit-test the path-escape jail on `resolveMount`.**
-- **Feature Context module** (`src/lib/specs/feature-context.ts`, server-only): single writer over `data/config/feature-context.json` with an in-process async mutex and atomic RMW. API: `getActive`, `setActive(id)`, `clear`, `patch(fn)`. `setActive` flushes any current feature, then create-or-reuses `id`'s branch/worktree (idempotent), then records it active — one verb; "start new" vs "resume existing" is UI-only. **`id` sanitized against `^[a-z0-9-]+$`.**
-- **Types** (`src/os/types.ts`): `FeatureContext`, `FeatureContextFile`.
-- **OS store** (`src/store/os-store.ts`): `activeFeature` read-only mirror + intent actions that call the API and **await** the response before dependent writes; cross-tab sync (storage event / refresh-on-focus).
-- **API** (`src/app/api/feature-context/route.ts`): `GET`/`POST`(set)/`DELETE`(clear)/`PATCH`(append touched path) — each delegates to the module.
+- **Feature scope module** (`src/lib/specs/feature-context.ts`, server-only): a request-scoped AsyncLocalStorage feature scope. `withFeatureScope({conversationId?, branch?}, fn)`, `currentFeatureScope()`, and `getActiveBranch()` — resolve an explicit `scope.branch`, else the conversation's `activeFeatureBranch`, else undefined. No global file, no mutation API (the conversation owns its branch; option-(b) apps set `scope.branch`).
+- **Feature scope seeding** (integration): agent tool calls wrap execution in `withFeatureScope({ conversationId })`; the VFS API route reads a conversation/branch header and wraps the request. No global API route or OS-store mirror (removed — the conversation is the source of truth).
 
 ## Phase 2 — SpecFS adapter + worktree writes + Promotion
 
