@@ -37,7 +37,6 @@ to `000-browseros-core`.
 ## Other artifacts
 
 - `.specify/memory/constitution.md` — the project constitution (governing principles).
-- `specs/discrepancies.md` — where code currently diverges from these specs.
 - `.specify/templates/` — spec-kit templates; `.specify/templates/commands/` — the pipeline command prompts (the basis for Build Studio's skill).
 
 New features are authored through **Build Studio** (`001-build-studio`), which drives the
