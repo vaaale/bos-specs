@@ -1,0 +1,18 @@
+{
+  "collection": "ms_bos_system_specs_36101c8b",
+  "failed_files": [],
+  "indexed_chunks": 1,
+  "indexed_files": 1,
+  "last_completed_at": "2026-07-21T13:12:26.374502Z",
+  "last_started_at": "2026-07-21T13:12:23.836382Z",
+  "last_success_at": "2026-07-21T13:12:26.374502Z",
+  "milvus_uri": "~/.memsearch/milvus.db",
+  "operation": "index",
+  "paths": [
+    "/home/alex/PycharmProjects/BOS/browseros/user-data/alex/data/specs/bos-system-specs/.memsearch/memory"
+  ],
+  "schema_version": 1,
+  "status": "ok",
+  "total_files": 1,
+  "updated_at": "2026-07-21T13:12:26.374502Z"
+}
