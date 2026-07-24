@@ -64,6 +64,8 @@ The user finishes a conversation and walks away. Within minutes, an episode capt
 **Acceptance Scenarios**:
 
 1. **Given** an active conversation exceeding the unreviewed-turn cap (default 40), **When** the fast loop ticks, **Then** the completed portion is reviewed immediately (idle threshold waived) and the watermark advances.
+2. **Given** a slice since the watermark whose rendered size would exceed the model's available context budget (e.g. a large backlog accumulated while the fast loop was disabled, or turns carrying large tool outputs), **When** the fast loop reviews it, **Then** it is split into multiple turn-aligned chunks reviewed sequentially instead of failing with a context-overflow error, and the episode reflects all chunks' contributions without duplication.
+3. **Given** a multi-chunk review where a later chunk fails (e.g. a transient LLM error), **When** the next fast-loop tick runs, **Then** the conversation resumes from the failed chunk — the episode content and watermark progress from the earlier, successful chunks in the prior run are preserved, not redone.
 
 ### User Story 3 - Skills evolve conservatively from recurring experience (Priority: P1)
 
@@ -136,6 +138,10 @@ The user finishes a conversation and walks away. Within minutes, an episode capt
 - **FR-022**: The bundled runtime skill [`skills/recall-long-term-memory/SKILL.md`](skills/recall-long-term-memory/SKILL.md) MUST be added to the seeded-skill list (`SEED` in `src/lib/agent/skills/store.ts`, `created_by: seed`) so both fresh and existing installs receive it — it teaches the live assistant to retrieve topics/episodes via `memory_search`/`memory_recall` (FR-017/018).
 - **FR-023**: The bundled development-time skill [`skills/implement-memory-loops/SKILL.md`](skills/implement-memory-loops/SKILL.md) (+ [`references/code-touchpoints.md`](skills/implement-memory-loops/references/code-touchpoints.md)) is the build procedure for the developer sub-agent. It is NOT seeded at runtime; install it into `data/skills/` (or hand it to the developer delegation) for the duration of the implementation. Where it conflicts with this spec, the spec wins.
 
+### Functional Requirements — Fast loop (context-budget chunking)
+
+- **FR-024**: When the transcript slice since the watermark (FR-007) would exceed the model's available context budget in a single call — a backlog accumulated while the fast loop was inactive, or individual turns carrying large tool outputs — the fast loop MUST split it into multiple bounded chunks and review them sequentially instead of sending the whole slice in one call. Chunk boundaries MUST align to turn boundaries (a user message through everything up to the next user message); a tool_call MUST NEVER be split from its tool_result. Each chunk's prompt MUST re-read the episode's current body before building the prompt, so a chunk sees what the immediately preceding chunk in the same run just wrote, and the watermark MUST advance to the end of a chunk as soon as that chunk's review succeeds — not only after the whole slice is processed — so a failure partway through a large backlog does not lose the progress already made; the next scheduled run resumes from the failed chunk rather than re-reviewing the whole backlog. The per-chunk size budget is derived from the configured model's context window (falling back to an assumed window when the provider doesn't declare one), minus reserved headroom for the model's output and for the per-chunk prompt overhead (system prompt, episode body, skill index).
+
 ### Key Entities
 
 - **Episode** — short-term memory unit; one markdown file per conversation per day; the only artifact the fast loop produces.
@@ -143,6 +149,7 @@ The user finishes a conversation and walks away. Within minutes, an episode capt
 - **Topic file** — budgeted, entry-listed long-term memory shard, indexed by one line in `MEMORY.md`, retrieved on demand.
 - **Skill candidate tag** — recurrence evidence carried on episodes; two matching tags satisfy gate (c) of FR-014.
 - **Consolidation run** — locked, batched, oldest-first slow-loop execution.
+- **Review chunk** — a turn-aligned subset of the slice since the watermark, sized to fit the model's context budget (FR-024); a review with one chunk behaves exactly as an unchunked review.
 
 ---
 
@@ -177,6 +184,7 @@ The user finishes a conversation and walks away. Within minutes, an episode capt
 | Prompts | `prompts/fast-loop-system.md`, `prompts/slow-loop-system.md` (bundled) | normative, FR-021 — embed verbatim as module constants |
 | Skill seeding | `skills/recall-long-term-memory/` (bundled) → `SEED` list in `skills/store.ts` | FR-022 |
 | Build procedure | `skills/implement-memory-loops/` (bundled, + `references/code-touchpoints.md`) | FR-023 — for the developer sub-agent, not seeded |
+| Chunked review | `src/lib/agent/memory/fast-loop.ts`: `segmentIntoTurns`, `chunkTurns`, `reviewCharBudget`, `reviewChunk` | FR-024 — mirrors the `chunkCharBudget`/`chunkSpan` pattern in `src/lib/agent/compaction/summarize.ts`; per-chunk budget derived from `getProviderConfig().maxInputTokens` with a 128k-token fallback |
 
 Constraints: no new npm dependencies; no `package.json`/lockfile changes; feature branch `bos/memory-loops`; `npx tsc --noEmit` + `npm run lint` clean; do not run `npm run build` while `next dev` is live.
 
