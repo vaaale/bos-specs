@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Integrations - Master Detail Flow</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: white;
+      line-height: 1.6;
+      font-size: 12px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* Navigation Breadcrumb */
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    .breadcrumb-item {
+      color: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .breadcrumb-item:hover {
+      color: white;
+    }
+
+    .breadcrumb-item.active {
+      color: white;
+      font-weight: 500;
+    }
+
+    .breadcrumb-separator {
+      color: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Page Views */
+    .page-view {
+      display: none;
+    }
+
+    .page-view.active {
+      display: block;
+    }
+
+    /* Integration List View */
+    .integration-list {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+    }
+
+    .list-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-weight: 600;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.4);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .integration-item {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .integration-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .integration-item:last-child {
+      border-bottom: none;
+    }
+
+    .integration-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .status-connected { background: #10b981; }
+    .status-partial { background: #f59e0b; }
+    .status-disconnected { background: rgba(255, 255, 255, 0.3); }
+
+    .integration-name {
+      font-weight: 500;
+      font-size: 13px;
+      color: white;
+    }
+
+    .integration-services {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 2px;
+    }
+
+    .integration-arrow {
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    /* Integration Detail View */
+    .detail-header {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .detail-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: white;
+    }
+
+    .auth-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .auth-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(167, 139, 250, 0.3);
+      color: #c4b5fd;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .auth-details {
+      font-size: 12px;
+    }
+
+    .auth-email {
+      font-weight: 500;
+      color: white;
+      margin-bottom: 2px;
+    }
+
+    .auth-status {
+      font-size: 11px;
+      color: #34d399;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: none;
+    }
+
+    .btn-primary {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.3);
+    }
+
+    /* Services List in Detail */
+    .services-section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: rgba(255, 255, 255, 0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .service-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 14px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .service-item:hover {
+      border-color: rgba(167, 139, 250, 0.5);
+      background: rgba(167, 139, 250, 0.05);
+    }
+
+    .service-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .service-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .service-info {
+      flex: 1;
+    }
+
+    .service-name {
+      font-weight: 500;
+      font-size: 13px;
+      color: white;
+      margin-bottom: 2px;
+    }
+
+    .service-description {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .service-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .service-status {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .status-active {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+    }
+
+    .status-disabled {
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .status-warning {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+    }
+
+    .service-arrow {
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    /* Service Configuration View */
+    .config-header {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .config-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+
+    /* Config Sections */
+    .config-section {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .config-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: rgba(255, 255, 255, 0.9);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Scope Items */
+    .scope-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .scope-item:last-child {
+      border-bottom: none;
+    }
+
+    .scope-name {
+      font-weight: 500;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.9);
+      margin-bottom: 2px;
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px;
+    }
+
+    .scope-description {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* Toggle Switch */
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.2);
+      transition: 0.2s;
+      border-radius: 20px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.2s;
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+      background-color: rgba(167, 139, 250, 0.5);
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(16px);
+    }
+
+    input:disabled + .toggle-slider {
+      cursor: not-allowed;
+      opacity: 0.4;
+    }
+
+    /* Form Elements */
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 6px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      font-size: 11px;
+      background: rgba(0, 0, 0, 0.3);
+      color: white;
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .form-hint {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.4);
+      margin-top: 4px;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .checkbox-group label {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+    }
+
+    /* Webhook Config */
+    .webhook-config {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 6px;
+      padding: 14px;
+    }
+
+    .tip-box {
+      background: rgba(167, 139, 250, 0.1);
+      border-radius: 6px;
+      padding: 12px;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 11px;
+    }
+
+    .tip-box strong {
+      color: #c4b5fd;
+    }
+
+    /* Action Bar */
+    .action-bar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Breadcrumb Navigation -->
+    <div class="breadcrumb" id="breadcrumb">
+      <span class="breadcrumb-item active" onclick="showPage('list')">Integrations</span>
+    </div>
+
+    <!-- Page 1: Integration List -->
+    <div id="page-list" class="page-view active">
+      <div class="integration-list">
+        <div class="list-header">Installed Integrations</div>
+        
+        <div class="integration-item" onclick="showPage('detail')">
+          <div class="integration-left">
+            <span class="status-dot status-connected"></span>
+            <div>
+              <div class="integration-name">GSuite</div>
+              <div class="integration-services">Gmail, Drive, Calendar, Contacts</div>
+            </div>
+          </div>
+          <svg class="integration-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </div>
+
+        <div class="integration-item">
+          <div class="integration-left">
+            <span class="status-dot status-disconnected"></span>
+            <div>
+              <div class="integration-name">Telegram</div>
+              <div class="integration-services">Messages, Channels</div>
+            </div>
+          </div>
+          <svg class="integration-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </div>
+
+        <div class="integration-item">
+          <div class="integration-left">
+            <span class="status-dot status-partial"></span>
+            <div>
+              <div class="integration-name">Slack</div>
+              <div class="integration-services">Messages, Files</div>
+            </div>
+          </div>
+          <svg class="integration-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 2: Integration Detail -->
+    <div id="page-detail" class="page-view">
+      <div class="detail-header">
+        <h2 class="detail-title">GSuite</h2>
+        
+        <div class="auth-card">
+          <div class="auth-info">
+            <div class="user-avatar">JD</div>
+            <div class="auth-details">
+              <div class="auth-email">john.doe@example.com</div>
+              <div class="auth-status">● Connected • Last authenticated: 2 hours ago</div>
+            </div>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+            <button class="btn btn-primary" onclick="reauthorize()">Reauthorize</button>
+            <button class="btn btn-danger" onclick="disconnect()">Disconnect</button>
+          </div>
+        </div>
+
+        <div class="services-section">
+          <h3 class="section-title">Services</h3>
+          
+          <div class="service-item" onclick="showPage('config')">
+            <div class="service-left">
+              <div class="service-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <div class="service-info">
+                <div class="service-name">Gmail</div>
+                <div class="service-description">Read, send, and manage emails with real-time notifications</div>
+              </div>
+            </div>
+            <div class="service-right">
+              <span class="service-status status-active">Active</span>
+              <svg class="service-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="service-item">
+            <div class="service-left">
+              <div class="service-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <div class="service-info">
+                <div class="service-name">Drive</div>
+                <div class="service-description">View and search files in your Google Drive</div>
+              </div>
+            </div>
+            <div class="service-right">
+              <span class="service-status status-active">Active</span>
+              <svg class="service-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="service-item">
+            <div class="service-left">
+              <div class="service-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="16" y1="2" x2="16" y2="6"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/>
+                  <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+              </div>
+              <div class="service-info">
+                <div class="service-name">Calendar</div>
+                <div class="service-description">View calendar events and receive reminders</div>
+              </div>
+            </div>
+            <div class="service-right">
+              <span class="service-status status-disabled">Disabled</span>
+              <svg class="service-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="service-item">
+            <div class="service-left">
+              <div class="service-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+              </div>
+              <div class="service-info">
+                <div class="service-name">Google Photos</div>
+                <div class="service-description">Access your photo library and albums</div>
+              </div>
+            </div>
+            <div class="service-right">
+              <span class="service-status status-warning">Not Granted</span>
+              <svg class="service-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 3: Service Configuration -->
+    <div id="page-config" class="page-view">
+      <div class="config-header">
+        <h2 class="detail-title">Gmail Configuration</h2>
+        
+        <div class="config-status">
+          <span class="status-indicator"></span>
+          <span>Status: Active • Connected as john.doe@example.com</span>
+        </div>
+      </div>
+
+      <!-- Scope Configuration -->
+      <div class="config-section">
+        <h3 class="config-section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          Scope Configuration
+        </h3>
+        
+        <div class="scope-item">
+          <div>
+            <div class="scope-name">gmail.readonly</div>
+            <div class="scope-description">Read email messages and labels</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="scope-item">
+          <div>
+            <div class="scope-name">gmail.modify</div>
+            <div class="scope-description">Read, modify, and manage emails (includes readonly)</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="scope-item">
+          <div>
+            <div class="scope-name">gmail.send</div>
+            <div class="scope-description">Send emails from your account</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="tip-box" style="margin-top: 14px;">
+          <strong>💡 Tip:</strong> Changes take effect immediately. Disabling a scope will stop the associated functionality.
+        </div>
+      </div>
+
+      <!-- Polling Configuration -->
+      <div class="config-section">
+        <h3 class="config-section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          Polling Configuration
+        </h3>
+        
+        <div class="checkbox-group">
+          <input type="checkbox" id="polling-enabled" checked>
+          <label for="polling-enabled">Enable periodic polling for new emails</label>
+        </div>
+
+        <div class="form-group" style="margin-top: 12px;">
+          <label class="form-label" for="poll-interval">Polling Interval (seconds)</label>
+          <input type="number" id="poll-interval" class="form-input" value="300" min="60" max="3600">
+          <div class="form-hint">Check for new emails every 5 minutes. Recommended: 60-600 seconds.</div>
+        </div>
+
+        <div class="checkbox-group">
+          <input type="checkbox" id="notify-new" checked>
+          <label for="notify-new">Show BOS notifications for new emails</label>
+        </div>
+      </div>
+
+      <!-- Webhook Configuration -->
+      <div class="config-section">
+        <h3 class="config-section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          Webhook Configuration (Real-time)
+        </h3>
+        
+        <div class="webhook-config">
+          <div class="checkbox-group">
+            <input type="checkbox" id="webhooks-enabled">
+            <label for="webhooks-enabled">Use webhooks instead of polling (requires public BOS URL)</label>
+          </div>
+
+          <div class="form-group" style="margin-top: 12px;">
+            <label class="form-label">Webhook URL</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" class="form-input" value="https://mydomain.com/api/integrations/webhooks/gsuite/gmail" readonly>
+              <button class="btn btn-secondary" style="white-space: nowrap;">Copy</button>
+            </div>
+            <div class="form-hint">Configure this URL in your Google Cloud Pub/Sub push subscription</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Shared Secret (HMAC)</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="password" class="form-input" value="•••••••••••••••••••••••••••••">
+              <button class="btn btn-secondary" style="white-space: nowrap;">Regenerate</button>
+            </div>
+            <div class="form-hint">Use this secret to verify webhook signatures in Google Cloud Console</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Events to Subscribe To</label>
+            <div class="checkbox-group">
+              <input type="checkbox" id="evt-new" checked>
+              <label for="evt-new">new_email</label>
+            </div>
+            <div class="checkbox-group">
+              <input type="checkbox" id="evt-sent" checked>
+              <label for="evt-sent">email_sent</label>
+            </div>
+            <div class="checkbox-group">
+              <input type="checkbox" id="evt-label">
+              <label for="evt-label">label_updated</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="tip-box" style="margin-top: 14px; background: rgba(245, 158, 11, 0.1); color: rgba(255,255,255,0.7);">
+          <strong>⚠️ Setup Required:</strong> To enable webhooks, you must create a Google Cloud Pub/Sub topic and configure a push subscription. See documentation for instructions.
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="action-bar">
+        <button class="btn btn-secondary" onclick="showPage('detail')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveConfig()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showPage(pageId) {
+      // Hide all pages
+      document.querySelectorAll('.page-view').forEach(page => {
+        page.classList.remove('active');
+      });
+      
+      // Show selected page
+      document.getElementById('page-' + pageId).classList.add('active');
+      
+      // Update breadcrumb
+      updateBreadcrumb(pageId);
+    }
+
+    function updateBreadcrumb(pageId) {
+      const breadcrumb = document.getElementById('breadcrumb');
+      
+      if (pageId === 'list') {
+        breadcrumb.innerHTML = '<span class="breadcrumb-item active">Integrations</span>';
+      } else if (pageId === 'detail') {
+        breadcrumb.innerHTML = `
+          <span class="breadcrumb-item" onclick="showPage('list')">Integrations</span>
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-item active">GSuite</span>
+        `;
+      } else if (pageId === 'config') {
+        breadcrumb.innerHTML = `
+          <span class="breadcrumb-item" onclick="showPage('list')">Integrations</span>
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-item" onclick="showPage('detail')">GSuite</span>
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-item active">Gmail</span>
+        `;
+      }
+    }
+
+    function testConnection() {
+      alert('Testing connection to GSuite services...\n\n✓ Gmail: Connected\n✓ Drive: Connected\n✓ Calendar: Connected (disabled)\n✗ Photos: Not authorized');
+    }
+
+    function reauthorize() {
+      alert('Redirecting to Google OAuth consent screen...\n\nYou will be able to add or remove permissions.');
+    }
+
+    function disconnect() {
+      if (confirm('Are you sure you want to disconnect GSuite? All data and settings will be lost.')) {
+        alert('GSuite integration disconnected. You can reconnect anytime from Settings.');
+      }
+    }
+
+    function saveConfig() {
+      alert('Configuration saved!\n\nChanges have been applied immediately:\n- Scope preferences updated\n- Polling interval: 300 seconds\n- Webhooks: Disabled');
+      showPage('detail');
+    }
+  </script>
+</body>
+</html>

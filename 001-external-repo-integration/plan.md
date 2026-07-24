@@ -1,6 +1,6 @@
 # Implementation Plan: External Repository Integration
 
-**Branch**: `bos/gitfs-external-repository-support` | **Date**: 2026-07-23 | **Spec**: [user-specs/001-external-repo-integration/spec.md](user-specs/001-external-repo-integration/spec.md)
+**Branch**: `bos/gitfs-external-repository-support` | **Date**: 2026-07-23 | **Spec**: [bos-system-specs/001-external-repo-integration/spec.md](bos-system-specs/001-external-repo-integration/spec.md)
 
 **Input**: Feature specification from `/specs/001-external-repo-integration/spec.md`
 
@@ -34,7 +34,8 @@ Add support for registering external git repositories as remotes on BOS repos (s
 
 **Constraints**:
 - All git operations serialized via `git-lock`
-- No rebases — only merge, merge --squash, commit strategies
+- Conflict resolution runs the shared reconciliation pipeline (US6): rollback tag → configured strategy (merge / merge --squash / commit) → scripted rebase-based fallback on conflict → DevOps Agent escalation if both fail. Rebase IS used (as an automatic fallback, and as the mechanism the Developer sub-agent may use once escalated) — superseding the original "no rebases" restriction.
+- Force-push is a separate, always-explicit, always-user-confirmed action (`--force-with-lease`), never part of the automatic pipeline
 - VFS mount paths restricted to `data/vfs/` (not under `apps/` or `workflows/`)
 - SSH passphrases never via agent tools — secure UI channel only
 - `git://` protocol rejected; HTTPS/HTTP (opt-in)/SSH allowlist only
@@ -80,12 +81,28 @@ src/lib/gitops/
 │   └── gitlab.ts        # GitLab OAuth provider config
 └── logging.ts           # Structured logging (levels, sanitization, rotation)
 
+src/lib/gitops/
+├── reconcile.ts          # Shared reconciliation pipeline (US6): rollback tag,
+│                         # remote-sync, strategy attempt, rebase fallback,
+│                         # DevOps Agent escalation trigger — used by git_merge,
+│                         # git_sync, and (via HTTP) the Supervisor's promote()
+└── rebase-onto-remote.ts # Scripted rebase-based fallback used by reconcile.ts
+
 src/lib/assistant/tools/server/
 ├── git-remotes.ts       # git_add_remote, git_remove_remote, git_list_remotes
 ├── git-push.ts          # git_push, git_push_all_remotes
-├── git-merge.ts         # git_merge, git_sync
+├── git-merge.ts         # git_merge, git_sync — now thin wrappers over reconcile.ts
 ├── git-mount.ts         # git_mount, git_unmount, git_list_mounts, git_mount_status
 └── git-fetch.ts         # git_fetch, git_list_branches
+
+seed/agents/devops/
+└── AGENT.md             # DevOps Agent (type: local; tools: dev_delegate + read-only
+                          # inspection; skills: devops-merge-conflict-resolution)
+
+seed/skills/devops-merge-conflict-resolution/
+└── SKILL.md              # What the DevOps Agent may/may not do (delegate to
+                           # Developer, never push, never force-push, verify
+                           # build/tests, respect the assigned worktree only)
 
 src/lib/integrations/oauth/
 ├── github-git.ts        # GitHub git OAuth integration (new)

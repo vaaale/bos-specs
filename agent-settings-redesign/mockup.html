@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Settings Mockup v4 (BOS Style)</title>
+    <style>
+        :root {
+            /* BOS Color Palette - Opacity based */
+            --bos-bg: #0f1117;
+            --bos-surface: #15171e;
+            --bos-border: rgba(255, 255, 255, 0.1);
+            --bos-text-primary: rgba(255, 255, 255, 1);
+            --bos-text-secondary: rgba(255, 255, 255, 0.7);
+            --bos-text-muted: rgba(255, 255, 255, 0.5);
+            --bos-surface-light: rgba(255, 255, 255, 0.15);
+            --bos-surface-hover: rgba(255, 255, 255, 0.1);
+            --bos-accent: #8b5cf6; /* violet */
+            --bos-accent-hover: rgba(139, 92, 246, 0.8);
+            --bos-danger: #f97316; /* amber/orange for danger */
+            --bos-success: #10b981; /* emerald */
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: var(--bos-bg); 
+            color: var(--bos-text-primary); 
+            height: 100vh; 
+            overflow: hidden; 
+            display: flex; 
+            flex-direction: column;
+            font-size: 12px; /* text-xs default */
+        }
+        
+        .app-header { 
+            flex-shrink: 0;
+            background: var(--bos-surface);
+            padding: 6px 12px; 
+            border-bottom: 1px solid var(--bos-border); 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+        }
+        
+        .app-title { font-size: 13px; font-weight: 500; color: var(--bos-text-primary); }
+        
+        .close-btn { 
+            background: none; 
+            border: none; 
+            font-size: 20px; 
+            cursor: pointer; 
+            color: var(--bos-text-muted); 
+            padding: 4px;
+            border-radius: 4px;
+            transition: background-color 0.15s;
+        }
+        
+        .close-btn:hover { 
+            background: var(--bos-surface-hover);
+            color: #ff5f57; /* macOS close button red */
+        }
+
+        /* Auto-save indicator */
+        .save-status {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: var(--bos-success);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .save-status.visible {
+            opacity: 1;
+        }
+
+        .save-icon {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+        
+        .settings-container { 
+            flex: 1; 
+            display: flex; 
+            min-height: 0; /* Required for scroll to work */
+            background: var(--bos-surface); 
+            width: 100%; 
+        }
+        
+        .agent-list { 
+            width: 260px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.02); 
+            border-right: 1px solid var(--bos-border); 
+            display: flex; 
+            flex-direction: column; 
+        }
+        
+        .list-header { 
+            padding: 12px; 
+            border-bottom: 1px solid var(--bos-border); 
+            background: var(--bos-surface); 
+        }
+        
+        .list-title { 
+            font-size: 11px; 
+            font-weight: 600; 
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px; 
+            color: var(--bos-text-muted);
+        }
+        
+        .new-agent-btn { 
+            width: 100%; 
+            padding: 6px 10px; 
+            background: rgba(255, 255, 255, 0.1); 
+            color: var(--bos-text-primary);
+            border: none; 
+            border-radius: 4px; 
+            font-size: 11px; 
+            font-weight: 500; 
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+        
+        .new-agent-btn:hover { 
+            background: rgba(255, 255, 255, 0.15); 
+        }
+        
+        .agents-list { 
+            flex: 1; 
+            overflow-y: auto; 
+            padding: 8px; 
+        }
+        
+        .agent-item { 
+            padding: 10px; 
+            margin-bottom: 4px; 
+            background: var(--bos-surface); 
+            border-radius: 6px; 
+            cursor: pointer; 
+            border: 1px solid transparent; 
+            transition: all 0.15s;
+        }
+        
+        .agent-item:hover { 
+            border-color: rgba(255, 255, 255, 0.2); 
+            background: var(--bos-surface-hover);
+        }
+        
+        .agent-item.selected { 
+            border-color: var(--bos-accent); 
+            background: var(--bos-surface-light);
+        }
+        
+        .agent-name { 
+            font-weight: 500; 
+            font-size: 12px; 
+            margin-bottom: 3px; 
+            color: var(--bos-text-primary);
+        }
+        
+        .agent-desc { 
+            font-size: 11px; 
+            color: var(--bos-text-muted); 
+            line-height: 1.4; 
+            display: -webkit-box; 
+            -webkit-line-clamp: 2; 
+            -webkit-box-orient: vertical; 
+            overflow: hidden; 
+        }
+        
+        .agent-details { 
+            flex: 1; 
+            min-height: 0; /* Required for scroll */
+            overflow-y: auto; 
+            background: var(--bos-surface);
+            padding: 16px;
+        }
+        
+        .details-header { 
+            margin-bottom: 20px; 
+            padding-bottom: 16px; 
+            border-bottom: 1px solid var(--bos-border); 
+        }
+        
+        .form-group { 
+            margin-bottom: 14px; 
+        }
+        
+        .form-label { 
+            display: block; 
+            font-size: 11px; 
+            color: var(--bos-text-muted); 
+            margin-bottom: 4px; 
+        }
+        
+        .form-input, .form-textarea { 
+            width: 100%; 
+            padding: 6px 8px; 
+            background: rgba(0, 0, 0, 0.3); 
+            border: 1px solid var(--bos-border); 
+            border-radius: 4px; 
+            font-size: 12px; 
+            color: var(--bos-text-primary);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        
+        .form-input:focus, .form-textarea:focus { 
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .form-textarea { 
+            min-height: 80px; 
+            resize: vertical; 
+            font-family: 'Monaco', 'Menlo', monospace; 
+            line-height: 1.5; 
+        }
+        
+        .instructions-section { 
+            margin-bottom: 20px; 
+        }
+        
+        .instructions-label { 
+            font-size: 12px; 
+            font-weight: 600; 
+            margin-bottom: 8px; 
+            color: var(--bos-text-primary);
+        }
+        
+        .helper-text { 
+            font-size: 11px; 
+            color: var(--bos-text-muted); 
+            margin-top: 6px; 
+            line-height: 1.4;
+        }
+        
+        .capabilities-section { 
+            background: rgba(255, 255, 255, 0.02); 
+            border-radius: 8px; 
+            padding: 16px; 
+            margin-bottom: 20px; 
+            border: 1px solid var(--bos-border);
+        }
+        
+        .section-title { 
+            font-size: 11px; 
+            font-weight: 600; 
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 14px; 
+            padding-bottom: 8px; 
+            border-bottom: 1px solid var(--bos-border);
+            color: var(--bos-text-muted);
+        }
+        
+        .capability-group { 
+            margin-bottom: 16px; 
+        }
+        
+        .capability-title { 
+            font-size: 11px; 
+            font-weight: 600; 
+            color: var(--bos-text-secondary); 
+            margin-bottom: 8px; 
+        }
+        
+        /* Tool Categories Grid */
+        .tool-category {
+            background: var(--bos-surface);
+            border: 1px solid var(--bos-border);
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+        
+        .tool-category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        
+        .tool-category-name {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--bos-accent);
+        }
+        
+        .tool-category-toggle {
+            font-size: 10px;
+            color: var(--bos-text-muted);
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        
+        .tool-category-toggle:hover {
+            background: var(--bos-surface-hover);
+        }
+        
+        .tool-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 4px;
+        }
+        
+        .tool-item { 
+            display: flex; 
+            flex-direction: column; /* Stack name and desc */
+            align-items: flex-start; 
+            padding: 4px 6px; 
+            background: rgba(255, 255, 255, 0.02); 
+            border-radius: 4px; 
+            border: 1px solid var(--bos-border);
+            transition: all 0.15s;
+        }
+        
+        .tool-item:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            background: var(--bos-surface-hover);
+        }
+        
+        .tool-checkbox-row {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .tool-checkbox { 
+            width: 14px; 
+            height: 14px; 
+            margin-right: 6px; 
+            accent-color: var(--bos-accent);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .tool-name { 
+            font-size: 11px; 
+            color: var(--bos-text-primary); 
+            font-family: 'Monaco', 'Menlo', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Descriptions */
+        .item-description {
+            display: block;
+            font-size: 10px;
+            color: var(--bos-text-muted);
+            margin-top: 2px;
+            line-height: 1.3;
+        }
+
+        .capability-list { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); 
+            gap: 6px; 
+        }
+        
+        .capability-item { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: flex-start; 
+            padding: 8px; 
+            background: var(--bos-surface); 
+            border-radius: 6px; 
+            border: 1px solid var(--bos-border);
+            transition: all 0.15s;
+        }
+        
+        .capability-item:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            background: var(--bos-surface-hover);
+        }
+
+        .capability-header {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 3px;
+        }
+        
+        .capability-checkbox { 
+            width: 14px; 
+            height: 14px; 
+            margin-right: 6px; 
+            accent-color: var(--bos-accent);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .capability-name { 
+            font-size: 11px; 
+            color: var(--bos-text-primary); 
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        /* Danger Zone */
+        .danger-zone {
+            margin-top: 32px;
+            padding-top: 16px;
+            border-top: 1px solid var(--bos-border);
+        }
+
+        .danger-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--bos-danger);
+            margin-bottom: 8px;
+        }
+
+        .danger-btn {
+            background: transparent;
+            border: 1px solid rgba(249, 115, 22, 0.3);
+            color: var(--bos-danger);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .danger-btn:hover {
+            background: rgba(249, 115, 22, 0.1);
+            border-color: rgba(249, 115, 22, 0.5);
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header">
+        <div class="app-title">Agent Settings</div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="save-status" id="saveStatus">
+                <svg class="save-icon" viewBox="0 0 24 24">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+                <span>Saved</span>
+            </div>
+            <button class="close-btn" onclick="window.close()">×</button>
+        </div>
+    </div>
+    <div class="settings-container">
+        <div class="agent-list">
+            <div class="list-header">
+                <h2 class="list-title">Agent Personalities</h2>
+                <button class="new-agent-btn" onclick="alert('Create new agent dialog would open here')">+ New Agent</button>
+            </div>
+            <div class="agents-list">
+                <div class="agent-item selected" onclick="selectAgent('assistant')">
+                    <div class="agent-name">Assistant</div>
+                    <div class="agent-desc">The default BrowserOS assistant personality for general tasks and conversations.</div>
+                </div>
+                <div class="agent-item" onclick="selectAgent('writer')">
+                    <div class="agent-name">Writer</div>
+                    <div class="agent-desc">Drafts and edits documents, articles, and creative content in the virtual file system.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="agent-details">
+            <div class="details-header">
+                <div class="form-group">
+                    <label class="form-label">Agent Name</label>
+                    <input type="text" class="form-input" value="Assistant" id="agentName" onblur="autoSave()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Role Description</label>
+                    <textarea class="form-textarea" style="min-height: 60px;" id="agentDesc" onblur="autoSave()">The default BrowserOS assistant personality for general tasks and conversations.</textarea>
+                </div>
+            </div>
+
+            <div class="instructions-section">
+                <div class="instructions-label">System Prompt / Personality Instructions</div>
+                <textarea class="form-textarea" id="systemPrompt" style="min-height: 160px;" onblur="autoSave()">You are the default BrowserOS assistant. Your role is to help users with general tasks, answer questions, and provide guidance on using the operating system features. Be helpful, concise, and friendly in your responses.</textarea>
+                <div class="helper-text">These instructions define the agent's behavior, tone, and capabilities. Changes take effect immediately for new conversations.</div>
+            </div>
+
+            <div class="capabilities-section">
+                <h2 class="section-title">Capabilities</h2>
+                
+                <!-- 1. SKILLS ACCESS -->
+                <div class="capability-group">
+                    <div class="capability-title">Skills Access</div>
+                    <div class="capability-list">
+                        <div class="capability-item">
+                            <div class="capability-header">
+                                <input type="checkbox" class="capability-checkbox" checked onchange="autoSave()">
+                                <span class="capability-name">Memory Management</span>
+                            </div>
+                            <span class="item-description">Saves and retrieves long-term memories about the user and context.</span>
+                        </div>
+                        <div class="capability-item">
+                            <div class="capability-header">
+                                <input type="checkbox" class="capability-checkbox" checked onchange="autoSave()">
+                                <span class="capability-name">File Organizer</span>
+                            </div>
+                            <span class="item-description">Automatically categorizes, renames, and moves files based on content.</span>
+                        </div>
+                        <div class="capability-item">
+                            <div class="capability-header">
+                                <input type="checkbox" class="capability-checkbox" checked onchange="autoSave()">
+                                <span class="capability-name">Web Research</span>
+                            </div>
+                            <span class="item-description">Fetches and summarizes information from multiple web sources.</span>
+                        </div>
+                        <div class="capability-item">
+                            <div class="capability-header">
+                                <input type="checkbox" class="capability-checkbox" onchange="autoSave()">
+                                <span class="capability-name">Code Review</span>
+                            </div>
+                            <span class="item-description">Analyzes code changes for bugs, style issues, and security vulnerabilities.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. MCP SERVERS -->
+                <div class="capability-group">
+                    <div class="capability-title">MCP Servers</div>
+                    <div class="capability-list">
+                        <div class="capability-item">
+                            <div class="capability-header">
+                                <input type="checkbox" class="capability-checkbox" checked onchange="autoSave()">
+                                <span class="capability-name">GitHub MCP</span>
+                            </div>
+                            <span class="item-description">Manages repositories, issues, PRs, and code search on GitHub.</span>
+                        </div>
+                        <div class="capability-item">
+                            <div class="capability-header">
+                                <input type="checkbox" class="capability-checkbox" checked onchange="autoSave()">
+                                <span class="capability-name">GitLab MCP</span>
+                            </div>
+                            <span class="item-description">Interacts with GitLab projects, merge requests, and CI/CD pipelines.</span>
+                        </div>
+                        <div class="capability-item">
+                            <div class="capability-header">
+                                <input type="checkbox" class="capability-checkbox" onchange="autoSave()">
+                                <span class="capability-name">Docker MCP</span>
+                            </div>
+                            <span class="item-description">Controls local Docker containers, images, and networks.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. TOOL ACCESS -->
+                <div class="capability-group">
+                    <div class="capability-title">Tool Access (Categorized)</div>
+                    
+                    <!-- OS Category -->
+                    <div class="tool-category">
+                        <div class="tool-category-header">
+                            <span class="tool-category-name">OS</span>
+                            <button class="tool-category-toggle" onclick="toggleCategory('os'); autoSave()">Toggle All</button>
+                        </div>
+                        <div class="tool-list" id="os-tools">
+                            <div class="tool-item">
+                                <div class="tool-checkbox-row">
+                                    <input type="checkbox" class="tool-checkbox" checked onchange="autoSave()">
+                                    <span class="tool-name">open_app</span>
+                                </div>
+                                <span class="item-description">Launches a specified application by ID.</span>
+                            </div>
+                            <div class="tool-item">
+                                <div class="tool-checkbox-row">
+                                    <input type="checkbox" class="tool-checkbox" checked onchange="autoSave()">
+                                    <span class="tool-name">close_window</span>
+                                </div>
+                                <span class="item-description">Closes the currently active window.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FILES Category -->
+                    <div class="tool-category">
+                        <div class="tool-category-header">
+                            <span class="tool-category-name">FILES</span>
+                            <button class="tool-category-toggle" onclick="toggleCategory('files'); autoSave()">Toggle All</button>
+                        </div>
+                        <div class="tool-list" id="files-tools">
+                            <div class="tool-item">
+                                <div class="tool-checkbox-row">
+                                    <input type="checkbox" class="tool-checkbox" checked onchange="autoSave()">
+                                    <span class="tool-name">read_file</span>
+                                </div>
+                                <span class="item-description">Reads the contents of a text file.</span>
+                            </div>
+                            <div class="tool-item">
+                                <div class="tool-checkbox-row">
+                                    <input type="checkbox" class="tool-checkbox" checked onchange="autoSave()">
+                                    <span class="tool-name">write_file</span>
+                                </div>
+                                <span class="item-description">Creates or overwrites a file with new content.</span>
+                            </div>
+                            <div class="tool-item">
+                                <div class="tool-checkbox-row">
+                                    <input type="checkbox" class="tool-checkbox" onchange="autoSave()">
+                                    <span class="tool-name">delete_path</span>
+                                </div>
+                                <span class="item-description" style="color: #fca5a5;">⚠️ Permanently deletes a file or folder.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- WEB Category -->
+                    <div class="tool-category">
+                        <div class="tool-category-header">
+                            <span class="tool-category-name">WEB</span>
+                            <button class="tool-category-toggle" onclick="toggleCategory('web'); autoSave()">Toggle All</button>
+                        </div>
+                        <div class="tool-list" id="web-tools">
+                            <div class="tool-item">
+                                <div class="tool-checkbox-row">
+                                    <input type="checkbox" class="tool-checkbox" checked onchange="autoSave()">
+                                    <span class="tool-name">open_url</span>
+                                </div>
+                                <span class="item-description">Opens a URL in the system browser.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Danger Zone -->
+                <div class="danger-zone">
+                    <div class="danger-title">Danger Zone</div>
+                    <button class="danger-btn" onclick="deleteAgent()">Delete Agent "Assistant"</button>
+                    <div class="helper-text" style="margin-top: 6px;">This action cannot be undone. The agent will be permanently removed.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let saveTimeout;
+
+        function autoSave() {
+            const status = document.getElementById('saveStatus');
+            
+            status.classList.add('visible');
+            status.querySelector('span').textContent = 'Saving...';
+            
+            if (saveTimeout) clearTimeout(saveTimeout);
+            
+            saveTimeout = setTimeout(() => {
+                status.querySelector('span').textContent = 'Saved';
+                setTimeout(() => {
+                    status.classList.remove('visible');
+                }, 2000);
+            }, 500);
+        }
+
+        function deleteAgent() {
+            if (confirm('Are you sure you want to permanently delete the "Assistant" agent? This cannot be undone.')) {
+                alert('Agent deleted.');
+            }
+        }
+        
+        function selectAgent(agentId) {
+            document.querySelectorAll('.agent-item').forEach(item => item.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+            
+            const data = {
+                'assistant': { name: 'Assistant', desc: 'The default BrowserOS assistant personality for general tasks and conversations.', prompt: 'You are the default BrowserOS assistant. Your role is to help users with general tasks, answer questions, and provide guidance on using the operating system features. Be helpful, concise, and friendly in your responses.' },
+                'writer': { name: 'Writer', desc: 'Drafts and edits documents, articles, and creative content in the virtual file system.', prompt: 'You are the Writer agent. Your role is to draft and edit documents, articles, and creative content. Be focused on clarity, style, and user intent.' }
+            };
+            
+            if (data[agentId]) {
+                document.getElementById('agentName').value = data[agentId].name;
+                document.getElementById('agentDesc').value = data[agentId].desc;
+                document.getElementById('systemPrompt').value = data[agentId].prompt;
+                
+                document.getElementById('saveStatus').classList.remove('visible');
+            }
+        }
+        
+        function toggleCategory(category) {
+            const container = document.getElementById(category + '-tools');
+            const checkboxes = container.querySelectorAll('.tool-checkbox');
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            
+            checkboxes.forEach(cb => cb.checked = !allChecked);
+        }
+    </script>
+</body>
+</html>

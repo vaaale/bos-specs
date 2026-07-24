@@ -82,7 +82,7 @@ Users can clone external repositories to any path within their VFS (e.g., `/Proj
 
 5. **Given** a mounted repo, **When** the user unmounts it, **Then** the VFS directory is removed but the bare clone cache is preserved for quick remounting.
 
-6. **Given** a sync operation detects a conflict (local and remote have diverged), **When** the user triggers a sync, **Then** the system presents a conflict resolution dialog offering three resolution strategies: (a) **merge --squash** (recommended — squashes remote commits into a single commit), (b) **merge** (standard merge commit), or (c) **commit** (stash remote changes and commit locally). The system MUST ask the user for confirmation before the agent performs the resolution. The user MUST have the option to abort without resolving.
+6. **Given** a sync operation detects a conflict (local and remote have diverged), **When** the user triggers a sync, **Then** the system resolves it automatically without a blocking confirmation dialog, per the shared reconciliation pipeline (User Story 6): create a rollback tag, attempt the configured strategy (merge --squash / merge / commit), and if that hits a real conflict, attempt a scripted rebase-based fallback. If both automatic attempts fail, escalate to the DevOps Agent rather than asking the user to choose a strategy synchronously.
 
 7. **Given** a user mounts a repo to a path within `data/vfs/`, **When** they view it in the Files app, **Then** it appears as a regular directory with git-aware tooling available.
 
@@ -104,7 +104,7 @@ Users can see the sync status of all remotes and mounted repos, including how ma
 
 3. **Given** a remote that is ahead of the local branch, **When** the user clicks "Sync," **Then** the local branch is updated with the remote's commits.
 
-4. **Given** a remote with conflicting commits (both local and remote have diverged), **When** the user attempts to sync, **Then** the system reports the conflict and presents a resolution dialog offering: (a) **merge --squash** (recommended — squashes remote commits into a single commit), (b) **merge** (standard merge commit), or (c) **commit** (stash remote changes and commit locally). The user MUST confirm the resolution before the agent executes it.
+4. **Given** a remote with conflicting commits (both local and remote have diverged), **When** the user attempts to sync, **Then** the system runs the shared reconciliation pipeline (User Story 6) automatically: rollback tag → configured strategy (merge --squash / merge / commit) → scripted rebase fallback on conflict → DevOps Agent escalation if both automatic attempts fail. No synchronous strategy-choice dialog is presented; the user's oversight point is the DevOps Agent's chat (visible, stoppable, resumable), not a blocking confirm step.
 
 5. **Given** auto-sync is enabled for a remote, **When** the user opens the Files app or triggers a push, **Then** the remote is automatically fetched and the status is updated.
 
@@ -128,9 +128,39 @@ Agents can interact with all repository management features via tools, including
 
 4. **Given** an agent needs to check sync status, **When** it calls `git_mount_status` or `git_list_remotes`, **Then** it gets the current state of all remotes and mounts.
 
-5. **Given** an agent needs to resolve a branch conflict, **When** it calls `git_merge` with `confirm: true`, **Then** the user is presented with resolution options (merge --squash recommended, merge, commit) and the agent executes only after explicit user approval.
+5. **Given** an agent needs to resolve a branch conflict, **When** it calls `git_merge`, **Then** the tool runs the shared reconciliation pipeline (rollback tag → strategy → rebase fallback → DevOps Agent escalation) automatically and returns either a resolved result or a `devopsConversationId` pointing at the escalated agent conversation — never a synchronous confirmation prompt.
 
 6. **Given** an agent encounters an auth error, **When** it reports the error, **Then** the error includes enough context for the user to fix it (e.g., "OAuth token expired — reconnect via Settings").
+
+---
+
+### User Story 6 - Automated Conflict Resolution via DevOps Agent (Priority: P1)
+
+Every git-backed content root in BOS (GitFS instance) — the BOS source repo, spec stores, the installed-apps content repo, and VFS-mounted repos alike — resolves push/pull conflicts through **one shared reconciliation pipeline**, not per-surface bespoke logic and not a synchronous confirmation dialog. The pipeline tries increasingly capable automatic steps and only falls back to a supervised, autonomous DevOps Agent when scripted reconciliation can't complete safely — at which point the user's oversight is a visible, stoppable, resumable agent chat rather than a modal choice between merge strategies.
+
+**Why this priority**: Conflicts are the primary reason pushes/promotes fail, and every prior design (per-surface confirm dialogs) pushed the resolution burden back onto the user synchronously, at the exact moment they're blocked. A single pipeline used everywhere means one place to get conflict handling right, and a fallback that actually resolves things (a coding agent with full file/bash tools) instead of a dialog offering the same three strategies that already failed.
+
+**Independent Test**: A feature branch and the base branch are made to diverge (both have unique commits). Promoting is triggered. The pipeline creates a rollback tag, syncs base with origin, attempts `merge --squash`, hits a conflict, attempts a scripted rebase, hits a conflict again, and escalates to the DevOps Agent. The agent (via `dev_delegate`) resolves the conflict in the existing Supervisor-tracked preview worktree, commits, and the promote pipeline resumes to completion. The resulting conversation remains in the Assistant app's conversation list afterward.
+
+**Acceptance Scenarios**:
+
+1. **Given** any GitFS instance (BOS source, a spec store, the apps repo, or a VFS mount) is being reconciled with its remote, **When** reconciliation begins, **Then** a rollback tag is created on the current HEAD before any merge/rebase is attempted, so the pre-reconciliation state is always recoverable.
+
+2. **Given** a rollback tag has been created, **When** reconciliation proceeds, **Then** the local branch is first synced with the remote (fetch + fast-forward where possible) before any feature/local content is merged in, reducing the odds of a conflict that a plain fast-forward would have avoided.
+
+3. **Given** the configured strategy (merge --squash / merge / commit) completes cleanly, **When** reconciliation finishes, **Then** no fallback or escalation occurs and the operation reports success exactly as before.
+
+4. **Given** the configured strategy hits a real conflict, **When** the pipeline retries, **Then** it aborts the failed attempt cleanly (`git reset --hard`/`git clean -fd` for a failed `merge --squash`, which never sets `MERGE_HEAD`; `git rebase --abort` plus removal of `.git/rebase-merge`/`.git/rebase-apply` for a failed rebase) before trying the next strategy, so the working tree is never left in a half-resolved state between attempts.
+
+5. **Given** both the configured strategy and the scripted rebase fallback fail with conflicts, **When** the pipeline escalates, **Then** it creates (or reuses) a persisted Assistant conversation scoped to the "devops" agent, pre-sets that conversation's active feature branch so `dev_delegate` can target the existing Supervisor-tracked worktree without an interactive branch-setup step, and starts a run with full context (repo, remote, branch, base commit, conflicting files).
+
+6. **Given** an escalated conversation, **When** the DevOps Agent works the conflict, **Then** it delegates the actual file-level resolution to the Developer sub-agent via `dev_delegate` rather than editing files itself, verifies the result (no conflict markers remain, build/tests pass if present), and reports success or failure — it never force-pushes and never pushes at all itself; the final push remains the caller's responsibility (e.g. the Supervisor's point-of-no-return step, or a subsequent `git_push` call).
+
+7. **Given** a caller (e.g. the Supervisor's `promote()`) is blocked waiting on an escalated run, **When** the browser tab that initiated the operation refreshes or disconnects, **Then** the server-side wait is unaffected (it is not tied to that HTTP connection) and continues polling for run completion; the UI reflects the in-progress escalation via polled state (a distinct status plus the conversation id) rather than an ambiguous "stuck" indicator, and a repeat attempt on the same target while an escalation is in progress is rejected/re-surfaces the same conversation instead of starting a second parallel one.
+
+8. **Given** an escalated run exceeds a maximum wait duration with no terminal outcome, **When** the timeout is reached, **Then** the caller stops waiting and reports a distinct "escalation timed out" outcome (not a generic failure) — the conversation is left exactly as it was (still resumable/stoppable) so the user can pick it back up whenever they return.
+
+9. **Given** a DevOps Agent conversation, **When** it is created, **Then** it is a normal, persisted conversation (visible in the Assistant app's conversation list) from the moment it's created — never an ephemeral or hidden run — so it remains discoverable and resumable regardless of what happens to the operation that triggered it.
 
 ---
 
@@ -139,47 +169,45 @@ Agents can interact with all repository management features via tools, including
 #### git_merge
 ```typescript
 tool: git_merge
-  description: "Resolve a branch conflict by merging remote changes"
+  description: "Resolve a branch conflict by merging remote changes. Runs the shared reconciliation pipeline (User Story 6) automatically — no confirmation flag; on unresolvable conflict it escalates to the DevOps Agent instead of failing back to the caller."
   params: {
     repoPath: string,           // e.g. "." or "/Projects/my-webapp"
     remote: string,             // e.g. "origin", "github-work"
     branch: string,             // e.g. "main", "develop"
-    strategy: "merge-squash" | "merge" | "commit",
-    confirm: boolean            // MUST be true — requires explicit user approval
+    strategy: "merge-squash" | "merge" | "commit"
   }
   returns: {
-    status: "success" | "cancelled" | "failed",
-    method: string,             // e.g. "merge --squash"
+    status: "success" | "escalated" | "failed",
+    method: string,             // e.g. "merge --squash", "rebase-fallback"
     commitMessage: string,      // if strategy is commit
+    devopsConversationId?: string, // present when status is "escalated"
     error?: { code, message, suggestion? }
   }
 ```
 
-**Behavior**:
-- `strategy: "merge-squash"` → `git merge --squash <remote>/<branch>` then `git commit`
-- `strategy: "merge"` → `git merge <remote>/<branch>` (standard merge commit)
-- `strategy: "commit"` → `git stash --include-untracked` (save local changes), then commit remote changes, then `git stash pop`
-- `confirm: false` → Return `status: "cancelled"` with error message "requires user confirmation"
-- MUST serialize via git-lock to prevent concurrent operations
+**Behavior** (shared reconciliation pipeline — see User Story 6):
+1. Create a rollback tag on the current HEAD.
+2. Sync the local branch with `<remote>/<branch>` first (fetch + fast-forward where possible).
+3. Attempt the requested strategy: `merge-squash` → `git merge --squash <remote>/<branch>` then commit; `merge` → `git merge <remote>/<branch>`; `commit` → `git stash --include-untracked`, commit remote changes, `git stash pop`.
+4. On conflict, abort cleanly (`git reset --hard`/`git clean -fd` for a failed `merge --squash` — it never sets `MERGE_HEAD`) and attempt a scripted rebase-based fallback.
+5. On conflict again, abort the rebase (`git rebase --abort`, remove `.git/rebase-merge`/`.git/rebase-apply`) and escalate to the DevOps Agent — return `status: "escalated"` with `devopsConversationId` rather than blocking or asking the caller to choose a strategy.
+6. MUST serialize via git-lock to prevent concurrent operations.
 
 #### git_sync
 ```typescript
 tool: git_sync
-  description: "Fetch and optionally resolve conflicts for a remote branch"
+  description: "Fetch and reconcile a remote branch via the shared reconciliation pipeline (User Story 6). No confirmation flag; unresolvable conflicts escalate to the DevOps Agent."
   params: {
     repoPath: string,
     remote: string,
     branch: string,
-    conflictStrategy: "merge-squash" | "merge" | "commit" | "abort"
+    conflictStrategy: "merge-squash" | "merge" | "commit"
   }
   returns: {
-    status: "success" | "conflict_detected" | "failed",
+    status: "success" | "escalated" | "failed",
     ahead: number,              // commits ahead of remote
     behind: number,             // commits behind remote
-    conflict?: {                // if status is "conflict_detected"
-      strategy: string,
-      requiresConfirmation: boolean
-    }
+    devopsConversationId?: string // present when status is "escalated"
   }
 ```
 
@@ -188,8 +216,7 @@ tool: git_sync
 2. Compare `HEAD` vs `<remote>/<branch>`
 3. If ahead only → no action needed (report ahead count)
 4. If behind only → `git pull --ff-only` (fast-forward)
-5. If diverged → status: "conflict_detected" with `requiresConfirmation: true`
-6. If `conflictStrategy` is provided and `confirm: true` → execute resolution
+5. If diverged → run the shared reconciliation pipeline with `conflictStrategy` as the initial strategy; return `status: "escalated"` with `devopsConversationId` if it can't resolve automatically
 
 #### git_fetch
 ```typescript
@@ -348,6 +375,10 @@ tool: git_list_remotes
 - What happens when a user removes a remote that is currently mounted? → System warns the user that the mount will become orphaned and asks for confirmation.
 - What happens when a remote URL changes (e.g., repo is moved)? → User can update the URL in Settings or via agent tool; git remote set-url handles the update.
 - What happens when SSH key passphrase is required but not provided? → System prompts the user for the passphrase before pushing.
+- What happens when the DevOps Agent itself can't resolve a conflict (e.g. semantically ambiguous, or it stops itself)? → The conversation remains exactly as left — visible, resumable, and stoppable in the Assistant app — and the caller's wait ends in an explicit "escalated, unresolved" outcome rather than being silently retried or discarded.
+- What happens when the escalation wait exceeds its maximum duration? → The caller reports a distinct "escalation timed out" outcome (not a generic failure); the conversation is untouched and can be resumed later, and the rollback tag from step 1 of the pipeline remains available if a manual revert is needed.
+- What happens if a second reconciliation is requested for a target that already has an in-progress escalation? → The request is rejected/short-circuited to the existing `devopsConversationId` rather than starting a second parallel pipeline against the same repo.
+- What happens if the DevOps Agent (via `dev_delegate`) attempts to force-push? → Refused by the agent's Skill instructions; force-push is never part of the DevOps Agent's or the pipeline's automatic behavior, only ever a separate, explicit, user-confirmed action (see US2/US4 force-push UI).
 
 ## Architecture Decisions
 
@@ -377,6 +408,14 @@ On fetch, if the remote ref has moved forward (force-push), the bare cache ref i
 
 - **Settings → Integrations**: "Git Providers" section for OAuth setup (connect/disconnect GitHub/GitLab accounts).
 - **Settings → Versions**: "Git Remotes" section for remote management (add/edit/remove remotes, auto-push toggles, mount manager, sync status).
+
+### AD-007: Automatic Reconciliation Supersedes the Synchronous Confirm Gate
+
+Superseded: the original design (`git_merge`/`git_sync` `confirm: true` requirement, and the US3/US4 "resolution dialog" acceptance scenarios) required a human to synchronously choose a merge strategy before any conflict resolution executed. This is replaced, for every GitFS instance, by the shared reconciliation pipeline (User Story 6): automatic strategy attempt → automatic rebase-based fallback → escalation to a supervised, autonomous DevOps Agent. The safety property moves from "a human approves the specific git operation before it runs" to "a human can observe, interrupt (Stop), and resume the agent doing the work, and every attempt is preceded by a rollback tag." This is a deliberate, uniform behavior change across all GitFS instances (BOS source, spec stores, apps repo, VFS mounts) — not a promote-only special case. Force-push remains a separate, always-explicit, always-user-confirmed action (AD-008) — it is never part of the automatic pipeline or the DevOps Agent's own behavior.
+
+### AD-008: Force-Push Is Explicit, Confirmed, and Uses `--force-with-lease`
+
+When automatic reconciliation genuinely can't apply (e.g. the DevOps Agent itself reports it can't proceed, or the user chooses to override), the UI offers a distinct, explicitly-labeled "Force push" action, gated behind a confirmation dialog that states what will be discarded from the remote. It always uses `git push --force-with-lease` (never bare `--force`), so it still fails safely if the remote has moved again since the last fetch — it cannot silently clobber a concurrent push it hasn't seen. Neither the reconciliation pipeline nor the DevOps Agent may invoke this on their own.
 
 ## Flow Diagrams
 
@@ -550,13 +589,55 @@ sequenceDiagram
     Assistant-->>User: "Mounted repository to /Projects/my-webapp"
     
     User->>Assistant: "Resolve merge conflict on origin/main using --squash"
-    Assistant->>Tools: git_merge(".", "origin", "main", "merge-squash", confirm: true)
+    Assistant->>Tools: git_merge(".", "origin", "main", "merge-squash")
     Tools->>GitLock: acquire(".")
     Tools->>GitOps: fetch then merge --squash
     GitOps-->>Tools: Merge success
     Tools->>GitLock: release()
-    Tools-->>Assistant: Merge result
+    Tools-->>Assistant: Merge result (status: success)
     Assistant-->>User: "Conflict resolved via merge --squash"
+```
+
+### US6: Automated Conflict Resolution via DevOps Agent
+
+```mermaid
+sequenceDiagram
+    participant Caller as Caller (Supervisor promote / git_merge / git_sync)
+    participant Pipeline as Reconciliation Pipeline
+    participant GitOps
+    participant Conversations
+    participant DevOpsAgent as DevOps Agent (type: local)
+    participant Dev as Developer sub-agent (dev_delegate)
+
+    Caller->>Pipeline: reconcile(repoPath, remote, branch, strategy)
+    Pipeline->>GitOps: tag current HEAD (rollback anchor)
+    Pipeline->>GitOps: fetch + fast-forward sync with remote
+    Pipeline->>GitOps: attempt strategy (merge --squash / merge / commit)
+    alt Strategy succeeds
+        GitOps-->>Pipeline: clean
+        Pipeline-->>Caller: status: success
+    else Strategy conflicts
+        Pipeline->>GitOps: abort (reset --hard + clean -fd; no MERGE_HEAD to abort)
+        Pipeline->>GitOps: attempt scripted rebase fallback
+        alt Rebase succeeds
+            GitOps-->>Pipeline: clean
+            Pipeline-->>Caller: status: success (method: rebase-fallback)
+        else Rebase conflicts
+            Pipeline->>GitOps: git rebase --abort; rm -rf .git/rebase-merge .git/rebase-apply
+            Pipeline->>Conversations: create persisted conversation, agentId "devops"
+            Pipeline->>Conversations: pre-set activeFeatureBranch
+            Pipeline->>DevOpsAgent: startAssistantRun(conversationId, task with conflict context)
+            Pipeline-->>Caller: status: escalated, devopsConversationId
+            DevOpsAgent->>Dev: dev_delegate(task: resolve conflict in existing preview worktree)
+            Dev->>Dev: resolve conflict, build/test, commit (never push)
+            Dev-->>DevOpsAgent: result
+            DevOpsAgent-->>Conversations: report outcome (run finishes)
+            Note over Caller,Conversations: Caller polls run status independently of any browser connection
+            Caller->>Conversations: poll run status
+            Conversations-->>Caller: terminal state reached
+            Caller-->>Caller: resume (e.g. Supervisor build + health-check + point-of-no-return)
+        end
+    end
 ```
 
 ## Settings UI Layout
@@ -717,8 +798,16 @@ All git operations MUST be logged with structured, level-appropriate entries. Lo
 - **FR-011**: System MUST validate VFS mount paths to prevent writes outside the user's VFS. Mount paths must be within `data/vfs/` and NOT under `data/vfs/apps/` or `data/vfs/workflows/` (reserved for GitFS/DataFS). After cloning, symlinks MUST be scanned for escape attempts before exposing files through the Files app. `git://` protocol URLs MUST be rejected; allowlist only `https://`, `http://` (with explicit user opt-in for self-hosted), and `git@` (SSH).
 - **FR-013**: System MUST canonicalize resolved VFS paths and reject mount targets outside `data/vfs/` or protected roots (`Documents`, `Pictures`, `Desktop`, `Workflows`, `Chats`). After cloning, symlinks MUST be scanned for escape attempts before exposing files through the Files app. `git://` protocol URLs MUST be rejected.
 - **FR-014**: All git operations (push, fetch, clone, checkout, stash) across all remotes and mounts MUST be serialized through a system-wide `git-lock` mechanism to prevent concurrent access conflicts (e.g., push-All mid-fetch, simultaneous mounts, auto-push on promote colliding with user push).
-- **FR-015**: The per-remote auto-push toggles apply ONLY to non-origin remotes. The Supervisor's `BOS_PUSH_MODE` continues to control the origin push. When promoting, the Supervisor pushes to origin first (if `BOS_PUSH_MODE=auto-on-promote`), then triggers per-remote auto-pushes sequentially.
+- **FR-015**: The per-remote auto-push toggles apply ONLY to non-origin remotes. The Supervisor's `BOS_PUSH_MODE` continues to control the origin push. When promoting, the Supervisor pushes to origin first (if `BOS_PUSH_MODE=auto-on-promote`), then triggers per-remote auto-pushes sequentially. Any push failure (origin or per-remote) MUST be logged and returned in the promote result — never swallowed silently.
 - **FR-012**: System MUST handle authentication errors gracefully, with clear error messages and suggestions for resolution.
+- **FR-016**: System MUST apply the same shared reconciliation pipeline (rollback tag → remote-sync → configured strategy → scripted rebase fallback → DevOps Agent escalation) to every GitFS instance uniformly — the BOS source repo (including the Supervisor's promote flow), spec stores, the installed-apps content repo, and VFS-mounted repos. No GitFS instance gets bespoke conflict-handling logic.
+- **FR-017**: Before any merge/rebase attempt in the reconciliation pipeline, System MUST create a rollback tag on the current HEAD of the target branch, so the pre-reconciliation state is always recoverable regardless of how the pipeline proceeds.
+- **FR-018**: When the reconciliation pipeline cannot resolve a conflict automatically (configured strategy and scripted rebase fallback both fail), System MUST escalate to the DevOps Agent: create or reuse a normal, persisted Assistant conversation scoped to the "devops" agent, pre-set its active feature branch, and start a run — never present a synchronous strategy-choice dialog instead.
+- **FR-019**: The DevOps Agent MUST delegate all file-level conflict resolution to the Developer sub-agent (`dev_delegate`) rather than editing files itself, MUST NOT push (the final push remains the triggering caller's responsibility), and MUST NOT force-push under any circumstance.
+- **FR-020**: A caller blocked waiting on an escalated DevOps Agent run (e.g. the Supervisor's `promote()`) MUST NOT tie that wait to the lifecycle of any single client connection — the wait and its eventual resolution MUST survive a browser refresh or disconnect, with the escalation's live/final state discoverable via polled server state (not solely via the original request's response) and via the persisted conversation itself.
+- **FR-021**: An escalation wait MUST be bounded by a maximum duration; on timeout, the caller MUST report a distinct "escalation timed out" outcome (not a generic failure) and MUST leave the conversation untouched and resumable.
+- **FR-022**: System MUST reject (or transparently re-point to the existing conversation) a second concurrent reconciliation request against a target that already has an in-progress escalation, rather than starting a parallel pipeline against the same repo/branch.
+- **FR-023**: System MUST offer force-push as a separate, always-explicit, always-user-confirmed UI action (never automatic, never invoked by the reconciliation pipeline or the DevOps Agent), implemented via `git push --force-with-lease`.
 
 ### Key Entities
 
@@ -726,6 +815,8 @@ All git operations MUST be logged with structured, level-appropriate entries. Lo
 - **VfsMount**: Represents a mounted external repository in the VFS. Attributes: id, vfsPath, repoUrl, branch, authType, status (mounted/stale/error), lastFetched, lastSynced, isBareCache, bare (whether underlying repo is bare).
 - **PushResult**: Represents the result of a push operation. Attributes: remoteName, branch, status ("success" | "failed" | "partial_success"), error (structured: { code, message, suggestion? }), timestamp.
 - **SyncStatus**: Represents the sync state of a remote or mount. Attributes: localBranch, remoteBranch, ahead, behind, lastFetched.
+- **ReconciliationOutcome**: Represents the result of the shared pipeline. Attributes: status ("success" | "escalated" | "timed-out" | "failed"), method (which strategy resolved it, if any), rollbackTag, devopsConversationId (when escalated), startedAt, completedAt.
+- **DevOps Agent**: A `type: "local"` subagent (reuses the standard agent-v2 run infrastructure — Stop button, streaming, persistence) whose sole job is to drive conflict escalations by delegating file-level work to the Developer sub-agent (`dev_delegate`) and reporting the outcome. Attributes as any `Agent` (id, systemPrompt, tools — limited to `dev_delegate` plus read-only inspection tools, skills — the devops-merge-conflict-resolution skill).
 
 ## Success Criteria
 
@@ -737,6 +828,8 @@ All git operations MUST be logged with structured, level-appropriate entries. Lo
 - **SC-004**: 90% of users successfully complete the OAuth flow on the first attempt.
 - **SC-005**: Branch sync status is accurate within 1 minute of fetching remote updates.
 - **SC-006**: Agent tools can perform all repository management operations without user intervention (except for initial OAuth authorization).
+- **SC-007**: A conflict resolved by the configured strategy or the scripted rebase fallback (no escalation needed) completes within the same timeframe as the equivalent single git command — the reconciliation pipeline adds no perceptible overhead over the strategy that resolves it.
+- **SC-008**: When escalation to the DevOps Agent occurs, a distinct, discoverable status (with a conversation link) is visible within one polling interval (2.5s) of the escalation starting — never an ambiguous "stuck" state, with or without a browser refresh in between.
 
 ## E2E Test Plan
 
@@ -753,6 +846,7 @@ All E2E tests follow the BOS Playwright convention: browser automation via `@pla
 4. **Branch Sync** (US4): Sync status display, conflict handling, auto-sync
 5. **Agent Tools** (US5): Tool invocation for all operations
 6. **Edge Cases**: Auth expiry, naming conflicts, path validation, orphaned mounts
+7. **Automated Conflict Resolution** (US6): Rollback tag creation, rebase fallback, DevOps Agent escalation, refresh-resilience, timeout, force-push as a separate confirmed action
 
 ### Test Suite 1: Remote Registration (US1)
 
@@ -995,26 +1089,24 @@ test.describe("View Sync Status", () => {
 });
 ```
 
-#### Test 4.2: Handle Sync Conflict
+#### Test 4.2: Sync Conflict Resolves Automatically (No Dialog)
 ```typescript
-test.describe("Handle Sync Conflict", () => {
-  test("should report conflict when both local and remote have diverged", async ({ page }) => {
-    // Create conflicting commits
+test.describe("Sync Conflict Resolves Automatically", () => {
+  test("should run the reconciliation pipeline without a strategy-choice dialog", async ({ page }) => {
+    // Create a conflict resolvable by the scripted rebase fallback (not a real
+    // content conflict — the configured strategy is expected to fail cleanly first)
     await tool.run("git checkout -b conflicting-branch");
     await tool.run("git commit --allow-empty -m 'local change'");
-    
+
     // Trigger sync
     await page.getByRole("button", { name: /sync/i }).click();
-    
-    // Wait for conflict dialog
-    await page.waitForSelector("[data-testid='conflict-dialog']");
-    
-    // Verify conflict message and resolution options
-    await expect(page.getByText("Local and remote have diverged")).toBeVisible();
-    await expect(page.getByRole("button", { name: /merge --squash/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /merge/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /commit/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /abort/i })).toBeVisible();
+
+    // No blocking confirm dialog is ever shown
+    await expect(page.getByTestId("conflict-dialog")).toHaveCount(0);
+
+    // Status resolves to success via the pipeline
+    await page.waitForSelector("[data-testid='sync-result']");
+    await expect(page.getByText(/up to date/i)).toBeVisible();
   });
 });
 ```
@@ -1119,21 +1211,28 @@ test.describe("Agent Syncs with Conflict Resolution", () => {
 });
 ```
 
-#### Test 5.6: Agent Rejects Merge Without User Confirmation
+#### Test 5.6: Agent Merge Escalates on Unresolvable Conflict
 ```typescript
-test.describe("Agent Rejects Merge Without Confirmation", () => {
-  test("should refuse to merge without explicit user approval", async ({ agent }) => {
-    // Agent attempts merge without confirmation flag
+test.describe("Agent Merge Escalates on Unresolvable Conflict", () => {
+  test("should escalate to the DevOps Agent when strategy and rebase fallback both conflict", async ({ agent }) => {
+    // Create a real content conflict unresolvable by strategy or rebase
+    await tool.run("write conflicting-file.txt 'local version'");
+    await tool.run("git commit -am 'local change'");
+    await tool.run("git push origin HEAD:conflict-test-remote-diverges-too");
+
     const result = await agent.call("git_merge", {
       repoPath: ".",
       remote: "origin",
-      branch: "conflict-test",
-      strategy: "merge",
-      confirm: false  // No user confirmation
+      branch: "conflict-test-remote-diverges-too",
+      strategy: "merge-squash"
     });
-    
-    expect(result.status).toBe("cancelled");
-    expect(result.error).toContain("requires user confirmation");
+
+    expect(result.status).toBe("escalated");
+    expect(result.devopsConversationId).toBeTruthy();
+
+    // The conversation is a normal, persisted, discoverable one
+    const conv = await agent.call("assistant_get_conversation", { id: result.devopsConversationId });
+    expect(conv.agentId).toBe("devops");
   });
 });
 ```
@@ -1207,6 +1306,114 @@ test.describe("Orphaned Mount Removal", () => {
     await page.waitForSelector("[data-testid='warning-dialog']");
     await expect(page.getByText("This mount will become orphaned")).toBeVisible();
     await expect(page.getByRole("button", { name: /confirm/i })).toBeVisible();
+  });
+});
+```
+
+### Test Suite 7: Automated Conflict Resolution (US6)
+
+#### Test 7.1: Rollback Tag Created Before Reconciliation
+```typescript
+test.describe("Rollback Tag Created Before Reconciliation", () => {
+  test("should create a tag on HEAD before any merge/rebase attempt", async ({ tool }) => {
+    const before = await tool.run("git rev-parse HEAD");
+
+    await tool.run("git_sync . origin main merge-squash");
+
+    const tags = await tool.run("git tag --points-at HEAD~1");
+    await tool.expect(/rollback|pre-reconcile/);
+  });
+});
+```
+
+#### Test 7.2: Failed Squash-Merge Aborts Cleanly Before Rebase Fallback
+```typescript
+test.describe("Failed Squash-Merge Aborts Cleanly", () => {
+  test("should reset --hard + clean -fd (not merge --abort) after a failed merge --squash", async ({ tool, agent }) => {
+    // merge --squash never sets MERGE_HEAD — verify no lingering squash state
+    const result = await agent.call("git_merge", {
+      repoPath: ".", remote: "origin", branch: "conflicting-branch", strategy: "merge-squash",
+    });
+
+    const status = await tool.run("git status --porcelain");
+    // Whatever the outcome (success/escalated), the working tree must not be
+    // left mid-squash (no unmerged paths still marked from the failed attempt
+    // if a fallback or escalation subsequently proceeded).
+    expect(status).not.toContain("Squash commit -- not updating HEAD");
+  });
+});
+```
+
+#### Test 7.3: Unresolvable Conflict Escalates to DevOps Agent
+```typescript
+test.describe("Unresolvable Conflict Escalates", () => {
+  test("should escalate and expose a discoverable, persisted conversation", async ({ agent }) => {
+    const result = await agent.call("git_sync", {
+      repoPath: ".", remote: "origin", branch: "hard-conflict-branch", conflictStrategy: "merge-squash",
+    });
+
+    expect(result.status).toBe("escalated");
+    expect(result.devopsConversationId).toBeTruthy();
+  });
+});
+```
+
+#### Test 7.4: Escalation Survives a Browser Refresh
+```typescript
+test.describe("Escalation Survives a Browser Refresh", () => {
+  test("should keep reconciling server-side and show a distinct escalated state after reload", async ({ page }) => {
+    // Trigger an escalating promote via the Supervisor control endpoint
+    await page.getByRole("button", { name: /promote/i }).click();
+
+    // Simulate a refresh mid-escalation
+    await page.reload();
+
+    // The refreshed page shows the escalated state (from polled state), not a
+    // generic spinner or an idle "Promote" button
+    await page.waitForSelector("[data-testid='promote-escalated']");
+    await expect(page.getByRole("link", { name: /view devops conversation/i })).toBeVisible();
+  });
+});
+```
+
+#### Test 7.5: Escalation Timeout Reports a Distinct Outcome
+```typescript
+test.describe("Escalation Timeout", () => {
+  test("should report a distinct timed-out outcome and leave the conversation resumable", async ({ tool }) => {
+    // Simulate a DevOps Agent run that never reaches a terminal state within the max wait
+    await tool.run("simulate stalled devops run");
+
+    await tool.expect("escalation timed out");
+    await tool.run("open devops conversation");
+    await tool.expect("Stop"); // still a live, interactable run
+  });
+});
+```
+
+#### Test 7.6: Concurrent Escalation Rejected
+```typescript
+test.describe("Concurrent Escalation Rejected", () => {
+  test("should not start a second pipeline while one is already escalated for the same target", async ({ tool }) => {
+    await tool.run("promote feature-branch"); // first attempt escalates
+    const second = await tool.run("promote feature-branch"); // repeat click
+
+    await tool.expect(/already in progress|existing conversation/i);
+  });
+});
+```
+
+#### Test 7.7: DevOps Agent Never Pushes or Force-Pushes
+```typescript
+test.describe("DevOps Agent Never Pushes", () => {
+  test("should leave the final push to the caller and never force-push", async ({ agent }) => {
+    const result = await agent.call("git_merge", {
+      repoPath: ".", remote: "origin", branch: "hard-conflict-branch", strategy: "merge-squash",
+    });
+    expect(result.status).toBe("escalated");
+
+    // After the escalated run finishes, the branch is committed locally but not pushed
+    const ahead = await tool.run("git rev-list --count origin/hard-conflict-branch..HEAD");
+    expect(Number(ahead)).toBeGreaterThan(0);
   });
 });
 ```
