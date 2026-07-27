@@ -8,13 +8,15 @@
 
 US1 (credential material → dedicated harness `HOME`) was already implemented under `026-multiuser-usability` and is relocated here for topic clarity — no behavior change. US2 (per-CLI provider selection) and US3 (MCP-server inclusion via `030-settings-mcp-servers`'s `includeInDevHarness` flag) are new: both are realized by **generating** (never hand-editing) the harness's own native config files inside the dedicated harness `HOME` — Claude's `~/.claude/settings.json` (provider `env` block) + `~/.claude.json` (`mcpServers`), and OpenCode's `~/.config/opencode/opencode.json` (`provider`/`model` fields + `mcp` block). `harnessCredentialEnv()`'s HOME/XDG redirection is broadened to trigger on any of credentials, provider, or included MCP servers — not credentials alone.
 
+**2026-07-27 addendum (US4)**: the first shipped UI stacked every field in one undifferentiated column, with model appearing *before* auth — reported back as unintuitive. Reworked to: a single top-level `harness: "claude"|"opencode"` choice, then two always-rendered panels (one per CLI, only the selected one enabled), each internally ordered by real dependency (Claude: run mode → auth method → that method's fields → model; OpenCode: auth method → its fields → model). The credential-file paste box (US1) is folded in as one of the auth-method options rather than a separately-positioned section. This renames several `dev-harness` namespace fields (`transport`→`harness`+`claudeRunMode`, `model`→`claudeModel`/`opencodeModel`, `claudeProviderMode`/`opencodeProviderMode`→`claudeAuthMethod`/`opencodeAuthMethod` with `"default"` renamed to `"credential-file"`/`"auth-file"`); `load()` derives the new fields from the old at read time when the new ones are absent, so nothing is lost for anyone who saved settings under the very first implementation.
+
 ## Technical Context
 
 **Language/Version**: TypeScript (Node ≥ 20), Next.js App Router; server-only code under `src/lib/devharness/`.
 
 **Primary Dependencies**: none new. Reuses the existing config store (`readNamespace`/`writeNamespace`/`patchNamespace`) and `writeFileAtomic`.
 
-**Storage**: credential material and provider config persist in the `dev-harness` config namespace (`data/config/dev-harness.json`); provider API keys get the same write-only/secret treatment as existing credential fields. NEW generated files inside the harness `HOME` (regenerated in full on every relevant save, never hand-merged): `.claude/settings.json` (Claude provider `env` block), `.claude.json` (Claude `mcpServers`), `.config/opencode/opencode.json` (OpenCode `provider`/`model`/`mcp`). Reads `data/mcp-servers.json` (`030-settings-mcp-servers`'s store) filtered on `includeInDevHarness`.
+**Storage**: credential material and provider config persist in the `dev-harness` config namespace (`data/config/dev-harness.json`), under the (post-redesign) field names `harness`, `claudeRunMode`, `command`, `url`, `claudeModel`, `opencodeModel`, `claudeAuthMethod`, `claudeApiKey`, `claudeApiBaseUrl`, `claudeBedrockRegion`, `claudeBedrockProfile`, `claudeVertexProject`, `claudeVertexRegion`, `opencodeAuthMethod`, `opencodeProviderId`, `opencodeApiKey`, `opencodeBaseUrl` — the pre-redesign names (`transport`, `model`, `claudeProviderMode`, `opencodeProviderMode`) remain readable indefinitely via a read-time derivation in `load()`. Provider API keys get the same write-only/secret treatment as existing credential fields. NEW generated files inside the harness `HOME` (regenerated in full on every relevant save, never hand-merged): `.claude/settings.json` (Claude provider `env` block), `.claude.json` (Claude `mcpServers`), `.config/opencode/opencode.json` (OpenCode `provider`/`model`/`mcp`). Reads `data/mcp-servers.json` (`030-settings-mcp-servers`'s store) filtered on `includeInDevHarness`.
 
 **Testing**: `npx tsc --noEmit` + `npm run lint`. Manual verification: select a non-default provider, save, confirm the generated file's shape; flag an MCP server, save, confirm it appears in both generated files; unflag, confirm removal; confirm the four-way-false case (no credentials, default providers, no flagged servers) produces no redirection and no generated files (unchanged from pre-existing behavior).
 
@@ -66,7 +68,8 @@ src/lib/config/registry.ts             # EDIT — dev-harness namespace: add pro
 src/lib/mcp/store.ts                    # EDIT — addMcpServer/removeMcpServer call regenerateHarnessConfigFiles() (US3)
                                            # (McpServerConfig.includeInDevHarness itself is 030's field/task, not this spec's)
 src/lib/agent/subagents/claude-runner.ts # unchanged — envForCwd() already calls harnessCredentialEnv()
-src/components/apps/settings/DevHarnessTab.tsx  # EDIT — new "Provider" section per CLI mode (US2)
+src/components/apps/settings/DevHarnessTab.tsx  # EDIT — full layout rework: top-level harness choice + two
+                                                   # enable/disable per-CLI panels, dependency-ordered fields (US4)
 ```
 
 **Structure Decision**: single BOS project; all new logic lives under `src/lib/devharness/`, touching `registry.ts` and `mcp/store.ts` only at their existing extension points (config schema, post-save hook).
@@ -95,6 +98,14 @@ Called from two places so either surface staying in sync with the other doesn't 
 ### Env-redirection gate (US1 pre-existing + US2/US3 new triggers)
 
 `harnessCredentialEnv()`'s existing `if (!hasClaudeCreds() && !hasOpenCodeAuth()) return {}` guard is broadened to `if (!hasClaudeCreds() && !hasOpenCodeAuth() && !hasNonDefaultProvider() && !hasIncludedMcpServers()) return {}`, so `HOME`/`XDG_*` redirect whenever there's anything in the harness `HOME` worth the CLI reading — not only pasted credential material. Local dev with a real `~/.claude` and no BOS-side customization at all is unaffected (all four checks false → no redirection, same as today).
+
+### UI reorganization & field rename (US4)
+
+**Top-level + two panels**: `DevHarnessTab.tsx` renders one `harness` select (Claude Code / OpenCode) first, then always renders both a Claude panel and an OpenCode panel — the one NOT matching `harness` gets its inputs `disabled` and the panel dimmed (`opacity`), rather than being conditionally unmounted, so the user can see the full shape of both configurations at a glance.
+
+**Per-panel field order**: Claude panel — `claudeRunMode` select (`cli`/`stdio`/`http`/`sse`) first; when `cli`, then `claudeAuthMethod` select (`credential-file`/`api-key`/`bedrock`/`vertex`) and that method's own fields (the existing `CredentialField` paste box for `credential-file`; the existing generic secret/text inputs for the other three); then `claudeModel`. When `claudeRunMode` is `stdio`/`http`/`sse`, the panel instead shows only the existing MCP `command`/`url` field (auth/model don't apply to an already-running remote harness). OpenCode panel — `opencodeAuthMethod` select (`credential-file`/`provider`) and its fields, then `opencodeModel`; no run-mode choice (OpenCode is always a local headless spawn).
+
+**Field rename + back-compat derivation** (`registry.ts`'s `load()`): the `dev-harness` schema's fields become `harness`, `claudeRunMode`, `command`, `url`, `claudeAuthMethod`, `claudeApiKey`, `claudeApiBaseUrl`, `claudeBedrockRegion`, `claudeBedrockProfile`, `claudeVertexProject`, `claudeVertexRegion`, `claudeModel`, `opencodeAuthMethod`, `opencodeProviderId`, `opencodeApiKey`, `opencodeBaseUrl`, `opencodeModel`. `provider.ts`'s mode enums are renamed to match (`ClaudeAuthMethod = "credential-file" | "api-key" | "bedrock" | "vertex"`; `OpenCodeAuthMethod = "credential-file" | "provider"`) — the "is this the credential-file/unconfigured case" check that `generate-config.ts` and the env-redirection gate rely on now compares against `"credential-file"`/`"credential-file"` instead of `"default"`. `load()` derives the new fields from the legacy `transport`/`model`/`claudeProviderMode`/`opencodeProviderMode` when the new fields are absent (see spec Clarifications for the exact mapping); `save()` only ever writes the new field names going forward.
 
 ## Out of scope (v1)
 

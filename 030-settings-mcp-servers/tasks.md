@@ -32,17 +32,17 @@ Feature branch: `030-settings-mcp-servers`. US1–US3 were already implemented u
 
 **Independent Test**: Check "Include in Dev Harness" on a server, save, confirm `listMcpServers()` returns `includeInDevHarness: true`; uncheck, save, confirm it's gone. (Generation into harness files is verified under `029`'s tasks, not here.)
 
-- [ ] T040. [US4] `src/lib/mcp/types.ts`: add `includeInDevHarness?: boolean` to `McpServerConfig`.
-- [ ] T041. [US4] `src/components/apps/settings/McpServersTab.tsx`: add an "Include in Dev Harness" checkbox to the editor (next to Description), wired through the existing `buildConfig()`/save path.
-- [ ] T042. [US4] `src/app/api/mcp/route.ts`'s `normalizeConfig` AND `src/lib/assistant/tools/server/mcp.ts`'s `normalizeConfig`: both accept/persist `includeInDevHarness` (keep both in sync — they are structurally identical functions).
-- [ ] T043. [US4] Typecheck + lint green.
+- [x] T040. [US4] `src/lib/mcp/types.ts`: add `includeInDevHarness?: boolean` to `McpServerConfig`.
+- [x] T041. [US4] `src/components/apps/settings/McpServersTab.tsx`: "Include in Dev Harness" checkbox in the editor (next to Description) + a "harness" badge on included servers in the list view, wired through the existing `buildConfig()`/save path.
+- [x] T042. [US4] `src/app/api/mcp/route.ts`'s `normalizeConfig` AND `src/lib/assistant/tools/server/mcp.ts`'s `normalizeConfig`: both accept/persist `includeInDevHarness`.
+- [x] T043. [US4] Typecheck + lint green (verified `npx tsc --noEmit` and `npx eslint` clean); manually verified end-to-end via the live API (add/flag/unflag a server, confirmed both generated harness files update accordingly — see `029`'s T-verification).
 
 **Checkpoint**: US4 functional — the flag round-trips through Settings, the API, and the agent tool.
 
 ## Phase 6: Closeout — `000-browseros-core` sync
 
-- [ ] Z1. Replace `000-browseros-core/spec.md` FR-017 with a one-line pointer to this spec (constitution VI). Confirm no other spec cites FR-017's content directly (a name-only reference to "011" scoping etc. is fine to leave).
-- [ ] Z2. Add a `030` row to `overview.md`'s feature map.
+- [x] Z1. Replaced `000-browseros-core/spec.md` FR-017 with a one-line pointer to this spec.
+- [x] Z2. Added a `030` row to `overview.md`'s feature map.
 - [ ] Z3. `docs/dev/**` / `docs/usage/**`: confirm existing MCP Servers docs don't need updating beyond the new checkbox (covered by `029`'s closeout, since the checkbox's *effect* is documented there).
 
 ## Dependencies & Execution Order
