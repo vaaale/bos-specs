@@ -6,7 +6,9 @@
 
 ## Summary
 
-Make a `docker compose up` deployment of BOS usable by non-experts. The bulk of the work lives in the existing `bastion/` sub-project (from `024-docker-multiuser`): a guided first-run (set-admin-password for simple auth; setup/landing for Keycloak), persistent per-user provisioning logging surfaced in the UI, a redesigned admin portal (users + data-wipe, streamed image build, container start/stop/kill), and a redesigned self-service account page (password, profile image, lifecycle, wipe-data-with-confirm, open BOS). BOS itself gets three focused changes: `run_command` uses the `local` backend when running behind the Bastion (the admin-built user-container image IS the sandbox environment) while standalone keeps select-image/build-from-Dockerfile with a streamed log; the dev-harness config accepts Claude/OpenCode credential material written into a dedicated `HOME` so the headless CLIs authenticate in a container; and the desktop toolbar gains a multi-user-only "My profile" link to `/app/account`. The root `Dockerfile` for the user-container image is extended to bundle the run_command runtimes and the Claude/OpenCode CLIs.
+Make a `docker compose up` deployment of BOS usable by non-experts. The bulk of the work lives in the existing `bastion/` sub-project (from `024-docker-multiuser`): a guided first-run (set-admin-password for simple auth; setup/landing for Keycloak), persistent per-user provisioning logging surfaced in the UI, a redesigned admin portal (users + data-wipe, streamed image build, container start/stop/kill), and a redesigned self-service account page (password, profile image, lifecycle, wipe-data-with-confirm, open BOS). BOS itself gets two focused changes: `run_command` uses the `local` backend when running behind the Bastion (the admin-built user-container image IS the sandbox environment) while standalone keeps select-image/build-from-Dockerfile with a streamed log; and the desktop toolbar gains a multi-user-only "My profile" link to `/app/account`. The root `Dockerfile` for the user-container image is extended to bundle the run_command runtimes and the Claude/OpenCode CLIs.
+
+**2026-07-27**: the dev-harness credential/auth work originally planned here (Phase E) has been extracted to `029-settings-dev-harness` — this plan no longer covers it; see that spec's own plan.md.
 
 ## Technical Context
 
@@ -20,7 +22,7 @@ Make a `docker compose up` deployment of BOS usable by non-experts. The bulk of 
 
 **Storage**:
 - Bastion: existing `{dataDir}/config.json`, `users.yml`; NEW `{dataDir}/logs/<username>.log` (append-only per-user log) and `{dataDir}/avatars/<username>` (profile images). A bundled default avatar ships in the image.
-- BOS: dev-harness credential material written to a dedicated harness `HOME` (e.g. under `BOS_DATA_ROOT`); credential values persisted in the `dev-harness` config namespace as secrets.
+- BOS: no new storage owned by this plan (dev-harness credential/config storage is `029-settings-dev-harness`'s).
 
 **Testing**: Bastion `tsc --noEmit`. BOS `npm run typecheck` + `npm run lint`. Manual/e2e verification per Success Criteria (first-run, forced provisioning failure visibility, user create/remove+wipe, streamed image build, container kill, account lifecycle, run_command local execution, harness auth, toolbar link).
 
@@ -30,7 +32,7 @@ Make a `docker compose up` deployment of BOS usable by non-experts. The bulk of 
 
 **Performance Goals**: Streamed build/log latency perceptibly "live" (< 1 s between docker output and browser). No regression to `024`'s login→session timings.
 
-**Constraints**: Username charset `[a-z0-9_-]`. Docker socket is mounted into the Bastion only — NOT into user containers (rejected in clarifications in favor of the `local` backend). Last-admin protection retained. Harness credentials are secrets: write-only in the API, never echoed, never logged.
+**Constraints**: Username charset `[a-z0-9_-]`. Docker socket is mounted into the Bastion only — NOT into user containers (rejected in clarifications in favor of the `local` backend). Last-admin protection retained.
 
 **Scale/Scope**: Same ~50-concurrent-user envelope as `024`.
 
@@ -39,7 +41,7 @@ Make a `docker compose up` deployment of BOS usable by non-experts. The bulk of 
 *GATE: must pass before design; re-check after.*
 
 - **I. Spec-Driven — SAAP**: plan derives from `spec.md`; implementation follows `tasks.md`. PASS.
-- **II. Server Authority & SSR Boundary**: bastion is its own server; BOS server boundary unchanged. New BOS image-list/build routes and dev-harness credential handling are server-only; secrets never returned to the client. PASS.
+- **II. Server Authority & SSR Boundary**: bastion is its own server; BOS server boundary unchanged. New BOS image-list/build routes are server-only. PASS.
 - **III. Always Delegate; Claude Codes**: implementation is source work on the feature branch via the Developer harness. PASS.
 - **IV. Minimize Blast Radius (NON-NEGOTIABLE)**: most changes are in `bastion/`; BOS source changes are three narrow areas (run_command backend gate, dev-harness creds, toolbar link) + the root Dockerfile. No BOS runtime behaviour changes for existing single-user installs (Bastion-mode gate keys off `BOS_PUBLIC_PORT`). PASS.
 - **V. The VFS Is Not the Source**: per-user `data/` remains the user's VFS; wipe-data touches only `data/`. PASS.
@@ -95,16 +97,16 @@ bastion/
 
 src/                                  # BOS — minimal changes
 ├── lib/system/run-command.ts         # EDIT — Bastion mode (BOS_PUBLIC_PORT) → force local backend
-├── lib/config/registry.ts            # EDIT — run-command: hide image fields in Bastion mode; dev-harness: credential fields
-├── lib/devharness/harness-config.ts  # EDIT — surface credential material + harness HOME
-├── lib/agent/subagents/claude-runner.ts # EDIT — envForCwd sets HOME + writes creds before spawn
+├── lib/config/registry.ts            # EDIT — run-command: hide image fields in Bastion mode
 ├── components/apps/settings/
-│   ├── CommandExecutionTab.tsx       # NEW — custom component: image picker + streamed build (standalone); local view (Bastion)
-│   └── DevHarnessTab.tsx             # EDIT — credential inputs (write-only) + guidance
+│   └── CommandExecutionTab.tsx       # NEW — custom component: image picker + streamed build (standalone); local view (Bastion)
 ├── components/desktop/Topbar.tsx     # EDIT — My profile link (multi-user only) w/ avatar
 └── app/api/
     ├── run-command/images/route.ts   # NEW — GET list local images (server-only)
     └── run-command/image/build/route.ts # NEW — POST streamed build (server-only, guarded)
+
+# Dev-harness credential/provider/MCP-inclusion source changes (harness-config.ts, claude-runner.ts,
+# DevHarnessTab.tsx) moved to 029-settings-dev-harness's Project Structure — not this plan's.
 
 Dockerfile                            # EDIT (root) — bundle run_command runtimes + Claude/OpenCode CLIs into the user-container image
 docs/dev/**, docs/usage/**            # EDIT (closeout)
@@ -135,12 +137,6 @@ Redesigned with the same components. Adds: password (simple only), **avatar** up
 ### BOS run_command backend gate (`run-command.ts`, `registry.ts`)
 
 `loadRcConfig()` checks `process.env.BOS_PUBLIC_PORT` (the canonical multi-user signal, per `src/app/api/system/session/route.ts`). In Bastion mode it forces `backend: "local"` (runs inside the user container, whose image bundles the runtimes) and the settings custom component hides image build/selection. In standalone mode a new `CommandExecutionTab` lists local images (`GET /api/run-command/images`) and offers build-from-Dockerfile (default `docker/run-command/Dockerfile`) via `POST /api/run-command/image/build` (streamed `ReadableStream`, single-build guard, docker-availability check).
-
-### BOS dev-harness credentials (`registry.ts`, `harness-config.ts`, `claude-runner.ts`)
-
-`dev-harness` gains secret fields for Claude (`~/.claude` credentials/config JSON) and OpenCode (`auth.json`). On save they are written into a dedicated harness `HOME` (e.g. `${BOS_DATA_ROOT}/dev-harness/home/{.claude,.local/share/opencode}`). `envForCwd(cwd)` sets `HOME` to that dir (and `XDG_*` as needed) so `claude -p` / `opencode run` pick up the credentials non-interactively. The API returns only a set/unset indicator for these fields (write-only); values are never logged.
-
-**Filesystem permissions**: on first write, the harness `HOME` directory MUST be created with `fs.mkdir(path, { mode: 0o700 })` and each credential file written with mode `0o600` so they are readable only by the BOS process user. This is the concrete meaning of "config store's protection" for credential material.
 
 ### User-container image (`Dockerfile` root)
 

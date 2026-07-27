@@ -8,7 +8,9 @@
 
 **Input**: "Address usability challenges for normal users running BOS via docker compose. (1) The run-command image must be buildable from the UI (select an existing image or a Dockerfile) instead of manually. (2) Claude Code / OpenCode must be usable inside a container — the user needs a way to authenticate them. (3) When BOS runs behind the Bastion, a 'My profile' link in the toolbar must navigate to the user's account page. (4) The Bastion first-time deployment, admin portal, and account page must be dramatically improved: guided first-run, working+observable provisioning, user management with data wipe, image build, container control, a good-looking UI, password/profile-image management, and self-service lifecycle."
 
-> This feature is a **usability layer** on top of `024-docker-multiuser` (the Bastion) and `019-tools-and-sandbox` (sandboxed `run_command`). It does not change BOS's identity; it removes the manual, error-prone, and undocumented steps that make a first-time docker-compose deployment fail silently, and it makes the Bastion's admin/account surfaces first-class. The BOS source changes are limited to run_command backend selection, dev-harness credential injection, and one toolbar link. The bulk of the work lives in the `bastion/` sub-project.
+> This feature is a **usability layer** on top of `024-docker-multiuser` (the Bastion) and `019-tools-and-sandbox` (sandboxed `run_command`). It does not change BOS's identity; it removes the manual, error-prone, and undocumented steps that make a first-time docker-compose deployment fail silently, and it makes the Bastion's admin/account surfaces first-class. The BOS source changes are limited to run_command backend selection and one toolbar link. The bulk of the work lives in the `bastion/` sub-project.
+>
+> **2026-07-27**: the Dev Harness credential-authentication content originally specified here (User Story 10, FR-020–022, the "Harness credential set" entity, SC-006) has been **extracted to `029-settings-dev-harness`**, which now also owns the harness's provider selection and MCP-server-inclusion mechanics added on top of it. That mechanism has no Docker/Bastion dependency — container deployment was its motivating scenario, not a requirement — so it does not belong in a spec scoped to the multi-user paradigm. This spec keeps only what is genuinely Docker/Bastion-specific (image contents bundling the CLIs, FR-024).
 
 ## Why this exists (context)
 
@@ -26,7 +28,7 @@ This spec closes those gaps.
 ### Session 2026-07-14
 
 - Q: How should docker image builds behave in the UI? → A: **Streamed synchronous build** — kick off the build and stream the `docker build` log live into the UI with a final success/fail state (mirrors the Supervisor build panel).
-- Q: How should Claude Code / OpenCode credentials be provided in a container? → A: **Mount credential files.** The user provides the CLIs' own auth material (Claude `~/.claude`, OpenCode `auth.json`); BOS writes them into a dedicated harness `HOME` before spawning. This supports OAuth/subscription logins, not just API keys.
+- Q: How should Claude Code / OpenCode credentials be provided in a container? → A: **Mount credential files.** The user provides the CLIs' own auth material (Claude `~/.claude`, OpenCode `auth.json`); BOS writes them into a dedicated harness `HOME` before spawning. This supports OAuth/subscription logins, not just API keys. *(Mechanism now specified in `029-settings-dev-harness`; recorded here only as the original motivating question.)*
 - Q: How is the Bastion admin identity established on first run, and does it apply to Keycloak? → A: **Both auth modes get a first-run experience.** Simple auth: a "set admin password" page bootstraps the admin account. Keycloak: a setup/landing page (users/roles remain owned by the IdP; no password bootstrap).
 - Q: Where are profile images stored? → A: **In the Bastion data dir** (`{dataDir}/avatars/<username>`), served by the Bastion; a system default is used when unset.
 - Q: The run_command Docker backend needs the Docker socket, which user containers do not have. How do users run `run_command` in Bastion mode? → A: **Local backend inside the user's own container.** The admin-built **user-container image IS the run_command environment**, so it must bundle the run_command runtimes (python/node/LibreOffice/…) and the Claude/OpenCode CLIs. Building images is an **admin-only** operation in the Bastion admin portal; users do not build/select images in Bastion mode.
@@ -136,15 +138,7 @@ In standalone (non-Bastion) mode, the Command Execution settings let the user pi
 1. **Given** standalone mode, **When** the user opens Command Execution settings, **Then** they can choose from local images or provide a Dockerfile/context + tag and build (streamed log).
 2. **Given** a successful build, **When** it completes, **Then** the built tag is selectable and used by the Docker backend.
 
-### User Story 10 — Configure Claude Code / OpenCode credentials for a container (Priority: P2)
-
-The dev-harness settings let the user provide the Claude Code and OpenCode credential material; BOS writes it into a dedicated harness `HOME` so the headless CLIs authenticate without an interactive login.
-
-**Acceptance Scenarios**:
-
-1. **Given** the Dev Harness settings, **When** the user provides Claude credential material and saves, **Then** a subsequent `claude -p` run authenticates using it (no interactive login).
-2. **Given** OpenCode credential material provided, **When** an `opencode run` executes, **Then** it authenticates using the written `auth.json`.
-3. **Given** the "Test" action, **When** run, **Then** it reports whether the configured CLI is reachable/authenticated.
+*(User Story 10 — Dev Harness credential/provider/MCP configuration — moved to `029-settings-dev-harness`.)*
 
 ### Edge Cases
 
@@ -153,7 +147,6 @@ The dev-harness settings let the user provide the Claude Code and OpenCode crede
 - Wiping data while the container is running: the container is stopped first, `data/` wiped, then restart is offered.
 - Building an image while a build is already running: a second build is rejected (or queued) with a clear message; logs never interleave.
 - Profile image upload of an invalid/oversized file: rejected with a clear error; existing avatar unchanged.
-- Credential material is secret: it MUST be stored with the same protection as other config secrets and MUST NOT be echoed back to the client after save (write-only field with a "set/!set" indicator).
 - Standalone build when the Docker daemon/CLI is unavailable: the UI reports it clearly and the free-text/local path still works.
 
 ## Requirements *(mandatory)*
@@ -194,11 +187,7 @@ The dev-harness settings let the user provide the Claude Code and OpenCode crede
 - **FR-018**: In **standalone** mode, the Command Execution settings MUST let the user (a) select an existing local Docker image, or (b) build one from a Dockerfile (default `docker/run-command/Dockerfile`) + build context, with a **streamed** build log. The selected/built tag becomes `run-command.dockerImage`.
 - **FR-019**: Image listing and building for standalone mode MUST be exposed via BOS API routes (server-only) that use the Docker SDK/CLI already assumed by `019`; builds MUST stream output and be guarded (single concurrent build, clear errors when Docker is unavailable).
 
-#### BOS — dev-harness credentials
-
-- **FR-020**: The `dev-harness` config MUST accept credential material for **Claude Code** (its `~/.claude` credentials/config) and **OpenCode** (`auth.json`). BOS MUST write this material into a dedicated harness `HOME` directory and set `HOME` (and any required env) when spawning `claude`/`opencode`, so the headless CLIs authenticate without interactive login.
-- **FR-021**: Credential fields MUST be treated as secrets: stored with the config store's protection, never returned to the client after save (write-only with a set/unset indicator), and never logged.
-- **FR-022**: The Dev Harness settings UI MUST let the user enter/update the credential material and MUST provide guidance for a container deployment; the existing "Test" action MUST report reachability/auth status.
+*(FR-020–022 — Dev Harness credential handling — moved to `029-settings-dev-harness`. Numbering below is left unchanged for stability of existing cross-references.)*
 
 #### BOS — toolbar
 
@@ -214,7 +203,6 @@ The dev-harness settings let the user provide the Claude Code and OpenCode crede
 - **Per-user log** — append-only text under `{dataDir}/logs/<username>.log`; the single source of truth for provisioning diagnosis.
 - **Image build job** — a streamed `dockerode` build (context + Dockerfile + tag); at most one concurrent per surface.
 - **Profile image** — a file under `{dataDir}/avatars/<username>`; a bundled default when absent.
-- **Harness credential set** — Claude (`~/.claude` material) + OpenCode (`auth.json`) written into a dedicated `HOME`; secret, write-only in the API.
 - **run_command mode** — `local` (Bastion, inside the user container) vs `docker`/`local` selectable (standalone).
 
 ## Success Criteria *(mandatory)*
@@ -226,7 +214,7 @@ The dev-harness settings let the user provide the Claude Code and OpenCode crede
 - **SC-003**: An admin creates a user, that user logs in and gets a working instance, and later the admin removes the user and their `user-data/<user>` is gone — all from the portal.
 - **SC-004**: An admin builds the user-container image from the portal, watching the streamed log, and new containers use it — no shell.
 - **SC-005**: In Bastion mode, `run_command` executes inside the user container (local backend) and writes a file visible in the Files app, with no image selection shown.
-- **SC-006**: With Claude/OpenCode credentials configured, a headless harness run authenticates and completes inside a container without any interactive login.
+- *(SC-006 — Dev Harness auth — moved to `029-settings-dev-harness` SC-001. Numbering below unchanged for stability.)*
 - **SC-007**: Behind the Bastion, the BOS toolbar shows a working "My profile" link to the account page; standalone shows none.
 - **SC-008**: `npx tsc --noEmit` / `npm run typecheck` and lint pass in both `bastion/` and BOS for all changed files.
 
@@ -236,10 +224,11 @@ The dev-harness settings let the user provide the Claude Code and OpenCode crede
 - The Docker socket mount into the Bastion is already in the threat model (`024`). This feature does **not** mount the Docker socket into user containers (that was rejected in favor of the `local` backend).
 - Username charset `[a-z0-9_-]` continues to bound container/volume/path names.
 - Keycloak remains the only OIDC provider in scope; the Keycloak first-run is informational only.
-- Storing harness credentials at rest is acceptable for self-hosted/trusted-operator installs, consistent with `024`'s threat model; they are treated as secrets in transit and in the API.
+- Dev Harness authentication (credentials, provider selection, MCP-server inclusion) is fully specified in `029-settings-dev-harness`; this spec depends on the user-container image bundling the Claude/OpenCode CLIs (FR-024) so that harness works inside a container, but owns none of the authentication mechanism itself.
 
 ## Notes
 
 - This spec supersedes parts of `024-docker-multiuser` FR-016 (admin page) and its self-service scenario (US5) by expanding them; on completion, `024` MUST be updated (and `discrepancies.md` noted) to reference the redesigned portal/account, the first-run bootstrap, per-user logging, image build, and container kill.
 - It refines `019-tools-and-sandbox` FR-006/FR-007: in Bastion mode the backend is fixed to `local`; the sandbox image and the user-container image converge (FR-024). `019` MUST be updated accordingly on completion.
+- Dev Harness credential/provider/MCP-inclusion content (formerly US10, FR-020–022, the "Harness credential set" entity, SC-006) was extracted to `029-settings-dev-harness` on 2026-07-27 — this spec is now scoped strictly to the Docker/multi-user paradigm. A larger renumbering/cleanup pass across the spec store (resolving the pre-existing `026`/`027` duplicate numbers, `overview.md` gaps, etc.) is acknowledged as needed but out of scope for this extraction.
 - Dev docs and usage docs (`docs/dev/**`, `docs/usage/**`) MUST be updated as the final step.

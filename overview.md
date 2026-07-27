@@ -33,6 +33,10 @@ to `000-browseros-core`.
 | 016 | Unified agent model (sub-agent is a role, not a type) — *Draft* | `specs/016-unified-agents/` |
 | 017 | Central logging (session-partitioned, Supervisor-collected) — *Draft* | `specs/017-central-logging/` |
 | 018 | External spec stores (system + user git repos) — *Draft* | `specs/018-external-spec-store/` |
+| 029 | Settings — Dev Harness (credentials, provider & MCP servers) | `specs/029-settings-dev-harness/` |
+| 030 | Settings — MCP Servers (configuration) | `specs/030-settings-mcp-servers/` |
+
+*(Rows 019–028 exist as spec folders but are not yet listed here — a gap predating this edit, left for the larger renumbering/cleanup pass.)*
 
 ## Other artifacts
 

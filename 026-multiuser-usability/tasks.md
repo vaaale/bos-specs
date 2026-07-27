@@ -38,12 +38,9 @@ Feature branch: `026-multiuser-usability`. Tasks are grouped by phase; `[P]` mar
 - [ ] D3. BOS API routes (server-only): `GET /api/run-command/images` (list) and `POST /api/run-command/image/build` (streamed build), guarded (single build, docker-availability check).
 - [ ] D4. Typecheck + lint green.
 
-## Phase E — BOS dev-harness credentials — P2
+## Phase E — moved to `029-settings-dev-harness`
 
-- [x] E1. Credential material for Claude/OpenCode is managed via a dedicated write-only route (`GET/POST /api/dev-harness/credentials`) + helpers in `harness-config.ts` (`hasClaudeCreds`/`hasOpenCodeAuth`/`writeClaudeCreds`/`writeOpenCodeAuth`/`clear*`). Kept out of the generic config namespace so raw secrets are never stored there or returned to the client — only a set/unset indicator.
-- [x] E2. Credentials are written into a dedicated harness `HOME` (`{dataDir}/dev-harness/home/.claude/.credentials.json`, `.../.local/share/opencode/auth.json`) with dir `0o700` and files `0o600`; `harnessCredentialEnv()` sets `HOME`/`XDG_*` and is merged into `envForCwd()` in `claude-runner.ts` — only when credentials exist, so local dev with a real `~/.claude` is unaffected.
-- [x] E3. DevHarnessTab UI: write-only credential textareas with SET/NOT SET indicators, Save + Clear per CLI, shown for CLI/OpenCode modes with container guidance.
-- [x] E4. Typecheck + lint green.
+Dev-harness credential handling (E1–E4, all previously done) plus its new provider-selection and MCP-server-inclusion work now live entirely in `029-settings-dev-harness/tasks.md` (its Phase A = this phase's former E1–E4). Nothing dev-harness-related remains tracked here.
 
 ## Phase F — BOS toolbar My profile — P2
 
