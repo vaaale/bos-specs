@@ -36,6 +36,7 @@ to `000-browseros-core`.
 | 029 | Settings — Dev Harness (credentials, provider & MCP servers) | `specs/029-settings-dev-harness/` |
 | 030 | Settings — MCP Servers (configuration) | `specs/030-settings-mcp-servers/` |
 | 031 | Configuration Wizard (first-run setup) — *New* | `specs/031-setup-wizard/` |
+| 033 | VFS Mount (WebDAV local filesystem mount) — *Draft* | `specs/033-vfs-mount/` |
 
 *(Rows 019–028 exist as spec folders but are not yet listed here — a gap predating this edit, left for the larger renumbering/cleanup pass.)*
 
