@@ -1,271 +1,393 @@
-# Dynamic Integration Plugins
+# BOS Plugin Infrastructure
 
 **Status:** Draft  
 **Scope:** Platform  
+**Directory:** `032-dynamic-integration-plugins` (original scope was integration-only; broadened)
 
 ---
 
 ## 1. Problem Statement
 
-All integrations (GSuite, Telegram, Google Photos, …) are compiled into the BOS server bundle at build time. Adding a new integration requires editing TypeScript source, rebuilding, and redeploying. This prevents users or third parties from distributing integrations as marketplace items, and it forces every BOS instance to ship every integration regardless of whether it is used.
+BOS has two distinct plugin extension points today — the existing server plugin system
+(LLM pipeline hooks, `dataDir/plugins/`) and the integration framework (OAuth + adapter
+methods, compiled into the bundle). Neither covers the general case of a marketplace
+item that needs to:
 
-The goal is a plugin model where an integration — its OAuth manifest, server-side adapter logic, and settings configuration — can be packaged, installed from the marketplace, and loaded at runtime without recompiling BOS.
+- expose custom authenticated API routes,
+- register a new engine or capability type,
+- inject a settings panel, and
+- serve its own frontend app — all without recompiling BOS.
+
+The goal of this spec is a general **plugin infrastructure** layer that any plugin type
+can build on. Integration plugins (OAuth + adapters) are the first concrete consumer;
+voice engine plugins (`033-pluggable-voice-engines`) are the second. More will follow.
 
 ---
 
 ## 2. Goals
 
-- **G1** — A marketplace item can declare an `integration` facet that, when installed, registers a fully functional integration (OAuth flow, adapter methods, LLM tools, settings panel).
-- **G2** — Integration plugins are loaded at server startup via dynamic `import()`, the same mechanism used by the existing server plugin system.
-- **G3** — The built-in integrations (GSuite, Telegram) continue to work without any changes to how they are authored or registered.
-- **G4** — The LLM capabilities registry derives its tool list from the live adapter registry at request time, not from a hardcoded compile-time array.
-- **G5** — A plugin-provided settings UI uses JSON Schema-driven panels (no custom React components) unless the plugin ships an iframe panel for advanced configuration.
-- **G6** — Installing or uninstalling an integration plugin does not require a server restart (activation takes effect on next request; deactivation requires a restart or a reload trigger — see §8.3).
+- **G1** — Any marketplace item can expose API surface through a single generic
+  catch-all route, without BOS pre-building type-specific routes.
+- **G2** — A marketplace item can register a settings panel that appears in the BOS
+  Settings app when the item is installed.
+- **G3** — A marketplace item can serve its own iframe application through its plugin
+  routes, inheriting BOS same-origin status (WebRTC-capable, no opaque sandbox).
+- **G4** — A marketplace item can declare an `integration` facet that registers OAuth
+  manifests, adapter methods, and LLM tools at runtime.
+- **G5** — Plugin loading uses dynamic `import()` via Next.js `instrumentation.ts`,
+  running once at server startup before any request is handled.
+- **G6** — The LLM capabilities registry derives its tool list from the live adapter
+  registry at request time, not from a hardcoded compile-time array.
+- **G7** — Built-in integrations (GSuite, Telegram) continue to work unchanged.
+- **G8** — Installing or uninstalling a plugin does not require a server restart.
 
 ## 3. Non-Goals
 
-- **NG1** — TypeScript/JSX hot compilation on install. Plugins are pre-compiled to CommonJS JS before packaging.
-- **NG2** — Full UI extensibility (custom React components injected into the settings shell). Settings panels are JSON Schema or iframe only.
-- **NG3** — Moving the built-in integrations out of the source tree in the same release. Migration is optional and incremental (§9).
-- **NG4** — Client-side (browser) plugin loading. Adapter code is server-only.
+- **NG1** — TypeScript/JSX hot compilation on install. Plugins are pre-compiled
+  CommonJS JS.
+- **NG2** — Custom React component injection into the settings shell. Panels are
+  JSON Schema-driven or iframe only.
+- **NG3** — Moving built-in integrations out of the source tree in the same release.
+- **NG4** — Client-side (browser) plugin loading. Plugin entry files are server-only.
 
 ---
 
 ## 4. Current Architecture — Coupling Map
 
-The table below lists each subsystem, whether it currently supports dynamic registration, and what blocks it.
-
 | Subsystem | File | Dynamic today? | Blocker |
 |---|---|---|---|
-| Manifest registry | `src/lib/integrations/registry.ts` | Yes — `registerIntegration()` exists, backed by `globalThis` | Service barrels are hardcoded in `index.ts` |
-| Adapter registry | `src/lib/integrations/actions/adapter-registry.ts` | Yes — `registerAdapter()` exists | Same hardcoded imports; throws on duplicate (no HMR guard) |
-| Capabilities registry | `src/lib/agent/capabilities-registry.ts` | **No** | Hardcoded imports of every method-descriptor file; CAPABILITIES is a frozen array built at module load |
-| Webhook registry | `src/lib/integrations/webhooks/registry.ts` | **No** | Static `HANDLERS` object literal; no registration function |
-| Settings tabs | `src/lib/config/registry.ts` + `src/apps/settings/index.tsx` | **No** | `REGISTRATIONS` array and `CUSTOM_TABS` map are hardcoded; no runtime registration |
+| API routes | Next.js App Router | **No** | File-system based; compiled at build time |
+| Manifest registry | `src/lib/integrations/registry.ts` | Yes — `registerIntegration()`, `globalThis`-backed | Service barrels hardcoded in `index.ts` |
+| Adapter registry | `src/lib/integrations/actions/adapter-registry.ts` | Yes — `registerAdapter()` | Same hardcoded imports; throws on duplicate |
+| Capabilities registry | `src/lib/agent/capabilities-registry.ts` | **No** | Hardcoded descriptor imports; frozen array at module load |
+| Webhook registry | `src/lib/integrations/webhooks/registry.ts` | **No** | Static `HANDLERS` object literal |
+| Settings tabs | `src/lib/config/registry.ts` + `src/apps/settings/index.tsx` | **No** | `REGISTRATIONS` array and `CUSTOM_TABS` map are hardcoded |
 | OAuth manager | `src/lib/integrations/oauth/manager.ts` | Yes | No coupling to specific integrations |
-| Invoke route | `src/app/api/integrations/[id]/services/[serviceId]/invoke/route.ts` | Yes | Reads registries at request time; works as-is once registries are populated |
-| Integrations list route | `src/app/api/integrations/route.ts` | Yes | Same — reads registries at request time |
+| Invoke route | `src/app/api/integrations/[id]/services/[serviceId]/invoke/route.ts` | Yes | Reads registries at request time |
+| Integrations list route | `src/app/api/integrations/route.ts` | Yes | Reads registries at request time |
 
 ---
 
 ## 5. Plugin Package Format
 
-An integration plugin is a directory installable from the marketplace. It is placed at:
+A plugin is a directory installable from the marketplace, placed at:
 
 ```
-data/integration-plugins/<integration-id>/
+data/bos-plugins/<plugin-id>/
 ```
 
 ### 5.1 Required files
 
 ```
-<integration-id>/
-├── integration-plugin.json   # plugin manifest (§5.2)
-├── index.js                  # compiled entry point (§5.3)
-└── client.js                 # framework-free method descriptors (§5.4)
+<plugin-id>/
+├── bos-plugin.json     # plugin manifest (§5.2)
+└── index.js            # compiled server entry (§5.3)
 ```
 
-### 5.2 `integration-plugin.json`
+### 5.2 `bos-plugin.json`
 
 ```jsonc
 {
-  "id": "google-photos",           // must match the IntegrationManifest id
-  "name": "Google Photos",
+  "id": "live-avatar",
+  "name": "Live Avatar",
   "version": "1.0.0",
-  "description": "Browse albums and search media in Google Photos.",
-  "bosVersion": ">=1.4.0",         // semver range of compatible BOS versions
-  "sdkVersion": "1",               // BOS Integration SDK major version (§6)
-  "entry": "index.js",             // server-side entry (default: index.js)
-  "clientEntry": "client.js"       // framework-free descriptors (default: client.js)
+  "description": "Lip-synced avatar powered by AVTR-1.",
+  "bosVersion": ">=1.4.0",    // semver range of compatible BOS versions
+  "sdkVersion": "1",          // BOS Plugin SDK major version (§6)
+  "entry": "index.js"         // server-side entry (default: index.js)
 }
 ```
 
 ### 5.3 `index.js` — server entry
 
-The entry file runs in the BOS Node.js process. It MUST:
-1. Import from `@bos/integration-sdk` (§6) for all BOS internals.
-2. Call `registerIntegration(manifest)` and `registerAdapter(...)` synchronously during module evaluation, or in an exported `activate()` async function.
-3. Not start network connections, timers, or background tasks at module load.
+Runs in the BOS Node.js process. Must import exclusively from `@bos/plugin-sdk` (§6).
+Must export `activate(ctx)` and `deactivate(ctx)` async functions.
 
 ```js
-// example: google-photos/index.js (compiled from TypeScript)
 "use strict";
-const sdk = require("@bos/integration-sdk");
-
-const MANIFEST = {
-  id: "google-photos",
-  name: "Google Photos",
-  // …
-};
-
-sdk.registerIntegration(MANIFEST);
-
-const { PhotosAdapter } = require("./adapter.js");
-const { PHOTOS_METHODS }  = require("./methods.js");
-
-sdk.registerAdapter("google-photos", "photos", {
-  createAdapter: () => new PhotosAdapter(),
-  methods: PHOTOS_METHODS,
-});
-
-// Optional: register a webhook handler
-// sdk.registerWebhookHandler("google-photos", "photos", new PhotosWebhookHandler());
+const sdk = require("@bos/plugin-sdk");
 
 module.exports = {
   async activate(ctx) {
-    ctx.log.info("google-photos integration activated");
+    // Register routes, integrations, voice engines, settings panels …
+    sdk.registerRoute("GET", "/session", async (req) => {
+      return Response.json({ ok: true });
+    });
+    ctx.log.info(`${ctx.pluginId} activated`);
   },
   async deactivate(ctx) {
-    sdk.unregisterIntegration("google-photos");
-    sdk.unregisterAdapter("google-photos", "photos");
+    // Unregister everything registered during activate
+    sdk.unregisterRoutes(ctx.pluginId);
+    ctx.log.info(`${ctx.pluginId} deactivated`);
   },
 };
 ```
 
-### 5.4 `client.js` — framework-free descriptors
+### 5.4 Optional: `client.js` — framework-free metadata
 
-This file is served to the browser (via a new `/api/integration-plugins/[id]/client` route) so the client-side capabilities registry can enumerate the plugin's tools without importing server-only code. It MUST only contain JSON-serialisable data and no Node.js dependencies.
-
-```js
-// example: google-photos/client.js
-exports.PHOTOS_METHOD_DESCRIPTORS = [
-  {
-    method: "albums_list",
-    scope: "https://www.googleapis.com/auth/photoslibrary.readonly",
-    description: "List the user's Google Photos albums.",
-    parameters: [ /* … */ ],
-  },
-  // …
-];
-```
-
-### 5.5 Optional: iframe settings panel
-
-If the integration requires a richer settings UI than JSON Schema allows, it can ship a static HTML file:
-
-```
-<integration-id>/
-└── settings/
-    └── index.html    # served at /api/integration-plugins/<id>/settings/
-```
-
-The BOS settings shell renders this as a sandboxed iframe when the user opens the integration's settings. The iframe communicates with BOS via `postMessage` using a documented protocol (to be specified separately).
+Served to the browser via `GET /api/plugin/<id>/~client` so the client-side
+capabilities registry can read plugin tool metadata without importing server-only
+code. Must contain only JSON-serialisable data with no Node.js dependencies.
 
 ---
 
-## 6. Integration SDK (`@bos/integration-sdk`)
+## 6. BOS Plugin SDK (`@bos/plugin-sdk`)
 
-The SDK is a thin re-export layer that integration plugins import instead of reaching into BOS source paths directly. This gives plugins a stable contract that BOS can version independently of its own internal refactors.
+A thin re-export layer plugins import instead of reaching into BOS internals.
+Versioned independently of BOS internals so plugins have a stable contract.
 
 ### 6.1 Exports (v1)
 
 ```typescript
-// Registration
+// ── Route dispatch ──────────────────────────────────────────────────────────
+/**
+ * Register an authenticated API route under /api/plugin/<pluginId>/<path>.
+ * handler receives a standard Request and must return a Response.
+ * All registered routes are automatically unregistered on deactivate.
+ */
+export function registerRoute(
+  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
+  path: string,
+  handler: (req: Request, ctx: PluginRouteContext) => Promise<Response>,
+): void;
+
+export function unregisterRoutes(pluginId: string): void;
+
+// ── Settings panels ─────────────────────────────────────────────────────────
+/**
+ * Register a settings panel that appears in the BOS Settings app.
+ * configSchema follows JSON Schema draft-07; stored under the plugin's
+ * config namespace. secretFields lists keys stored in secrets store.
+ */
+export function registerSettingsPanel(config: {
+  pluginId: string;
+  label: string;
+  icon: string;              // lucide-react icon name
+  order?: number;
+  configSchema: JSONSchema;
+  secretFields?: string[];   // keys whose values are never returned to browser
+}): void;
+
+export function unregisterSettingsPanel(pluginId: string): void;
+
+// ── Integration plugins ──────────────────────────────────────────────────────
 export function registerIntegration(manifest: IntegrationManifest): void;
 export function unregisterIntegration(id: string): void;
-export function registerAdapter(integrationId: string, serviceId: string, entry: AdapterEntry): void;
+export function registerAdapter(
+  integrationId: string,
+  serviceId: string,
+  entry: AdapterEntry,
+): void;
 export function unregisterAdapter(integrationId: string, serviceId: string): void;
-export function registerWebhookHandler(integrationId: string, serviceId: string, handler: WebhookHandler): void;
+export function registerWebhookHandler(
+  integrationId: string,
+  serviceId: string,
+  handler: WebhookHandler,
+): void;
 export function unregisterWebhookHandler(integrationId: string, serviceId: string): void;
 
-// Base classes / helpers
+// ── Voice engines (see 033-pluggable-voice-engines) ──────────────────────────
+export function registerVoiceEngine(engine: VoiceEnginePlugin): void;
+export function unregisterVoiceEngine(engineId: string): void;
+
+// ── Base classes / utilities ─────────────────────────────────────────────────
 export { ServiceAdapter } from "@/lib/integrations/adapters/base";
-export { IntegrationConfigError, IntegrationAuthError, IntegrationScopeError } from "@/lib/integrations/errors";
+export {
+  IntegrationConfigError,
+  IntegrationAuthError,
+  IntegrationScopeError,
+} from "@/lib/integrations/errors";
 
-// Fetch utilities
-export { gsuiteFetch, gsuiteFetchBinary, buildUrl } from "@/lib/integrations/services/gsuite/client";
-// NOTE: gsuiteFetch is GSuite-specific. A generic authedFetch is exposed via ServiceAdapter.authedFetch.
-
-// Types
+// ── Types ────────────────────────────────────────────────────────────────────
 export type {
   IntegrationManifest, ServiceDefinition, OAuthConfig,
   AdapterEntry, AdapterMethodMeta, AdapterMethodParameter,
-  WebhookHandler,
-} from "@/lib/integrations/types";
+  WebhookHandler, VoiceEnginePlugin, PluginRouteContext,
+} from "@/lib/plugins/types";
 ```
 
 ### 6.2 Resolution
 
-`@bos/integration-sdk` is a package alias declared in `package.json`'s `exports` map pointing at `src/lib/integrations/sdk/index.ts`. Plugins import it as a bare specifier; at runtime Node.js resolves it to the installed BOS module.
-
-Because plugins are loaded with `import(/* webpackIgnore: true */ path)` after the Next.js build, they import from the running process's `node_modules` — the same mechanism the existing server plugin system uses.
+`@bos/plugin-sdk` is a `package.json` exports alias pointing at
+`src/lib/plugins/sdk/index.ts`. Plugins load with
+`import(/* webpackIgnore: true */ path)` after the Next.js build and resolve the
+alias from the running process's module graph — the same mechanism the existing
+server plugin system uses.
 
 ---
 
 ## 7. Required Code Changes
 
-### 7.1 Capabilities registry — make dynamic
+### 7.1 Generic plugin catch-all route
 
-**Problem:** `src/lib/agent/capabilities-registry.ts` hardcodes imports of every method-descriptor file and builds `CAPABILITIES` at module load.
+**New file:** `src/app/api/plugin/[pluginId]/[...path]/route.ts`
 
-**Solution:** Split into two parts:
+This is the single API route in BOS core that dispatches to all plugin-registered
+handlers. On each request it:
 
-1. **Static capabilities** — all non-integration capabilities (file tools, terminal, etc.) remain as a hardcoded array.
-2. **Dynamic integration capabilities** — a new `listIntegrationCapabilities()` function builds the integration portion of the capability list on demand by reading `listAdapterServices()` from the adapter registry and pairing each entry with its method descriptors. The method descriptors are retrieved from a per-adapter `getMethodDescriptors()` call added to `AdapterEntry`.
+1. Verifies the BOS session cookie (same auth as all other BOS routes).
+2. Looks up `pluginId` in the plugin route registry.
+3. Finds the handler matching `method` + `path`.
+4. Calls `handler(request, ctx)` and returns the `Response`.
+5. Returns `404` if no matching handler is found, `503` if the plugin is not active.
+
+The route registry is a `globalThis`-backed map:
 
 ```typescript
-// New field on AdapterEntry in adapter-registry.ts
+// src/lib/plugins/route-registry.ts
+type RouteHandler = (req: Request, ctx: PluginRouteContext) => Promise<Response>;
+
+interface RouteEntry {
+  method: string;
+  path: string;       // normalised, e.g. "/session"
+  handler: RouteHandler;
+}
+
+const KEY = "__bos_plugin_routes__";
+const registry: Map<string, RouteEntry[]> =
+  (globalThis as any)[KEY] ??= new Map();
+
+export function registerRoute(pluginId, method, path, handler): void { … }
+export function unregisterRoutes(pluginId): void { … }
+export function matchRoute(pluginId, method, path): RouteHandler | undefined { … }
+```
+
+The `globalThis` backing survives Next.js HMR re-evaluations in development.
+
+**The same route serves the plugin-provided app.** A plugin that ships a frontend
+app registers a handler for `GET /app` (returns `index.html`) and
+`GET /app/:asset` (returns static assets). Because the URL
+`/api/plugin/<id>/app` is served by BOS's own route handler, the resulting iframe
+is same-origin — full WebRTC access, no opaque sandbox restriction.
+
+### 7.2 Settings panel registry
+
+**New file:** `src/lib/plugins/settings-registry.ts`
+
+```typescript
+interface SettingsPanelEntry {
+  pluginId: string;
+  label: string;
+  icon: string;
+  order: number;
+  configSchema: JSONSchema;
+  secretFields: string[];
+}
+
+// globalThis-backed
+export function registerSettingsPanel(entry: SettingsPanelEntry): void;
+export function unregisterSettingsPanel(pluginId: string): void;
+export function listSettingsPanels(): SettingsPanelEntry[];
+```
+
+**Modified:** `src/lib/config/registry.ts` — `listRegistrations()` appends entries
+from `listSettingsPanels()` so dynamically registered panels appear alongside
+built-in tabs without any changes to the settings shell React code.
+
+**Modified:** `src/app/api/config/route.ts` — the `GET /api/config` response already
+serialises `listRegistrations()`, so plugin panels appear automatically.
+
+**Secret field handling:** When a settings panel declares `secretFields`, the config
+`GET` route redacts those keys (replaces values with `"••••••"`) and the `PATCH`
+route writes them to the secrets store instead of the plain config store.
+
+### 7.3 Capabilities registry — make dynamic
+
+**Problem:** `src/lib/agent/capabilities-registry.ts` hardcodes every
+method-descriptor import and builds `CAPABILITIES` at module load.
+
+**Solution:**
+
+1. Add `methodDescriptors` to `AdapterEntry` in `adapter-registry.ts`:
+
+```typescript
 export interface AdapterEntry {
   createAdapter: () => ServiceAdapter;
   methods: readonly AdapterMethodMeta<any>[];
   capabilities?: AdapterCapabilities;
-  // NEW: framework-free descriptors for the client/capabilities registry
-  methodDescriptors: readonly { method: string; scope: string; description: string; parameters: AdapterMethodParameter[] }[];
+  methodDescriptors: readonly AdapterMethodDescriptor[]; // NEW
 }
 ```
 
-Built-in adapters populate `methodDescriptors` from their existing `*_METHOD_DESCRIPTORS` exports. Plugin adapters do the same from their `client.js`.
+2. Replace the hardcoded `CAPABILITIES` array with a `listCapabilities()` function
+   that reads `listAdapterServices()` at call time and generates capability entries
+   from each entry's `methodDescriptors`. Static (non-integration) capabilities
+   remain hardcoded; only the integration portion is dynamic.
 
-3. **`CAPABILITIES` export becomes a getter** that concatenates static + `listIntegrationCapabilities()`. Call sites that read `CAPABILITIES` once at startup are updated to call the getter on each assistant run initialisation instead.
+3. Update all call sites to call `listCapabilities()` per assistant run
+   initialisation rather than importing the array once.
 
-### 7.2 Webhook registry — add registration function
+Built-in adapters populate `methodDescriptors` from their existing
+`*_METHOD_DESCRIPTORS` exports with no other changes.
 
-Add `registerWebhookHandler` and `unregisterWebhookHandler` to `src/lib/integrations/webhooks/registry.ts`. The static `HANDLERS` object becomes the seed; dynamic registrations are stored separately in a `globalThis`-backed map (same pattern as the manifest registry) so they survive Next.js HMR re-evaluations.
+### 7.4 Webhook registry — add registration functions
 
-### 7.3 Adapter registry — add unregister + HMR guard
+**Modified:** `src/lib/integrations/webhooks/registry.ts`
 
-- Add `unregisterAdapter(integrationId, serviceId)` for clean plugin deactivation.
-- Change the duplicate-registration guard from "throw" to "replace" (matching manifest registry behaviour) so Next.js HMR doesn't break dev reloads of plugin adapters.
-- Store registry in `globalThis.__bos_adapter_registry__` (same pattern as manifest registry).
+Add `registerWebhookHandler` and `unregisterWebhookHandler`. The static `HANDLERS`
+object becomes the seed; dynamic registrations are stored in a separate
+`globalThis`-backed map so they survive HMR.
 
-### 7.4 Integration plugin loader
+### 7.5 Adapter registry — add unregister + HMR guard
 
-New file: `src/lib/integration-plugins/loader.ts`
+**Modified:** `src/lib/integrations/actions/adapter-registry.ts`
 
-Responsibilities:
-- Scan `dataDir()/integration-plugins/` at startup.
-- Read and validate each `integration-plugin.json`.
-- Dynamically import each plugin's `entry` file (`index.js`) with `import(/* webpackIgnore: true */ entryPath)`.
-- Call the exported `activate(ctx)` function if present.
-- Record loaded plugins in `globalThis.__bos_loaded_integration_plugins__`.
-- Per-plugin error isolation: a failure loading one plugin must not prevent others from loading.
+- Add `unregisterAdapter(integrationId, serviceId)`.
+- Change duplicate-registration guard from "throw" to "replace" (matches manifest
+  registry behaviour; prevents HMR breakage in dev).
+- Back the registry map with `globalThis.__bos_adapter_registry__`.
 
-The loader is invoked from Next.js `instrumentation.ts` (`register()` export), which runs once at server startup before any request is handled.
+### 7.6 Plugin loader
 
-### 7.5 Marketplace facet: `integration`
+**New file:** `src/lib/plugins/loader.ts`
 
-Add `integration` as a recognised facet in `src/lib/marketplace/schema.ts`:
+Scans `dataDir()/bos-plugins/` at startup, reads and validates each
+`bos-plugin.json`, dynamically imports `index.js`, and calls `activate(ctx)`.
+Per-plugin error isolation: one bad plugin must not prevent others from loading.
+Loaded plugins recorded in `globalThis.__bos_loaded_plugins__`.
+
+**New file:** `instrumentation.ts` (Next.js startup hook, at repo root)
 
 ```typescript
-integration?: {
-  entrypoint: string;   // path to the directory containing integration-plugin.json
-  version: string;
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { loadAllPlugins } = await import("./src/lib/plugins/loader");
+    await loadAllPlugins();
+  }
 }
 ```
 
-The marketplace install logic (`client.ts`) handles this facet by:
-1. Copying the integration directory to `data/integration-plugins/<id>/`.
-2. Calling `activateIntegrationPlugin(id)` — a hot-registration path that loads the plugin immediately without a server restart (best-effort; falls back to "restart required" notice).
+### 7.7 Marketplace facets
 
-Uninstall calls `deactivateIntegrationPlugin(id)`, which calls the plugin's `deactivate()` hook and removes its registrations.
+**Modified:** `src/lib/marketplace/schema.ts` — add new facet types:
 
-### 7.6 Settings UI — dynamic config tab
+```typescript
+// Existing:
+integration?: { entrypoint: string; version: string; }
 
-For each loaded integration plugin, the settings system automatically creates a config tab driven by the `configSchema` defined in the plugin's `IntegrationManifest` services. No new settings plumbing is required beyond what already exists for built-in services.
+// New:
+voiceEngine?: {
+  entrypoint: string;   // path to the directory containing bos-plugin.json
+  version: string;
+  engineId: string;     // matches VoiceEnginePlugin.id
+}
 
-If the plugin ships a `settings/index.html`, the integrations settings panel renders an iframe pointing at `/api/integration-plugins/<id>/settings/` in place of the default JSON Schema form.
+// Updated app runtime options:
+app?: {
+  entrypoint: string;
+  runtime: "iframe" | "plugin-served";  // plugin-served = served via plugin routes
+  version: string;
+  icon?: string;
+}
+```
 
-A new API route `GET /api/integration-plugins` returns the list of loaded plugin manifests so the client can render integration cards in the settings shell.
+**`plugin-served` runtime:** BOS opens the app in a window pointing at
+`/api/plugin/<pluginId>/app` rather than `/apps/<id>/`. No files are copied or
+symlinked; the plugin route handler serves HTML and assets from the plugin directory.
+
+**Modified:** `src/lib/marketplace/client.ts` — install/uninstall handlers for
+`integration` and `voiceEngine` facets call `activatePlugin(id)` /
+`deactivatePlugin(id)` from `src/lib/plugins/loader.ts`.
 
 ---
 
@@ -274,91 +396,113 @@ A new API route `GET /api/integration-plugins` returns the list of loaded plugin
 ### 8.1 Install
 
 ```
-marketplace install google-photos
-  → copy files to data/integration-plugins/google-photos/
-  → validate integration-plugin.json
+marketplace install <id>
+  → copy plugin directory to data/bos-plugins/<id>/
+  → validate bos-plugin.json
   → dynamic import index.js
-  → registerIntegration(), registerAdapter()
-  → activate(ctx)
-  → integration is immediately available (no restart)
+  → activate(ctx)  →  registerRoute(), registerSettingsPanel(), registerIntegration(), …
+  → plugin immediately available (no restart)
 ```
 
 ### 8.2 Uninstall
 
 ```
-marketplace uninstall google-photos
-  → deactivate(ctx)
-  → unregisterAdapter(), unregisterIntegration()
-  → delete data/integration-plugins/google-photos/
-  → integration removed (no restart; in-flight requests complete normally)
+marketplace uninstall <id>
+  → deactivate(ctx)  →  unregisterRoutes(), unregisterSettingsPanel(), …
+  → delete data/bos-plugins/<id>/
+  → plugin removed (in-flight requests complete normally)
 ```
 
 ### 8.3 Server restart
 
-On startup, `instrumentation.ts` calls the integration plugin loader, which re-imports and re-activates all installed plugins before the first request is served. Plugin registrations therefore survive restarts without any user action.
+`instrumentation.ts` re-loads all plugins in `data/bos-plugins/` before the first
+request. Registrations survive restarts without user action.
 
 ### 8.4 Update
 
-An update is an uninstall followed by an install of the new version. The OAuth tokens and per-service config stored in the secrets store and state store are keyed by integration id and survive the update as long as the id does not change.
+Uninstall followed by install of the new version. Plugin-specific data (OAuth tokens,
+config) is stored under the plugin id and survives the update.
 
 ---
 
 ## 9. Security Considerations
 
-- **Code execution**: Integration plugin `index.js` runs in the main BOS Node.js process with full access to the filesystem, network, and secrets store. This is identical to the existing server plugin model. Plugins must be from trusted sources; the marketplace UI should display provenance and allow admins to review plugin code before activation.
-- **Scope isolation**: The SDK does not expose a way for a plugin to read another integration's OAuth tokens. `getSecretsStore()` is NOT exported; adapters access tokens only via `ServiceAdapter.authedFetch`, which reads tokens for the adapter's own integration id.
-- **Client entry**: `client.js` is served unauthenticated. It must contain only static metadata (method descriptors) — no credentials, no logic that touches secrets.
-- **iframe settings panel**: Sandboxed with `sandbox="allow-scripts allow-forms"` (no `allow-same-origin`). PostMessage protocol is verified by origin.
+- **Code execution:** Plugin `index.js` runs in the main BOS Node.js process with
+  full filesystem and network access. Identical risk model to the existing server
+  plugin system. Plugins must come from trusted sources.
+- **Route authentication:** The catch-all route `GET|POST /api/plugin/[id]/[...path]`
+  requires a valid BOS session cookie — the same auth as all other BOS API routes.
+  Plugin route handlers do not need to implement their own auth.
+- **Scope isolation:** The SDK does not export `getSecretsStore()`. Plugins access
+  their own secrets only through the settings panel `secretFields` mechanism.
+- **`client.js`:** Served unauthenticated (metadata only). Must not contain
+  credentials or server-side logic.
+- **`plugin-served` apps:** Served at `/api/plugin/<id>/app` — same-origin with BOS,
+  behind session auth. No opaque sandbox; treat as trusted user content.
 
 ---
 
 ## 10. Open Questions
 
-| # | Question | Options | Decision needed by |
-|---|---|---|---|
-| OQ1 | Should `@bos/integration-sdk` be a real npm package or a path alias only? | (a) npm package published separately — cleaner versioning, harder to keep in sync; (b) path alias in BOS `package.json` — simpler, but plugins must be built against a specific BOS install | Before SDK design is finalised |
-| OQ2 | Hot-activation on install: is it always safe to `import()` and `registerAdapter()` mid-request? | The registries are backed by plain objects (no locks). Likely safe for read-heavy workloads but may need a mutex for production. | Before loader implementation |
-| OQ3 | How are plugin-provided OAuth apps handled? A GSuite plugin still requires the user to upload a `client_secrets.json`. Is the existing `/api/integrations/[id]/client-secret` route sufficient, or does a plugin need to declare its own credential type? | Existing route is generic by integration id — it should work as-is. | Early implementation |
-| OQ4 | Should the built-in integrations (GSuite, Telegram) be migrated to the plugin format? | (a) Yes — validates the system and reduces bundle size; (b) No — built-ins benefit from TypeScript source and tighter integration; keep as compiled-in | After the loader is proven stable |
-| OQ5 | Plugin distribution format: git repo (like user-apps) or tarball/zip? | Git repos align with the existing GitFS model. Tarballs are simpler for versioned releases. | Marketplace spec |
+| # | Question | Options |
+|---|---|---|
+| OQ1 | `@bos/plugin-sdk` — npm package or path alias? | (a) Published npm package — clean versioning; (b) `package.json` exports alias — simpler, tied to BOS version |
+| OQ2 | Hot-activation safety: is `import()` + registry mutation mid-request safe? | Registries are plain Maps — likely safe for read-heavy BOS; a mutex may be needed for production |
+| OQ3 | Plugin distribution format: git repo (GitFS model) or tarball? | Git aligns with user-apps; tarballs are simpler for versioned releases |
+| OQ4 | Should built-in integrations migrate to the plugin format? | After the loader is proven stable |
 
 ---
 
 ## 11. Affected Files
 
 ### New files
-- `src/lib/integration-plugins/loader.ts`
-- `src/lib/integration-plugins/types.ts`
-- `src/lib/integrations/sdk/index.ts` (`@bos/integration-sdk` entry point)
-- `src/app/api/integration-plugins/route.ts` (list loaded plugins)
-- `src/app/api/integration-plugins/[id]/client/route.ts` (serve client.js)
-- `src/app/api/integration-plugins/[id]/settings/route.ts` (serve iframe settings HTML)
-- `instrumentation.ts` (Next.js startup hook — new file at repo root)
+- `instrumentation.ts` — Next.js startup hook
+- `src/lib/plugins/loader.ts` — plugin loader
+- `src/lib/plugins/sdk/index.ts` — `@bos/plugin-sdk` entry point
+- `src/lib/plugins/route-registry.ts` — catch-all route handler registry
+- `src/lib/plugins/settings-registry.ts` — settings panel registry
+- `src/lib/plugins/types.ts` — shared plugin types
+- `src/app/api/plugin/[pluginId]/[...path]/route.ts` — generic catch-all route
 
 ### Modified files
-- `src/lib/integrations/registry.ts` — add `unregisterIntegration()`; ensure `globalThis` guard
-- `src/lib/integrations/actions/adapter-registry.ts` — add `unregisterAdapter()`; change duplicate guard; add `methodDescriptors` to `AdapterEntry`; use `globalThis` guard
-- `src/lib/integrations/webhooks/registry.ts` — add `registerWebhookHandler()` / `unregisterWebhookHandler()`
-- `src/lib/agent/capabilities-registry.ts` — remove hardcoded descriptor imports; implement dynamic `listIntegrationCapabilities()`
-- `src/lib/marketplace/schema.ts` — add `integration` facet
-- `src/lib/marketplace/client.ts` — handle `integration` facet install/uninstall
-- `package.json` — add `@bos/integration-sdk` exports alias
-- All built-in adapter files — add `methodDescriptors` field to their `registerAdapter()` call
+- `src/lib/integrations/registry.ts` — add `unregisterIntegration()`
+- `src/lib/integrations/actions/adapter-registry.ts` — `unregisterAdapter()`, HMR guard, `methodDescriptors` field
+- `src/lib/integrations/webhooks/registry.ts` — `registerWebhookHandler()` / `unregisterWebhookHandler()`
+- `src/lib/agent/capabilities-registry.ts` — replace frozen array with dynamic `listCapabilities()`
+- `src/lib/config/registry.ts` — `listRegistrations()` includes plugin settings panels
+- `src/app/api/config/route.ts` — no change required (reads `listRegistrations()` already)
+- `src/lib/marketplace/schema.ts` — add `voiceEngine` facet; add `plugin-served` runtime
+- `src/lib/marketplace/client.ts` — handle `integration` + `voiceEngine` facets
+- `package.json` — add `@bos/plugin-sdk` exports alias
+- All built-in adapter files — add `methodDescriptors` field to `registerAdapter()` call
 
 ---
 
 ## 12. Phasing
 
-### Phase A — Foundations (server-side, no UI changes)
-Deliverables: loader, SDK stub, `unregister*` functions, webhook registry open, adapter registry `methodDescriptors`, capabilities registry made dynamic. Built-in integrations continue to work unchanged. No marketplace UI yet.
+### Phase A — Plugin infrastructure foundations
+Plugin loader, catch-all route + route registry, settings panel registry, SDK stub,
+`unregister*` functions, webhook registry open, adapter registry HMR guard +
+`methodDescriptors`, capabilities registry made dynamic.
 
-Validation: the loader successfully imports a hand-crafted `google-photos` integration plugin from `data/integration-plugins/` and the integration appears in `/api/integrations` and functions end-to-end.
+Validation: a hand-crafted plugin in `data/bos-plugins/hello/` registers a route
+`GET /hello` that returns `{ ok: true }`, a settings panel, and appears in
+`/api/plugin/hello/hello`.
 
-### Phase B — Marketplace integration
-Deliverables: `integration` facet in marketplace schema + install/uninstall logic + `GET /api/integration-plugins`. Built-in marketplace UI shows integration plugins as installable items.
+### Phase B — Integration plugin facet
+`integration` facet in marketplace schema + install/uninstall. Validation: the
+Google Photos integration packaged as a plugin, installed from marketplace,
+functional end-to-end.
 
-### Phase C — Settings UI + iframe panel support
-Deliverables: dynamic config tabs for plugin-provided services; iframe panel protocol; `client.js` serving route.
+### Phase C — Voice engine facet
+`voiceEngine` facet + `registerVoiceEngine()` in SDK. Detailed in
+`033-pluggable-voice-engines`. Validation: the live-avatar plugin installed,
+voice engine selectable in voice settings.
 
-### Phase D — SDK package + developer tooling
-Deliverables: TypeScript SDK types, build template, documentation. Enables third-party plugin authors to build and publish integration plugins.
+### Phase D — `plugin-served` app runtime
+`plugin-served` app runtime + plugin route serving HTML/assets. Validation:
+live-avatar app opened as a BOS window, served same-origin via plugin route,
+WebRTC functional.
+
+### Phase E — SDK package + developer tooling
+TypeScript SDK types, build template, documentation for third-party plugin authors.
