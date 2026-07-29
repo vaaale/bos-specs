@@ -37,6 +37,8 @@ to `000-browseros-core`.
 | 030 | Settings — MCP Servers (configuration) | `specs/030-settings-mcp-servers/` |
 | 031 | Configuration Wizard (first-run setup) — *New* | `specs/031-setup-wizard/` |
 | 033 | VFS Mount (WebDAV local filesystem mount) — *Draft* | `specs/033-vfs-mount/` |
+| 034 | user-apps is a Marketplace (layout & manifest parity) — *New* | `specs/034-user-apps-marketplace-parity/` |
+| 035 | Install is a symlink — one item, one link, no copies — *New* | `specs/035-install-by-symlink/` |
 
 *(Rows 019–028 exist as spec folders but are not yet listed here — a gap predating this edit, left for the larger renumbering/cleanup pass.)*
 

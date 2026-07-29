@@ -22,7 +22,7 @@ Routing to port **8090** (the Supervisor) rather than 3000 (Next.js directly) is
 
 ### User Story 1 — A new user logs in and gets their own BOS instance (Priority: P1)
 
-A user visits the bastion URL, authenticates (Simple or Keycloak), and is transparently proxied to a freshly-provisioned BOS instance scoped to them. On first login the instance is created; on subsequent logins it resumes or is restarted if it was stopped due to idle timeout.
+A user visits the bastion URL, authenticates (Simple or Keycloak), and is transparently proxied to a freshly-provisioned BOS instance scoped to them. On first login the instance is created; on subsequent logins it resumes, or is restarted if it had been stopped.
 
 **Why this priority**: This is the entire point of the feature — without it nothing else has value.
 
@@ -31,7 +31,7 @@ A user visits the bastion URL, authenticates (Simple or Keycloak), and is transp
 **Acceptance Scenarios**:
 
 1. **Given** a fresh install with no running instances, **When** user Alice logs in, **Then** a container `bos-alice` is created with Alice's volume mounts and she is proxied into her BOS.
-2. **Given** Alice's instance was stopped by idle timeout, **When** Alice logs in again, **Then** her instance is restarted and she resumes with her previous data intact.
+2. **Given** Alice's instance had been stopped, **When** Alice logs in again, **Then** her instance is restarted and she resumes with her previous data intact.
 3. **Given** Alice and Bob both log in concurrently, **When** both sessions are active, **Then** each is proxied only to their own instance with no cross-contamination.
 
 ### User Story 2 — Simple file-based auth (Priority: P1)
@@ -64,18 +64,18 @@ An operator configures Keycloak credentials in the bastion config. The login flo
 
 ### User Story 4 — Admin page: global settings and user management (Priority: P2)
 
-An admin-flagged user accesses `/admin` on the bastion and can manage users (create/delete/reset password/assign groups), view all running instances, change global settings (BOS image tag, volume base path, idle timeout, max concurrent instances), and configure the active auth provider.
+An admin-flagged user accesses `/admin` on the bastion and can manage users (create/delete/reset password/assign groups), view all running instances, change global settings (BOS image tag, volume base path, max concurrent instances), inspect instance health, and configure the active auth provider.
 
 **Why this priority**: Without admin tooling the operator must edit config files manually; important but the system still works without it at v1.
 
-**Independent Test**: Log in as admin; create a new user from the admin page; confirm they can log in and get an instance; change idle timeout; confirm instances stop after the new timeout.
+**Independent Test**: Log in as admin; create a new user from the admin page; confirm they can log in and get an instance; open the System Monitor and confirm it reports that instance as serving.
 
 **Acceptance Scenarios**:
 
 1. **Given** an admin session, **When** the admin accesses `/admin`, **Then** the admin page renders and a non-admin user accessing the same URL receives 403.
 2. **Given** the admin page, **When** the admin creates a new user, **Then** the user appears in the auth store and can immediately log in.
 3. **Given** the instance table, **When** the admin force-stops an instance, **Then** the container is stopped and the user's next request triggers a fresh start.
-4. **Given** global settings, **When** idle timeout is changed, **Then** it takes effect for newly started instances without a bastion restart.
+4. **Given** a running instance whose BOS has stopped serving, **When** the admin opens the System Monitor, **Then** it reports the instance as `unhealthy` and shows why (base process state, last exit cause, OOM counters).
 
 ### User Story 5 — User self-service: instance management and re-provisioning (Priority: P2)
 
@@ -92,19 +92,26 @@ Any authenticated user accesses `/account` to view their instance status, restar
 3. **Given** broken dependencies, **When** the user chooses "Reinstall dependencies", **Then** the node_modules volume is wiped and `npm install` runs on next container start.
 4. **Given** the nuclear option "Full re-provision", **When** the user confirms, **Then** `src/`, `data/`, and the node_modules volume are all wiped and re-provisioned from scratch.
 
-### User Story 6 — Idle instances stop automatically (Priority: P2)
+### User Story 6 — An instance's real state is observable (Priority: P2)
 
-BOS instances that have received no proxied request for a configurable idle timeout are automatically stopped. The user's volumes are preserved. The next request restarts the instance transparently.
+The bastion continuously tracks whether each instance is actually *serving BOS*, not merely whether its container process is alive, and surfaces that plus the resource and failure metrics needed to diagnose it.
 
-**Why this priority**: Without idle management a multi-user deployment leaks memory and CPU proportional to the number of registered users, not active ones.
+**Why this priority**: "The container is running" is not the same as "BOS works". The Supervisor is PID 1 inside each container, so it survives the death of the base Next.js server. On 2026-07-29 a production instance reported `Up` for 10.5 hours while BOS inside it was dead, and nothing — Docker, the bastion, or the admin UI — could tell the difference.
 
-**Independent Test**: Set idle timeout to 60 seconds; log in as Alice; wait 70 seconds without activity; confirm `bos-alice` is stopped; make a request; confirm it restarts and the session resumes.
+**Independent Test**: Kill the base server inside a running container (leaving the Supervisor alive); confirm the instance flips to `unhealthy` within one poll interval, the transition is logged, and the System Monitor explains why.
 
 **Acceptance Scenarios**:
 
-1. **Given** an idle timeout of N seconds, **When** an instance has received no request for N seconds, **Then** it is stopped.
-2. **Given** a stopped instance, **When** a proxied request arrives for that user, **Then** the instance is restarted before the request is forwarded (with appropriate loading state).
-3. **Given** an active session, **When** the user is actively using BOS, **Then** the idle timer is reset on each request and the instance is not stopped.
+1. **Given** a running container whose BOS is serving, **When** the health monitor polls, **Then** the instance status is `running`.
+2. **Given** a running container whose base server has died, **When** the health monitor polls, **Then** the status becomes `unhealthy` (distinct from `stopped`) and the transition is logged once, not on every poll.
+3. **Given** an `unhealthy` instance, **When** the user makes a request, **Then** it is still proxied to the container — the health verdict is observability, never a traffic gate.
+4. **Given** any instance, **When** the admin opens the System Monitor, **Then** it reports memory used/peak/limit, CPU, OOM-kill counters, base serving mode, base restart count, and the cause of the last base exit.
+
+### Deliberately removed: the idle reaper
+
+Earlier revisions stopped an instance once its session had expired plus an idle grace period. That behaviour is **removed**: a user's container runs until something explicitly stops it (admin action, re-provision, or bastion shutdown).
+
+**Why**: the reaper was silent (no log line), so overnight disappearances were unexplainable from the bastion log; and it conflated "the user is away" with "the user's work should be destroyed" — BOS instances hold long-running state (services, scheduled jobs, agent runs) that must survive inactivity.
 
 ### Edge Cases
 
@@ -113,6 +120,7 @@ BOS instances that have received no proxied request for a configurable idle time
 - Two concurrent login requests for the same user (race on provisioning): only one container is created; the second request waits for and then reuses the running instance.
 - Volume base path is not writable: bastion startup fails with a clear error message naming the path and required permissions.
 - Admin demotes themselves: prevented — the last admin-flagged user cannot lose the admin flag.
+- A single instance exhausts host memory: **not currently prevented** — spawned containers are created without a memory limit (`memory.max = max`), so one tenant can starve the host and every other container on it. The System Monitor flags this per instance. Deferred deliberately; FR-024 removes the known cause rather than capping the symptom.
 - Max concurrent instances reached: new logins are queued or rejected with a configurable message; existing sessions continue.
 - BOS image is updated (new tag): existing running instances continue on the old image until restarted; the admin can trigger a rolling restart from the admin page.
 
@@ -147,8 +155,26 @@ BOS instances that have received no proxied request for a configurable idle time
   4. Create and start a container `bos-{username}` with mounts: `src/` → `/app/src`, `data/` → `/app/data`, `bos-nm-{username}` → `/app/node_modules`.
   5. Wait for the container's health check (Supervisor responding on `:8090`) before forwarding the request.
 - **FR-009**: The BOS Docker image's entrypoint MUST check whether `/app/node_modules/.bin` is populated; if not (fresh named volume), it MUST run `npm install` before starting the Supervisor. This ensures first-start after provisioning (or after a node_modules wipe) installs dependencies automatically.
-- **FR-010**: The bastion MUST track a last-active timestamp per instance and stop containers that have been idle longer than `IDLE_TIMEOUT` (configurable; default 30 minutes). Volumes are preserved. On the next request the instance is restarted.
+- **FR-010**: A user's container MUST run until explicitly stopped — by an admin action, a re-provision operation, or bastion shutdown. The bastion MUST NOT stop instances on an idle or session-expiry timer. It MUST still record a last-active timestamp, for display only.
+- **FR-010a**: Every container stop MUST be logged with its reason (e.g. `admin action by <user>`, `bastion shutdown (SIGTERM)`), so a stopped instance is always explainable from the bastion log.
 - **FR-011**: Container names MUST follow the pattern `bos-{username}` and be idempotent — attempting to create a container that already exists (e.g. from a bastion restart) MUST detect and reuse the existing container rather than error.
+
+#### Self-healing and host-path discovery
+
+- **FR-019**: Before starting an existing container, and once for every container at bastion startup, the bastion MUST reconcile the container's stored `bos-net` endpoint against the network's current ID and reconnect if they differ. A `docker compose down`/`up` cycle recreates `bos-net` with a new ID, and Docker refuses to start a container holding a stale reference ("network … not found") even though a network of the same name exists. If a start or health check still fails, the bastion MUST recreate the container against the current network, preserving the `src/` and `data/` bind mounts so no user data is lost.
+- **FR-020**: The bastion MUST discover the HOST-absolute path of its own `/user-data` mount by inspecting its own container through the Docker API, NOT from an operator-supplied env var. Bind-mount sources are resolved by the daemon against the host filesystem, so a value that depends on how the operator invoked Compose is a latent misconfiguration — an earlier incident had a spawned container's bind mount silently pointing at the wrong host directory. When BOS is not running in a container the bastion MUST fall back to a cwd-relative path.
+
+#### Instance health and observability
+
+- **FR-021**: The BOS image MUST declare a Docker `HEALTHCHECK` that reports whether BOS is **serving**, not whether the container process is alive. It MUST probe the Supervisor's `/__supervisor/health`, which itself probes the base server. The `start-period` MUST be long enough for a cold start that runs `npm install` and a full `next build`.
+- **FR-022**: The bastion MUST re-derive every known instance's status on a background interval (not only at login) from two sources: Docker's view of the container, and the container Supervisor's own `/__supervisor/health` report. A container that is running but not serving MUST be recorded as **`unhealthy`**, a status distinct from `stopped`. Status transitions MUST be logged once per transition, never once per poll.
+- **FR-023**: The health verdict MUST NOT gate traffic. Requests for an instance whose container is up MUST be proxied even when its status is `unhealthy`: the Supervisor answers with its own diagnostic page and is already restarting the base server, which is more useful than a bastion-level error. Gating on health turns a single failed probe — or a legitimate cold-start build window — into a total outage in which every API call fails.
+- **FR-016a**: The admin **System Monitor** MUST expose, in one view and as one JSON endpoint, at least: host total memory / CPU count / container counts; the bastion's own uptime and RSS; and per instance — container status, Docker healthcheck verdict, uptime, memory used / peak / limit, CPU, cgroup OOM-kill counters, whether BOS is serving, base serving mode, base process liveness, base restart count, and the **cause of the last base-server exit including its signal**. Each field exists to answer a question that a real incident required: `serving` vs `running` distinguishes a dead app from a dead container; `oom_kill` alongside a zero container-limit counter proves the *host* ran out rather than the container hitting its own cap; a non-zero base restart count reveals a crash loop that supervision would otherwise hide.
+
+#### Serving mode and shutdown
+
+- **FR-024**: Spawned containers MUST run BOS's base server in **production** mode (`BOS_BASE_DEV=0`), never `next dev`. Measured on identical code and load, `next dev` starts at ~2.2 GB RSS and grows ~0.8 MB per request with no plateau (7.1 GB after four minutes), versus ~130 MB rising to a stable ~249 MB for `next start`. On a shared host the dev server is eventually reaped by the kernel OOM killer, taking the whole box down with it. The bastion's startup timeout MUST be sized for the `next build` this implies.
+- **FR-025**: The bastion stops every running user container on `SIGTERM` before exiting. Its container MUST therefore be given a stop grace period long enough for that cascade; Docker's 10-second default is not sufficient and previously caused the bastion to be `SIGKILL`ed mid-shutdown, orphaning containers.
 
 #### Volume layout
 
@@ -180,8 +206,9 @@ BOS instances that have received no proxied request for a configurable idle time
 
 - **FR-016**: The admin page (`/admin`) MUST provide:
   - **User management**: list users; create user (Simple provider: username + password + groups); delete user (with a choice to also wipe their volumes); reset password; toggle admin flag (blocked if last admin).
-  - **Instance table**: list all containers with name, status (running/stopped), last-active timestamp; force-stop; force re-provision per user.
-  - **Global settings** (persisted to `/data/config.json`): `BOS_IMAGE` (image tag to use for new instances), `VOLUME_BASE`, `IDLE_TIMEOUT`, `MAX_CONCURRENT_INSTANCES`, `BOS_BASE_REF` (git ref for `src/` clone).
+  - **Instance table**: list all containers with name, status (`running` / `unhealthy` / `stopped` / `provisioning` / `unknown`), last-active timestamp; force-stop; force re-provision per user.
+  - **System Monitor** (see FR-016a): host, bastion and per-instance health and resource metrics.
+  - **Global settings** (persisted to `/data/config.json`): `BOS_IMAGE` (image tag to use for new instances), `VOLUME_BASE`, `MAX_CONCURRENT_INSTANCES`, `BOS_BASE_REF` (git ref for `src/` clone).
   - **Auth config**: active provider; for Keycloak — OIDC issuer URL, client ID/secret, username claim.
 
 #### Docker Compose
@@ -200,8 +227,8 @@ BOS instances that have received no proxied request for a configurable idle time
 - **User record** — `{ username, passwordHash?, groups, isAdmin }` in `users.yaml` (Simple) or derived from OIDC claims (Keycloak).
 - **Session** — a signed HTTP-only cookie issued by the bastion after successful authentication; carries identity and admin flag.
 - **Volume triple** — the three isolated mounts per user: `src/` bind mount, `data/` bind mount, `bos-nm-{username}` named volume.
-- **Instance state** — bastion-maintained in-memory + `/data/instances.json`: `{ username, containerId, status, lastActive }`.
-- **Global config** — persisted to `/data/config.json`; controls image tag, volume base, idle timeout, max instances, base ref.
+- **Instance state** — bastion-maintained in-memory + `/data/instances.json`: `{ username, containerId, status, lastActive, health, healthCheckedAt }`, where `status` is one of `running` / `unhealthy` / `stopped` / `provisioning` / `unknown` and `health` is the last report from the container's Supervisor.
+- **Global config** — persisted to `/data/config.json`; controls image tag, volume base, max instances, base ref.
 - **Auth provider** — a pluggable module (`simple` or `keycloak`) behind a common interface: `authenticate(req) → UserRecord | null`.
 
 ## Success Criteria *(mandatory)*

@@ -82,6 +82,22 @@ The Supervisor serves a version-independent control page that works even if a BO
 - **FR-012**: Developer harness source edits MUST require a validated explicit feature branch. Assistant conversations MUST persist an optional `activeFeatureBranch`, and the Assistant app MUST expose an Active feature branch dropdown with existing feature branches plus a New feature branch action. The public LLM tool schema MUST NOT expose branch selection as a tool parameter; server routes resolve it deterministically from conversation/workflow state. If no valid branch resolves, the harness MUST fail before spawning Claude/OpenCode/MCP.
 - **FR-013**: On Supervisor startup, runtime preview state MUST be reconstructed from git branches rather than persisted state. Existing `bos/*` branches MUST be treated as `not-built` even if worktrees existed before restart.
 
+#### Base serving mode
+
+- **FR-014**: Base MUST have exactly three mutually exclusive serving modes, selected at Supervisor startup: **production** (default — build a detached worktree at the base commit and serve it with `next start`), **owned dev** (`BOS_BASE_DEV=1` — the Supervisor spawns `npm run dev` from the live checkout, for local development only), and **reused external** (`BOS_ACTIVE_REUSE_PORT` — proxy to a dev server the operator runs themselves).
+- **FR-015**: Deployments MUST use production mode. `next dev` keeps Turbopack's compiler resident in the serving process and grows without bound under request load — measured at ~2.2 GB RSS on boot rising to 7.1 GB after four minutes of light traffic with no plateau, against ~130 MB rising to a stable ~249 MB for `next start` on identical code and load. Owned dev mode MUST therefore apply a heap ceiling (`--max-old-space-size`, configurable, default 2048 MB) so Next's own dev memory guard recycles the server rather than letting the kernel OOM-kill it. That ceiling bounds the heap only — measured RSS lands at roughly twice the cap — and is a bound, not a fix.
+
+#### Process supervision
+
+- **FR-016**: The Supervisor MUST supervise the base server. An **unexpected** base exit MUST trigger a restart with bounded exponential backoff; after a fixed number of consecutive failed restarts the Supervisor MUST stop trying and leave base in a `failed` state, so status reporting tells the truth instead of hiding a crash loop behind an endless retry. Deliberate exits (Stop, promote swap, Supervisor shutdown) MUST be marked as expected and MUST NOT trigger a restart. Every restart MUST be logged at error level and counted.
+  - Rationale: the Supervisor is PID 1 in a container. Without this, base dying leaves the container "up" while BOS is unreachable, and nothing outside notices — observed as a 10.5-hour production outage.
+- **FR-017**: Child-process exit logging MUST include the **signal**, not only the exit code, and MUST flag a probable out-of-memory kill (a `SIGKILL`, or a code-0 exit from a process that was serving). `next dev` exits with code 0 when the kernel OOM-kills its `next-server` child, so code-only logging reports a clean shutdown for what was actually an OOM — this is precisely how the outage above stayed invisible.
+- **FR-018**: The Supervisor MUST expose `GET /__supervisor/health` reporting whether base is **actually serving** (a live probe, not just internal state), plus base mode / process liveness / supervision counters / last-exit cause. This is the contract the container `HEALTHCHECK` and the bastion's health monitor both consume (`024-docker-multiuser` FR-021, FR-022).
+
+#### Environment contract
+
+- **FR-019**: The Supervisor MUST pass `BOS_SUPERVISOR_URL` (pointing at itself) to **every** server it spawns — base in any mode, and every preview. The entire Supervisor integration keys off that variable: the service-WebSocket proxy path advertised by `/api/services/<id>/config` (without it a service app falls back to a direct `host:port` a browser cannot reach), Supervisor-backed git operations, and log shipping to the central store (`017-central-logging`). Setting it on only one spawn path is a silent, whole-feature regression that appears only in the modes that lack it.
+
 ### Key Entities
 
 - **Supervisor** — stable control plane (proxy + lifecycle).
@@ -89,6 +105,8 @@ The Supervisor serves a version-independent control page that works even if a BO
 - **Preview** — a branch-owned feature version on a pooled port, with a state machine (`not-built`/`idle`→`building`→`ready`|`failed`, plus `stopped`).
 - **Git tag** — durable ordered record of every promote (anchor for the deferred rollback).
 - **Preview pin** — per-session routing override.
+- **Base serving mode** — production / owned dev / reused external (FR-014).
+- **Supervision counters** — base restart count, consecutive failures, give-up flag, and last-exit cause (code + signal + OOM suspicion), exposed via `/__supervisor/health`.
 - **Active feature branch** — per-conversation `bos/<kebab-name>` selection that owns developer harness source edits.
 
 ## Success Criteria *(mandatory)*
@@ -99,6 +117,8 @@ The Supervisor serves a version-independent control page that works even if a BO
 - **SC-002**: A preview is reachable for preview without moving global **base**.
 - **SC-003**: Every promote is tagged (the durable record for the deferred rollback) and a failed promote leaves base serving the prior code with the base branch unmoved.
 - **SC-004**: The Supervisor control page stays usable when a BOS version's UI is broken.
+- **SC-005**: A base server that dies on its own is restarted automatically, and if it cannot be kept alive the failure is reported rather than retried silently.
+- **SC-006**: A container whose BOS has stopped serving is externally detectable — via the image `HEALTHCHECK` and `/__supervisor/health` — without inspecting logs.
 
 ## Notes
 

@@ -25,6 +25,22 @@
 ## Design decisions (carried from 027 review)
 
 ### Three-source app model
+
+> **Update (2026-07-29, `034-user-apps-marketplace-parity`)**: the "local"
+> source (`dataDir()/user-apps/`) is no longer structurally distinct from a
+> registered marketplace clone. Both are repositories with a root
+> `marketplace.json` and items under `items/<id>/`; `user-apps` differs only in
+> ownership and in being Build Studio's output target. The local source no longer
+> has a synthesized, in-memory-only manifest, and registering a remote whose
+> manifest id collides with the local marketplace's id is rejected as a duplicate.
+>
+> **Update (2026-07-29, `035-install-by-symlink`)**: installing an item from any
+> source copies **nothing**. Installed state is one symlink,
+> `dataDir()/system/<item-id>`, pointing at the item where it already lives;
+> provenance (`origin`, `marketplaceId`) is *derived* from where that link
+> resolves rather than recorded in the item's `app.json`. Capability grants moved
+> to BOS-owned state (`dataDir()/system/config/<id>/capabilities.json`) — a grant
+> held in marketplace-controlled content could otherwise widen itself on a sync.
 Apps come from three providers behind one registry (same pattern as `027`'s Spec Provider Registry):
 
 | Source | Trust | Runtime | Origin |
@@ -98,9 +114,46 @@ The launcher lists builtin, local, and marketplace apps uniformly; native apps r
 2. **Given** an item with a `spec`, **When** "Adopt" is clicked, **Then** it forks into `data/specs/user/` (de-duped id, N7) with a commit and Build Studio opens it.
 3. **Given** a `file://`/`ext::` URL or malformed `marketplace.json`, **When** registration is attempted, **Then** it is rejected before any clone.
 
+### User Story 6 — Browse a many-source catalog without scrolling past what you don't want (Priority: P2)
+
+The Marketplace app is a **master-detail** UI. A sidebar on the left lists every
+source — an **All** entry, the user's own marketplace ("My Apps"), and each
+registered marketplace. Selecting a source filters the detail view to it;
+selecting **All** clears that filter. In the detail view each source keeps its own
+section, and those sections are **collapsible**.
+
+**Why this priority**: with several registered marketplaces (the central one plus
+skill collections that carry dozens of items each) a single flat scroll makes it
+hard to find anything, and there was no way to look at one source in isolation.
+
+**Independent Test**: register two marketplaces. Confirm the sidebar lists All +
+both + My Apps with per-source match counts; selecting one hides the others'
+items; selecting All restores them; collapsing a section hides its items while
+leaving its header and actions reachable.
+
+**Acceptance Scenarios**:
+
+1. **Given** several sources, **When** the app loads, **Then** the sidebar lists **All** followed by every source including the local "My Apps" slot, each with the number of items currently matching.
+2. **Given** the sidebar, **When** a source is selected, **Then** the detail view shows only that source's section, and the selection is visually indicated (`aria-current`).
+3. **Given** a source is selected, **When** **All** is selected, **Then** every source's section is shown again.
+4. **Given** a source section, **When** its header is activated, **Then** its item grid collapses; activating it again expands it. The header (with its Sync/Remove actions and any manifest error) stays visible either way, and the actions MUST NOT toggle collapse.
+5. **Given** a collapsed source, **When** it is selected in the sidebar, **Then** it is expanded — a selection must never lead to an empty-looking pane.
+6. **Given** an active text filter, **When** items are matched, **Then** the text filter and the source selection compose, and the sidebar counts reflect the text filter so they can never disagree with the detail view.
+7. **Given** a source whose manifest failed to parse, **When** the sidebar renders, **Then** that source is marked as having an error.
+
 ### User Story 5 — Marketplace lifecycle: remove / uninstall / un-adopt (Priority: P3)
 
 **Acceptance Scenarios**:
 1. **Given** an adopted spec, **When** its source marketplace is removed, **Then** the adopted spec is unaffected (adoption is a fork).
 2. **Given** a marketplace with running apps, **When** removed (with confirmation), **Then** its clones are deleted and its apps are delisted.
 3. **Given** an installed app, **When** uninstalled, **Then** it leaves the launcher and any local copy is deleted.
+
+
+## Marketplace app UI requirements (2026-07-29)
+
+- **UI-001**: The Marketplace app MUST be a master-detail layout: a source list on the left, the item catalog on the right.
+- **UI-002**: The master list MUST contain an **All** entry plus one entry per source, including the local `user-apps` slot. Each entry MUST show the number of items currently matching the active text filter, and MUST flag a source whose manifest failed to parse.
+- **UI-003**: Selecting a source MUST filter the detail view to that source; selecting **All** MUST clear the filter. The active selection MUST be exposed to assistive technology (`aria-current`).
+- **UI-004**: Detail-view source sections MUST be collapsible from their header, with `aria-expanded` reflecting state. A section's header, its Sync/Remove actions and any manifest error MUST remain visible while collapsed, and activating those actions MUST NOT toggle collapse.
+- **UI-005**: Selecting a collapsed source MUST expand it.
+- **UI-006**: The text filter and the source selection MUST compose, and the counts in the master list MUST be derived from the same filtered result the detail view renders — they may not be computed independently.

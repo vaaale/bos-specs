@@ -135,6 +135,7 @@ Users can track conversation-level activity with higher fidelity logging, includ
 - **FR-013**: Only the Supervisor writes the canonical store (single writer → no cross-process concurrent-append corruption); the global-timeline and per-session writes are both performed by that single writer. Large blobs (build output) MUST be separate referenced files so JSONL line appends remain small and atomic.
 - **FR-014**: A `logging` config namespace MUST expose at least: minimum level, retention (days + size cap), a toggle for frontend capture, and a "Log payload" toggle to control whether chat message payloads are included in logs; surfaced in Settings under Assistant.
 - **FR-015**: Logs MUST NOT contain secrets (provider API keys, auth tokens, full provider config); known sensitive fields MUST be redacted. The store is operational diagnostics stored under gitignored canonical data.
+- **FR-016**: Shipping to the Supervisor is conditional on `BOS_SUPERVISOR_URL`, so the Supervisor MUST set it on **every** server it spawns (`005-self-modification` FR-019). A spawn path that omits it does not fail loudly — the backend silently falls back to the local file sink and its records never reach the canonical timeline. This regressed once: only the dev-mode base spawn set the variable, so switching base to production mode silently stopped log shipping (along with every other Supervisor-backed feature).
 
 ### Key Entities
 
