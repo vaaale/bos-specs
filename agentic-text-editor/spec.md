@@ -1,6 +1,6 @@
 # Feature Specification: Agentic Text Editor
 
-**Feature Branch**: `[###-agentic-text-editor]`
+**Feature Branch**: `agentic-text-editor`
 
 **Created**: 2026-05-21
 
