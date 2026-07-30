@@ -1,4 +1,8 @@
-# Feature Specification: Agentic Text Editor (Marketplace App)
+# Feature Specification: Agentic Text Editor
+
+**Feature Branch**: `agentic-text-editor`
+
+**App Type**: Marketplace (data/user-apps/items/agentic-text-editor/)
 
 **Feature Branch**: `agentic-text-editor`
 
