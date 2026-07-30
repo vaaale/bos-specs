@@ -4,10 +4,6 @@
 
 **App Type**: Marketplace (data/user-apps/items/agentic-text-editor/)
 
-**Feature Branch**: `agentic-text-editor`
-
-**App Type**: Marketplace (data/user-apps/items/agentic-text-editor/)
-
 **Created**: 2026-05-21
 
 **Status**: Draft
