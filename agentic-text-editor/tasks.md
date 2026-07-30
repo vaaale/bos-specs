@@ -45,7 +45,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create `components/resizer.tsx` — draggable pane divider with violet hover, col-resize cursor, clamped 25-60% range
+- [x] T012 [P] [US1] Create `components/resizer.tsx` — draggable pane divider with violet hover, col-resize cursor, clamped 25-60% range
 - [ ] T013 [P] [US1] Create `components/editor/toolbar.tsx` — Open button (folder icon), Save button (floppy icon), Edit/Preview pill toggle
 - [ ] T014 [P] [US1] Create `components/editor/tab-bar.tsx` — horizontal scrollable tab list with active/inactive states, close button (X on hover), amber unsaved dot
 - [ ] T015 [P] [US1] Create `components/editor/edit-view.tsx` — monospace textarea with line numbers, placeholder text, line number sync on scroll
