@@ -16,8 +16,8 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create `src/apps/agentic-text-editor/` directory structure
-- [ ] T002 Create `manifest.ts` with id "agentic-text-editor", name "Editor", icon "PenTool", default size 1200x700, singleton true
+- [ ] T001 Create `data/user-apps/items/agentic-text-editor/` directory structure
+- [ ] T002 Create `app.json` with id "agentic-text-editor", name "Editor", icon "PenTool", default size 1200x700, singleton true
 - [ ] T003 [P] Create `types.ts` with Document, Tab, ChatMessage, EditorSettings, FormatHandler interfaces
 - [ ] T004 [P] Create `state/document-store.ts` with Zustand store for documents, tabs, chat, settings
 
