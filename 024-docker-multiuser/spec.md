@@ -200,6 +200,36 @@ Earlier revisions stopped an instance once its session had expired plus an idle 
   | `full_reprovision` | yes → re-clone | yes | yes |
 
   The operation MUST stop the container before modifying volumes and restart it after.
+- **FR-014a**: Updating the source checkout MUST offer **two** integration modes, because the user's `src/` is a real working checkout that can contain their own commits — a promoted self-modification lands as a commit on the base branch *in that very checkout*.
+
+  | Operation | Integration | Local commits |
+  |---|---|---|
+  | `update-src` | `git fetch` + `git reset --hard FETCH_HEAD` | **discarded** |
+  | `pull-and-update-src` | `git fetch` + fast-forward, else merge | **preserved** |
+
+  The `pull-and-update-src` mode MUST be a no-op on every failure path rather than leaving a partial state:
+  - refuse **before** touching anything when the tree has uncommitted changes, naming them (`package-lock.json` churn from a previous `npm install` is exempt — it is not the user's work);
+  - when not already on the target branch, check out the **existing** local branch if there is one (never `checkout -B`, which would move it and lose commits), and only create it from the fetched tip when it does not exist;
+  - prefer `merge --ff-only`; fall back to a real merge only when local commits diverge;
+  - on conflict, `merge --abort` and fail with the conflicting paths, leaving `HEAD` and the working tree exactly as they were.
+
+  Both modes MUST clear `.next/` (a stale Turbopack cache survives a reset and breaks routes) and fix file ownership afterwards, then restart the container. The UI MUST make the destructive/non-destructive distinction visible rather than leaving the two buttons to look interchangeable.
+- **FR-014b**: Per-user `src/` clones fetch from the deployment's **own** checkout (`bosRepoPath`, default `/bos-src` — a bind mount of the platform's working copy), so that checkout MUST have full git history. A shallow source cannot supply the connecting history: `git fetch` fails with `error: <remote> did not send all necessary objects` / `fatal: revision walk setup failed`, and there is no merge base for a pull.
+
+  Deployment platforms routinely defeat this. Dokploy clones with `--depth 1 --single-branch` **and deletes and re-clones `code/` on every redeployment**, so a manual `git fetch --unshallow` does not survive. The repair MUST therefore be automatic:
+
+  - On startup, before accepting traffic, the bastion MUST check `bosRepoPath` and, if it is shallow and has a remote, `git fetch --unshallow` it. Awaited so a user cannot trigger a source update that races the repair.
+  - It MUST be idempotent (a complete repository short-circuits, including git's `--unshallow on a complete repository does not make sense`) and MUST NOT fail bastion startup — an unreachable remote is a degraded mode, not a fatal error.
+  - `pull-and-update-src` MUST attempt to deepen the **user's** clone too before refusing, since a clone made from a shallow source is itself shallow.
+
+  When history cannot be obtained, behaviour MUST degrade explicitly, not cryptically:
+
+  | Mode | Degraded behaviour |
+  |---|---|
+  | `update-src` | fetch with `--depth=1` (no history walk, so it succeeds) and reset. `--depth=1` MUST only be used when the clone is *already* shallow — passing it to a full clone would truncate the user's history. |
+  | `pull-and-update-src` | refuse, stating that the source is a shallow clone and there is no merge base |
+
+  Raw git plumbing errors MUST be decoded: `did not send all necessary objects` / `revision walk setup failed` MUST be surfaced as "the remote is a shallow clone and cannot supply the connecting history".
 - **FR-015**: The admin page MUST expose the same re-provision operations for any user's instance (admin-scoped endpoint `/admin/reprovision`).
 
 #### Admin page

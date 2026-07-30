@@ -218,23 +218,31 @@ speaking state.
 
 ## 8. Voice Session Management
 
+> **Amended by 036.** The engine session is owned by the agent's PRESENCE, not by
+> the microphone. `POST /api/voice/session` is gone, and `useVoice` no longer
+> tracks a session id.
+
 Plugin engines that hold persistent connections (WebSocket, etc.) need a stable
-session identifier to key their state on. The voice hook generates a session ID on
-first activation and passes it through all engine calls.
-
-**New API routes:**
+session identifier to key their state on. That session begins when the engine's
+surface is on screen and ends when it goes away:
 
 ```
-POST /api/voice/session/start   →  { sessionId }
-POST /api/voice/session/end     →  { ok: true }
+POST /api/voice/presence  { engineId, state: "open" }     →  { sessionId, leaseTtlMs }
+POST /api/voice/presence  { engineId, state: "playing" }  →  renew the lease
+POST /api/voice/presence  { engineId, state: "stopped" }  →  drop the lease
+POST /api/voice/presence  { engineId, state: "closed" }   →  end the engine session
 ```
 
-`useVoice.ts` calls `session/start` when voice mode is activated and `session/end`
-when it is deactivated. The route calls `engine.onSessionStart(sessionId)` /
-`engine.onSessionEnd(sessionId)` on the configured engine if those methods exist.
+`open` calls `engine.onSessionStart(sessionId)`; `closed` calls
+`engine.onSessionEnd(sessionId)`, which is what makes the engine drop whatever
+connection it holds. Driving this from the microphone was wrong in both
+directions: deactivating the mic tore down a live avatar, and closing the avatar's
+window left its socket — and therefore its audio sink — up.
 
-The session ID is stored in a `useRef` in `useVoice.ts` and included on every
-`/api/voice/tts` and `/api/voice/interrupt` call.
+The browser no longer sends a session id with `/api/voice/tts` or
+`/api/voice/interrupt`: the server resolves it from the live presence lease, so
+there is one authority for "which session is current" instead of a copy in the
+client that can go stale.
 
 ---
 
@@ -262,6 +270,60 @@ for those fields appended below the standard voice controls.
 `VoiceConfig.ttsProvider` type widens from a string union to `string` to accommodate
 plugin-registered ids.
 
+Settings owns **how** voice works (engine, STT, VAD, activation mode, wake phrase).
+It does not own **whether** voice is on right now — see §9a.
+
+---
+
+## 9a. TTS Ownership — One Producer, One Switch
+
+Whether replies are spoken is a live, per-moment decision, so it is made where the
+user is talking to the agent: the Assistant input row, next to the microphone.
+
+**FR-033a-01 — one switch.** `VoiceConfig.voiceOutput ∈ {"off","audio","avatar"}` is
+the only gate on speech; speech happens when it is not `"off"`. It replaced two
+successive booleans — `enabled` ("Enable voice mode") and then `speakReplies` — both
+of which are migrated on load and disappear from `voice-config.json` on the next
+save. It defaults to `"off"`: BOS never speaks until asked to. See 036 for the
+three values and the buttons that set them.
+
+**FR-033a-02 — one control surface.** Speaker and video buttons beside the
+microphone (`data-testid="voice-speaker-toggle"` / `"voice-video-toggle"`,
+`aria-pressed` reflecting the state) set `voiceOutput` through `PATCH /api/voice`.
+Turning output down mid-utterance also stops what is already playing. There is no
+equivalent checkbox in Settings or the mic popover: two views of one live flag drift
+apart, and the stale one wins silently. All consumers read ONE client-side copy of
+the voice config (`src/lib/voice/client/config-store.ts`) for the same reason — a
+per-component fetch is a cache, and caches of this disagreed.
+
+**FR-033a-03 — one producer.** `useVoice` is the only code path that turns an agent
+reply into speech, in every activation mode (push-to-talk, wake word, key-to-talk) and
+for typed messages too. There is no separate passive player.
+
+*Why this is a requirement and not an implementation detail:* BOS previously had two
+producers — `useVoice` for session modes and a `VoiceTTSPlayer` for passive/button
+mode — each holding its own snapshot of the voice config, fetched once at mount and
+never refreshed. Their gates disagreed, so a reply could be spoken after the user
+switched speech off, and synthesized **twice** when both believed it was on.
+
+**FR-033a-04 — spoken exactly once.** The spoken cursor is keyed by assistant
+**message id**, not by a snapshot of the live stream text: complete sentences go out as
+they stream, and the finalized message covers whatever the stream did not. A snapshot
+cursor loses short replies entirely — the store clears `streamText` when a message
+finalizes, and a reply arriving in a single delta is batched with its own finalize, so
+the streamed text never reaches a render. The cursor advances even while muted, so
+switching speech on mid-reply resumes at the next sentence instead of restarting.
+
+**FR-033a-05 — only live text is spoken.** Text is voiced only while a run is live (or
+in the render batch that ends it). Opening a conversation or switching transcripts
+records existing messages as already-spoken; history is never read aloud.
+
+**FR-033a-06 — the prompt hook follows the same flag.** The server-side voice-mode
+system-prompt addition (`src/lib/voice/voice-hook.ts`) is emitted when — and only
+when — `voiceOutput` is not `"off"`, since that is the only voice state the server
+can know and the only one that changes how a reply should be written. Whether the user is
+dictating is client state and is not guessed at.
+
 ---
 
 ## 10. `useVoice.ts` Changes
@@ -286,6 +348,10 @@ The voice hook requires targeted changes to support engine-agnostic output:
    response, the hook must not create an `Audio` element at all. This prevents any
    double-audio when the engine delivers sound through another channel (e.g. WebRTC
    track in the avatar app iframe).
+
+5. **Sole TTS producer:** the hook owns speech for every activation mode and for
+   typed messages, gated only on `voiceOutput`, with a per-message spoken cursor
+   (§9a).
 
 ---
 
@@ -313,11 +379,19 @@ this facet:
 
 ### Modified files
 - `src/lib/voice/tts/index.ts` — becomes thin dispatcher via `getVoiceEngine()`
-- `src/lib/voice/types.ts` — `ttsProvider: string` (widened from union)
+- `src/lib/voice/types.ts` — `ttsProvider: string` (widened from union); `enabled` removed (§9a)
+- `src/lib/voice/config.ts` — `voiceOutput` defaults "off"; legacy `enabled`/`speakReplies` migrated on load
+- `src/lib/voice/voice-hook.ts` — prompt addition gated on `voiceOutput !== "off"`
+- `src/lib/voice/client/config-store.ts` — the one client-side copy of the config
 - `src/app/api/voice/tts/route.ts` — returns JSON `{ durationMs, audioUrl? }` instead of streaming audio body
 - `src/app/api/voice/route.ts` — add `engines[]` to GET response
-- `src/components/apps/settings/VoiceTab.tsx` — dynamic engine selector
-- `src/hooks/useVoice.ts` — session lifecycle, engine-agnostic speak, interrupt route, audio suppression
+- `src/components/apps/settings/VoiceTab.tsx` — dynamic engine selector; activation checkboxes removed; debounced saves accumulate instead of dropping earlier fields
+- `src/components/voice/VoiceMicButton.tsx` — speaker toggle beside the microphone
+- `src/hooks/useVoice.ts` — session lifecycle, engine-agnostic speak, interrupt route, audio suppression, sole TTS producer with a per-message cursor
+
+### Deleted files
+- `src/components/voice/VoiceTTSPlayer.tsx` — the second TTS producer (§9a)
+- `src/components/voice/VoiceOverlay.tsx` — only that player rendered it
 
 ---
 
