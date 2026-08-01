@@ -43,8 +43,8 @@ A WebDAV service exposes the user's VFS (`data/vfs/`) as a local-mountable drive
 
 - **I. Spec-Driven** ✅ — spec.md exists and is the source of truth
 - **II. Server Authority & SSR Boundary** ✅ — all Node-side logic lives in the service, secrets/Node APIs stay server-side
-- **III. Always Delegate** ✅ — implemented via `agent_delegate` + `app_build` (marketplace service)
-- **IV. Minimize Blast Radius** ✅ — no BOS source changes; runs in `data/user-apps/items/<id>/services/`
+- **III. Always Delegate** ✅ — implemented via `agent_delegate` + `app_build` (marketplace item)
+- **IV. Minimize Blast Radius** ✅ — no BOS source changes; runs in `data/user-apps/items/<id>/`
 - **V. The VFS Is Not the Source** ✅ — service uses the VFS layer, not raw fs calls
 - **VI. Specs & Docs Stay in Sync** ⚠️ — spec.md says "middleware" but correct architecture is a service; spec needs updating
 - **VII. Respect Boundaries** ✅ — no changes to `package.json`, lockfiles, or build config
@@ -76,11 +76,9 @@ vfs-webdav-mount/
     └── vfs-webdav.json     # User-editable config (seeded from item defaults)
 ```
 
-**Structure Decision**: This is a **marketplace-service** item (background daemon) with a companion app facet (Settings panel). The service handles all WebDAV HTTP verbs (GET, PUT, DELETE, MKCOL, COPY, MOVE, PROPFIND, OPTIONS, HEAD) and exposes the VFS root via a configurable port. The Settings panel provides the UI for token lifecycle management and mount instructions. This structure mirrors the Terminal service precedent (see `target-marketplace-service.md`) — no `src/` involvement, fully self-contained Node code.
+**Structure Decision**: This is a **marketplace-item** (background daemon) with a companion app facet (Settings panel). The service handles all WebDAV HTTP verbs (GET, PUT, DELETE, MKCOL, COPY, MOVE, PROPFIND, OPTIONS, HEAD) and exposes the VFS root via a configurable port. The Settings panel provides the UI for token lifecycle management and mount instructions. This structure mirrors the Terminal service precedent (see `target-marketplace-service.md`) — no `src/` involvement, fully self-contained Node code.
 
-**Spec discrepancy note**: The spec.md declares `App Target: marketplace-app`, but this feature's primary implementation mechanism is `marketplace-service` (the Settings panel is secondary). The `app/` facet exists only as a companion UI. The spec should be updated to `marketplace-service` to reflect the correct implementation path.
-
-**Note on spec discrepancy**: The spec's Assumptions & Dependencies section states the WebDAV endpoint MUST be implemented in `src/middleware.ts`. This is a false premise — a service daemon binds its own port and doesn't go through Next.js. The correct implementation lives in `services/` as a plain Node worker thread. The spec should be updated to reflect this. This is noted but the spec header's "App Target" is still `marketplace-app` (per spec.md), while the actual implementation is a `marketplace-service`. For the plan, I'll plan the correct architecture (service).
+**Spec discrepancy note**: The spec.md header declares `App Target: marketplace-item`. The plan correctly accounts for this with a `services/` facet (the WebDAV daemon) plus a companion `app/` facet (Settings panel).
 
 ## Design Notes
 
