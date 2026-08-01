@@ -197,7 +197,7 @@ Each mode changes the authentication boundary. The core logic (path security, VF
 
 ```mermaid
 graph LR
-    CLIENT["WebDAV Client"] -->|"HTTPS"| BASTION["Bastion Proxy\n(per-user container routing)"]
+    CLIENT["WebDAV Client\n(Basic auth: username + mount token)"] -->|"HTTPS"| BASTION["Bastion Proxy\n(routes by Basic-auth username,\nrewrites Authorization to Bearer)"]
     BASTION -->|"x-bos-username header\n(identity, NOT validated by BOS)\n+ Authorization: Bearer <token>"| COMPOSE["BrowserOS (Docker Compose)\n/api/vfs/webdav/:path*"]
 
     style CLIENT fill:#4a90d9,stroke:#1b4965,stroke-width:2px,color:#ffffff
@@ -205,9 +205,9 @@ graph LR
     style COMPOSE fill:#c6e6fb,stroke:#1b4965,stroke-width:2px,color:#0b2942
 ```
 
-**Architecture:** Bastion (`bastion/src/proxy.ts`) forwards the authenticated user's identity via the `x-bos-username` header. **Nothing on the BOS side validates this header today**, and this feature's default scope (`plan.md` Phase 8) is to keep it that way: WebDAV auth relies **solely on the bearer token**, ignoring `x-bos-username`. Additionally validating the header against an expected user is explicitly deferred as new trust-boundary work, not part of this feature.
+**Architecture:** Bastion's catch-all proxy (`bastion/src/proxy.ts`) normally routes by the browser session cookie — but headless WebDAV clients (`davfs2`, macOS `mount_webdav`/Finder) never carry that cookie, so the original implementation fell through to the ordinary "no session → 302 to `/login`" branch for every WebDAV request, even with a valid mount token (found and fixed as part of this feature's hardening pass). The fix: when a request with no session cookie targets `/api/vfs/webdav*`, the proxy instead parses `Authorization: Basic <username>:<token>`, looks up `username` via the configured `AuthProvider.getUser()` (confirming it's a real account — never checking the token itself), and routes to that user's container. It then rewrites the outgoing `Authorization` header to `Bearer <token>` before forwarding, plus the `x-bos-username` header as before. **Nothing on the BOS side validates `x-bos-username`**, and this feature's default scope (`plan.md` Phase 8) is to keep it that way: WebDAV auth relies **solely on the bearer token** (`src/lib/webdav/auth.ts`, unchanged, Bearer-only) — identical to standalone Docker. A request with no session and no resolvable Basic-auth username (including a bare `Authorization: Bearer <token>` with no username, or an unknown username) gets a `401` with `WWW-Authenticate: Basic`, not a redirect. Known limitation: `KeycloakProvider.getUser()` always returns `null` (Keycloak mode has no local user directory), so WebDAV mounting via Basic auth isn't currently resolvable under Keycloak — out of scope for this fix.
 
-**Key difference:** Bastion routes the request to the right per-user container; auth within that container is identical to standalone Docker.
+**Key difference:** Bastion routes the request to the right per-user container by the Basic-auth username (not a session); auth within that container is identical to standalone Docker.
 
 ### 4b. Standalone Docker (Bearer Token)
 
