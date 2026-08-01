@@ -179,7 +179,7 @@ Each HTTP method (GET, PUT, DELETE, MKCOL, COPY, MOVE, PROPFIND, OPTIONS) behave
 - **SC-009**: An external machine can mount the VFS via WebDAV when BOS runs in a standalone Docker container, using bearer token authentication.
 - **SC-010**: A local BOS development instance exposes the WebDAV endpoint on `localhost` for testing.
 
-## Assumptions
+## Assumptions & Dependencies
 
 - Depends on `006-data-isolation`: all I/O MUST go through the VFS layer, not raw `fs` calls.
 - Depends on `007-gitfs`: GitFS-backed VFS paths work transparently (reads reflect HEAD, writes commit).
