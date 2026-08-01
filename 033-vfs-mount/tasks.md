@@ -77,9 +77,15 @@ See `plan.md` for architecture, module layout, and the rationale behind each dec
 
 ## T9 — Marketplace item packaging
 **Goal:** ship the feature as an installable service item per the `002-service-daemons` layout, satisfying the spec's "marketplace-distributed service item" framing.
+
+**Mandatory deliverable — marketplace.json:** This feature IS a BOS Marketplace item. It does NOT ship as a marketplace item unless `data/user-apps/marketplace.json` is updated to register the `vfs-webdav-mount` item. This is a hard gate — do not mark this task as done without confirming `marketplace.json` has been updated.
+
+**Mandatory — unit tests:** Unit tests are REQUIRED. Every task producing source code must include its corresponding `tests/webdav/*.test.ts` file with full coverage of the requirements it implements. Unit tests are not optional — they are a mandatory deliverable of every implementing task.
+
 - [ ] `data/user-apps/items/vfs-webdav-mount/services/vfs-webdav-mount/service.json` (manifest per `src/core/service/types.ts`'s `ServiceManifest`).
 - [ ] `settings/`, `doc/`, `spec/` subfolders per the item layout; `doc/` explicitly notes that the Settings UI is core-registered (T8) rather than loaded from this item's `settings/` folder, and why (the `configApp` component-loading gap — see `plan.md` §Phase 7).
-- [ ] Register in `data/user-apps/marketplace.json` (merge, not regenerate, per `034-user-apps-marketplace-parity`).
+- [ ] **Register the item in `data/user-apps/marketplace.json`** — merge, not regenerate, per `034-user-apps-marketplace-parity`. Verify the entry is present after the merge.
+- [ ] **Unit test:** `tests/webdav/item-packaging.test.ts` — assert the marketplace item layout is complete (all subfolders present, `service.json` is valid JSON, `doc/` contains the required notes).
 - **Maps to:** Key Entity "WebDAV service"; User Story 1 independent test (mount + verify via Files app).
 
 ## T10 — Deployment mode wiring & mount instructions
