@@ -4,9 +4,15 @@
 **Created**: 2026-07-28
 **Status**: Draft
 
+**App Target**: marketplace-app
+
+**Input**: User description: "$ARGUMENTS"
+
 **Input**: "It would be very cool if the user could mount BOS on their Linux/macOS computer — sort of like Google Drive or OneDrive. Maybe using FuseFS?"
 
-> A marketplace-distributed service item exposes its host's VFS (`data/vfs/`) via a WebDAV server endpoint. macOS ships a native WebDAV client (`Finder → Go → Connect to Server`); Linux uses `davfs2`. This gives local-filesystem semantics with no kernel extension required on either platform. FUSE is handled by the OS's own WebDAV layer, not by BOS.
+## Background
+
+A marketplace-distributed service item exposes its host's VFS (`data/vfs/`) via a WebDAV server endpoint. macOS ships a native WebDAV client (`Finder → Go → Connect to Server`); Linux uses `davfs2`. This gives local-filesystem semantics with no kernel extension required on either platform. FUSE is handled by the OS's own WebDAV layer, not by BOS.
 
 **Marketplace item**: This feature IS a BOS Marketplace item, shipped at `data/user-apps/items/vfs-webdav-mount/` and registered in `data/user-apps/marketplace.json`. The item BUNDLES both the WebDAV service and a Settings panel for token management. Installing the marketplace item activates the feature for the user.
 
@@ -15,6 +21,8 @@ The service is consumed as a normal BOS marketplace item (see `009-installed-app
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Mount BOS as a local drive (Priority: P1)
+
+**Why this priority**: The core mounting capability is the foundation for all external client access — everything else (auth, instructions) depends on it working first.
 
 The user wants to open, edit, and save BOS VFS files from their native file manager or any local app (VS Code, Terminal, Finder) without using the BOS browser UI.
 
@@ -28,6 +36,8 @@ The user wants to open, edit, and save BOS VFS files from their native file mana
 
 ### User Story 2 — Authentication protects the mount (Priority: P1)
 
+**Why this priority**: Security is critical for any network-exposed service — without it, any attacker could access the user's files.
+
 Only the authenticated BOS user can mount and access the drive; unauthenticated requests are rejected.
 
 **Independent Test**: Attempt a `PROPFIND` request with no credentials; confirm 401. Then retry with a valid token; confirm 207.
@@ -39,6 +49,8 @@ Only the authenticated BOS user can mount and access the drive; unauthenticated 
 3. **Given** a token that has been revoked in Settings, **When** it is used to mount, **Then** BOS responds `401 Unauthorized`.
 
 ### User Story 3 — Token lifecycle is exposed to the BOS user (Priority: P1)
+
+**Why this priority**: Token management must be user-accessible to maintain security hygiene — users need to be able to rotate or revoke credentials without restarting the service.
 
 The BOS user can generate and revoke mount tokens without restarting the service.
 
@@ -52,6 +64,8 @@ The BOS user can generate and revoke mount tokens without restarting the service
 
 ### User Story 4 — External users receive clear mount instructions (Priority: P2)
 
+**Why this priority**: Without clear instructions, users on different platforms will fail to mount — even if the service works perfectly.
+
 An external user can discover the WebDAV URL and authentication method for each deployment mode.
 
 **Acceptance Scenarios**:
@@ -61,6 +75,8 @@ An external user can discover the WebDAV URL and authentication method for each 
 3. **Given** a standalone Docker deployment, **When** instructions are provided, **Then** they include the public IP/port and bearer token authentication.
 
 ### User Story 5 — WebDAV endpoint is reachable from external machines (Priority: P1)
+
+**Why this priority**: The feature is only useful if it actually works across all deployment modes — this story validates the core reachability across Docker, standalone, and local dev environments.
 
 An external user on a Linux/macOS machine can mount the VFS via WebDAV in three deployment modes:
 
@@ -78,6 +94,8 @@ An external user on a Linux/macOS machine can mount the VFS via WebDAV in three 
 4. **Given** the WebDAV service is not enabled (no token generated), **When** a client attempts to mount or send any WebDAV request, **Then** the endpoint returns `404 Not Found` (or `503 Service Unavailable`).
 
 ### User Story 6 — WebDAV endpoints support all required HTTP verbs (Priority: P1)
+
+**Why this priority**: WebDAV compatibility with all required HTTP verbs is essential for macOS Finder and davfs2 to work without configuration changes.
 
 Each HTTP method (GET, PUT, DELETE, MKCOL, COPY, MOVE, PROPFIND, OPTIONS) behaves correctly according to WebDAV (RFC 4918).
 
@@ -161,7 +179,7 @@ Each HTTP method (GET, PUT, DELETE, MKCOL, COPY, MOVE, PROPFIND, OPTIONS) behave
 - **SC-009**: An external machine can mount the VFS via WebDAV when BOS runs in a standalone Docker container, using bearer token authentication.
 - **SC-010**: A local BOS development instance exposes the WebDAV endpoint on `localhost` for testing.
 
-## Assumptions & Dependencies
+## Assumptions
 
 - Depends on `006-data-isolation`: all I/O MUST go through the VFS layer, not raw `fs` calls.
 - Depends on `007-gitfs`: GitFS-backed VFS paths work transparently (reads reflect HEAD, writes commit).
