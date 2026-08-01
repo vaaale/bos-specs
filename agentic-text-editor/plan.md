@@ -6,11 +6,11 @@
 
 ## Summary
 
-A two-pane built-in app for editing text/markdown documents with an embedded AI chat that can read, write, and modify document contents directly. Left pane: tabbed document editor with Edit/Preview toggle. Right pane: global chat with the agent. Agent edits modify an internal buffer — content persists to disk only on explicit save. Extensible format architecture for future document types.
+A two-pane marketplace app for editing text/markdown documents with an embedded AI chat that can read, write, and modify document contents directly. Left pane: tabbed document editor with Edit/Preview toggle. Right pane: global chat with the agent. Agent edits modify an internal buffer — content persists to disk only on explicit save. Extensible format architecture for future document types.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x, React 18 (built-in BrowserOS app)
+**Language/Version**: TypeScript 5.x, React 18 (marketplace app)
 
 **Primary Dependencies**: BrowserOS OS store (`useOSStore`), VFS file system API, assistant capabilities registry
 
@@ -18,15 +18,15 @@ A two-pane built-in app for editing text/markdown documents with an embedded AI 
 
 **Testing**: BOS standard: `npx tsc --noEmit` and `npm run lint`. Playwright e2e tests in `e2e/agentic-text-editor.spec.ts`.
 
-**Target Platform**: BrowserOS built-in app — compiled into the BOS bundle, rendered as a React component.
+**Target Platform**: BrowserOS marketplace app — served from `data/user-apps/items/agentic-text-editor/` as a separate HTTP process, not compiled into the BOS bundle.
 
-**Project Type**: Built-in BrowserOS app (not installed app).
+**Project Type**: Marketplace app (not built-in).
 
 **Performance Goals**: Live agent edits reflect in editor within 1 second. Tab switching feels instant. Scroll at 60fps.
 
 **Constraints**: 
 - Must follow BOS style guide (dark-only, opacity palette, inline Tailwind, lucide-react icons)
-- Must follow built-in app anatomy (`manifest.ts` + `index.tsx`)
+- Must follow marketplace app anatomy (`app.json` + `index.tsx`)
 - No external UI libraries
 - Internal buffer is not persisted until explicit save
 - Chat is global (one conversation per app instance)
@@ -38,7 +38,7 @@ A two-pane built-in app for editing text/markdown documents with an embedded AI 
 *GATE: Must pass before implementation. Re-check after implementation.*
 
 - **Dark-only theme**: The app uses the BOS opacity palette exclusively. No light mode. ✓
-- **Built-in app anatomy**: Will follow `src/apps/<id>/manifest.ts` + `index.tsx` pattern. ✓
+- **Marketplace app anatomy**: Will follow `data/user-apps/items/<id>/app.json` + `index.tsx` pattern. ✓
 - **No external UI libraries**: Only lucide-react icons and inline Tailwind utilities. ✓
 - **SSR/hydration**: All interactive components marked `"use client"`. No client-only initial state. ✓
 - **OS state via selectors**: Uses `useOSStore` selectors for window management and settings. ✓
@@ -58,13 +58,13 @@ user-specs/agentic-text-editor/
 └── quickstart.md        # Validation guide
 ```
 
-### Source Code (repository root)
+### Source Code (marketplace item)
 
 ```text
-src/apps/agentic-text-editor/
-├── manifest.ts              # App manifest (id, name, icon, size, singleton)
-├── index.tsx                # Main app component (two-pane layout)
-├── types.ts                 # Shared types (Document, Tab, ChatMessage, EditorSettings)
+data/user-apps/items/agentic-text-editor/
+├── app.json              # App manifest (id, name, icon, size, singleton)
+├── index.tsx            # Main app component (two-pane layout)
+├── types.ts           # Shared types (Document, Tab, ChatMessage, EditorSettings)
 ├── state/
 │   └── document-store.ts    # Client-side store for documents, tabs, chat messages
 ├── components/
@@ -89,7 +89,7 @@ src/apps/agentic-text-editor/
     └── editor-config.ts       # Config namespace registration for editor settings
 ```
 
-**Structure Decision**: Built-in app with clean component separation. The editor and chat are independent surfaces sharing a single state store. Format handlers are pluggable via a registry pattern. Assistant tools are registered as Tier 1 capabilities.
+**Structure Decision**: Marketplace app with clean component separation. The editor and chat are independent surfaces sharing a single state store. Format handlers are pluggable via a registry pattern. Assistant tools are registered as Tier 1 capabilities.
 
 ## Design Notes
 
@@ -146,4 +146,4 @@ The agent always receives:
 
 ## Complexity Tracking
 
-No complexity violations. This is a single built-in app with standard BOS patterns.
+No complexity violations. This is a single marketplace app with standard BOS patterns.

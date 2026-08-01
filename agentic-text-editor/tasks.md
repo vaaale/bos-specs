@@ -16,10 +16,10 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create `src/apps/agentic-text-editor/` directory structure
-- [ ] T002 Create `manifest.ts` with id "agentic-text-editor", name "Editor", icon "PenTool", default size 1200x700, singleton true
-- [ ] T003 [P] Create `types.ts` with Document, Tab, ChatMessage, EditorSettings, FormatHandler interfaces
-- [ ] T004 [P] Create `state/document-store.ts` with Zustand store for documents, tabs, chat, settings
+- [x] T001 Create `data/user-apps/items/agentic-text-editor/` directory structure
+- [x] T002 Create `app.json` with id "agentic-text-editor", name "Editor", icon "PenTool", default size 1200x700, singleton true
+- [x] T003 [P] Create `types.ts` with Document, Tab, ChatMessage, EditorSettings, FormatHandler interfaces
+- [x] T004 [P] Create `state/document-store.ts` with Zustand store for documents, tabs, chat, settings
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
@@ -27,13 +27,13 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Create `services/file-service.ts` with `openFile(path)`, `saveFile(doc)`, `saveAll()`, `createDocument(filename?)` using VFS API
-- [ ] T006 [P] Create `services/format-service.ts` with format handler registry (register, getByExtension, getActive)
-- [ ] T007 [P] Create default markdown format handler (renders basic markdown to HTML)
-- [ ] T008 [P] Create default plaintext format handler (no rendering, raw text only)
-- [ ] T009 [P] Create `config/editor-config.ts` with config namespace registration for fontFamily, fontSize, headingColors, etc.
-- [ ] T010 [P] Create `tools/assistant-tools.ts` with Tier 1 tool declarations (agentic_editor_open_file, create_document, save_document, save_all, add_content, modify_content, remove_content, set_active_document, list_documents, get_active_document, get_document_content, search_document)
-- [ ] T011 Register format service and assistant tools in capabilities registry
+- [x] T005 Create `services/file-service.ts` with `openFile(path)`, `saveFile(doc)`, `saveAll()`, `createDocument(filename?)` using VFS API
+- [x] T006 [P] Create `services/format-service.ts` with format handler registry (register, getByExtension, getActive)
+- [x] T007 [P] Create default markdown format handler (renders basic markdown to HTML)
+- [x] T008 [P] Create default plaintext format handler (no rendering, raw text only)
+- [x] T009 [P] Create `config/editor-config.ts` with config namespace registration for fontFamily, fontSize, headingColors, etc.
+- [x] T010 [P] Create `tools/assistant-tools.ts` with Tier 1 tool declarations (agentic_editor_open_file, create_document, save_document, save_all, add_content, modify_content, remove_content, set_active_document, list_documents, get_active_document, get_document_content, search_document)
+- [x] T011 Register format service and assistant tools in capabilities registry
 
 **Checkpoint**: Foundation ready — all services, formats, config, and tool declarations in place.
 
@@ -45,7 +45,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create `components/resizer.tsx` — draggable pane divider with violet hover, col-resize cursor, clamped 25-60% range
+- [x] T012 [P] [US1] Create `components/resizer.tsx` — draggable pane divider with violet hover, col-resize cursor, clamped 25-60% range
 - [ ] T013 [P] [US1] Create `components/editor/toolbar.tsx` — Open button (folder icon), Save button (floppy icon), Edit/Preview pill toggle
 - [ ] T014 [P] [US1] Create `components/editor/tab-bar.tsx` — horizontal scrollable tab list with active/inactive states, close button (X on hover), amber unsaved dot
 - [ ] T015 [P] [US1] Create `components/editor/edit-view.tsx` — monospace textarea with line numbers, placeholder text, line number sync on scroll
