@@ -96,13 +96,16 @@ All requests require `Authorization: Bearer <token>`. Unauthenticated requests r
 
 ### VFS Layer Integration
 
-The service delegates I/O to the VFS layer. Since it runs outside Next.js, it cannot import `src/lib/...` TypeScript modules. However, the spec explicitly states I/O must go through the VFS layer, not raw `fs` calls. This requires either:
-1. The VFS layer to be made importable from outside the module graph, OR
-2. The service to use the VFS through a different mechanism (e.g., a shared memory channel, or direct filesystem access to `data/vfs/` with path-traversal guard)
+The service accesses the VFS via BOS's own HTTP API — a loopback request to the same container. This avoids importing any `src/` TypeScript modules, which would fail since the service runs unbundled outside the Next.js module graph.
 
-Given the spec's explicit dependency on `006-data-isolation` and `007-gitfs`, the service must interact with the VFS in a way that respects ownership and GitFS semantics. This is a non-trivial architectural decision that needs to be resolved before implementation.
+Two routes cover everything:
 
-**Open question**: How does a worker-thread service access the VFS layer without importing TypeScript modules from `src/`? The service must respect VFS ownership, GitFS semantics, and data isolation. This may require a dedicated VFS client or an abstraction that the service can use.
+- **`/api/fs`** — small/metadata operations: `GET ?op=list` / `?op=read` / `?op=stat`, and `POST` with `{op: "write"|"mkdir"|"delete"|"rename"}`. Use this for `PROPFIND`, `MKCOL`, `DELETE`, `MOVE`, `COPY`, and any small file read/write.
+- **`/api/fs/raw`** — large file transfer with true streaming: `GET ?path=` streams the file out, `PUT ?path=` streams a request body in. Neither buffers the whole file in memory on either side.
+
+No special headers or auth are needed for plain VFS content — the branch-scope headers `/api/fs` reads only matter for the branch-coupled mounts (`/Specs`, `/Docs`), which this feature has no reason to expose. Isolation is already handled by the per-user container boundary in a multi-user deployment: the service can only ever reach its own container's localhost, so it can only ever resolve into that same user's own VFS.
+
+Both routes go through the exact same path-traversal protection, mount-table routing, and atomic-write discipline every other BOS consumer of the VFS gets — nothing about this needs to be reimplemented in the service, and nothing here should become a reason to add anything under `src/`.
 
 ### Settings Panel
 
