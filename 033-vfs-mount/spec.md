@@ -4,7 +4,7 @@
 **Created**: 2026-07-28
 **Status**: Draft
 
-**App Target**: marketplace-app
+**App Target**: marketplace-service
 
 **Input**: User description: "$ARGUMENTS"
 
@@ -137,7 +137,7 @@ Each HTTP method (GET, PUT, DELETE, MKCOL, COPY, MOVE, PROPFIND, OPTIONS) behave
 
 - **FR-001**: The installed WebDAV service MUST expose a WebDAV endpoint at `GET|PUT|DELETE|MKCOL|COPY|MOVE|PROPFIND|OPTIONS /api/vfs/webdav/[...path]` that maps 1-to-1 onto the VFS root (`data/vfs/`).
 - **FR-002**: All WebDAV requests MUST be authenticated via a `Authorization: Bearer <token>` header; unauthenticated requests MUST receive `401` with `WWW-Authenticate: Bearer realm="BOS"`.
-- **FR-003**: Mount tokens MUST be generated as cryptographically random 256-bit values, stored hashed (via bcrypt or equivalent, e.g. `crypto.scrypt` with salt and constant-time compare) in `SecretsStore` (`src/lib/integrations/secrets/store.ts`) with AES-256-GCM encryption at rest.
+- **FR-003**: Mount tokens MUST be generated as cryptographically random 256-bit values, stored hashed (via bcrypt or equivalent, e.g. `crypto.scrypt` with salt and constant-time compare) in the service's own encrypted config store with AES-256-GCM encryption at rest.
 - **FR-004**: Multiple tokens MAY coexist; each MUST be independently revocable from the Settings UI without affecting others.
 - **FR-005**: Path traversal attempts (`../`, encoded variants) MUST be rejected with `403 Forbidden`; all resolved paths MUST be verified to remain under the VFS root before any I/O.
 - **FR-006**: WebDAV `PROPFIND` with `Depth: 1` MUST return `207 Multi-Status` XML enumerating children with at minimum: `displayname`, `getcontentlength`, `getlastmodified`, `getcontenttype`, `resourcetype`.
@@ -183,7 +183,7 @@ Each HTTP method (GET, PUT, DELETE, MKCOL, COPY, MOVE, PROPFIND, OPTIONS) behave
 
 - Depends on `006-data-isolation`: all I/O MUST go through the VFS layer, not raw `fs` calls.
 - Depends on `007-gitfs`: GitFS-backed VFS paths work transparently (reads reflect HEAD, writes commit).
-- The WebDAV endpoint MUST be implemented in Node-runtime middleware (`src/middleware.ts`, `runtime: "nodejs"`), not an App Router `route.ts` handler — Next.js route handlers only resolve a fixed set of HTTP methods and reject non-standard WebDAV verbs (`PROPFIND`, `MKCOL`, `COPY`, `MOVE`) before user code runs; middleware intercepts every method for the matched path.
+- The WebDAV service runs as a plain Node worker thread on its own port (bound via `service.json` config), completely outside Next.js's request pipeline — no `src/` involvement is required.
 - macOS `mount_webdav` and `davfs2` both support HTTP (non-TLS) on loopback; TLS is not required for local mounts but MUST work if `BASE_URL` uses `https://`.
 
 ## Notes
