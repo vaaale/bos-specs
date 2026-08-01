@@ -2,11 +2,11 @@
 
 **Source**: `/Specs/bos-system-specs/033-vfs-mount/spec.md`
 
-**Estimated duration**: 1.5 days
+**Estimated duration**: 2 days
 
 ---
 
-## Task 1: Core WebDAV Service (1/5)
+## Task 1: Core WebDAV Service Implementation
 
 **User Stories**: 1, 5, 6
 
@@ -28,7 +28,7 @@
 
 ---
 
-## Task 2: Authentication & Token Management (2/5)
+## Task 2: Authentication & Token Management
 
 **User Stories**: 2, 3
 
@@ -50,7 +50,7 @@
 
 ---
 
-## Task 3: Settings Panel UI (4/5)
+## Task 3: Settings Panel UI
 
 **User Stories**: 4
 
@@ -67,7 +67,7 @@
 
 ---
 
-## Task 4: Testing & Integration (5/6)
+## Task 4: Testing & Integration
 
 **Description**: Verify the complete feature works end-to-end.
 
