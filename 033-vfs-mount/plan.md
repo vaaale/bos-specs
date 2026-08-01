@@ -76,9 +76,9 @@ e2e/vfs-webdav.spec.ts                  # e2e (Playwright, testDir "./e2e")
 
 ## 5. Phases
 
-Each phase lists concrete steps and the FRs/SCs/edge cases it closes. Full requirement↔task traceability lives in `tasks.md`.
+Each phase lists concrete steps and the FRs/SCs/edge cases it close. Full requirement↔task traceability lives in `tasks.md`.
 
-**Critical: marketplace.json** — The WebDAV service IS a BOS Marketplace item at `data/user-apps/items/vfs-webdav-mount/`. The `marketplace.json` register step (T9) is a **mandatory deliverable** — this feature does not ship as a marketplace item if `data/user-apps/marketplace.json` is not updated. This is a hard gate: do not skip the `marketplace.json` write in any phase.
+**Critical: marketplace.json is a mandatory deliverable** — The WebDAV service IS a BOS Marketplace item at `data/user-apps/items/vfs-webdav-mount/`. The `marketplace.json` register step (T9) is a **hard gate**: this feature does not ship as a marketplace item if `data/user-apps/marketplace.json` is not updated. Every subsequent phase that touches the marketplace item layout or the `marketplace.json` file must ensure the registration step is completed before the phase is considered done.
 
 ### Phase 0 — Feasibility spike: Node middleware for non-standard verbs
 *Blocks everything else.*
