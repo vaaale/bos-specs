@@ -4,7 +4,7 @@
 **Created**: 2026-07-28
 **Status**: Draft
 
-**App Target**: marketplace-service
+**App Target**: marketplace-item
 
 **Input**: User description: "$ARGUMENTS"
 
