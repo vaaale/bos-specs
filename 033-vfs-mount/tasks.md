@@ -6,7 +6,7 @@
 
 ---
 
-## Task 1: WebDAV Service Implementation
+## Task 1: Core WebDAV Service (1/5)
 
 **User Stories**: 1, 5, 6
 
@@ -28,7 +28,7 @@
 
 ---
 
-## Task 2: Authentication & Token Management
+## Task 2: Authentication & Token Management (2/5)
 
 **User Stories**: 2, 3
 
@@ -50,7 +50,7 @@
 
 ---
 
-## Task 3: Settings Panel UI
+## Task 3: Settings Panel UI (4/5)
 
 **User Stories**: 4
 
@@ -67,7 +67,7 @@
 
 ---
 
-## Task 4: Testing & Integration
+## Task 4: Testing & Integration (5/6)
 
 **Description**: Verify the complete feature works end-to-end.
 
