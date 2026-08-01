@@ -2,6 +2,8 @@
 
 **Branch**: `033-vfs-mount` | **Date**: 2026-08-01 | **Spec**: `bos-system-specs/033-vfs-mount/spec.md`
 
+**App Target**: marketplace-item
+
 **Input**: Feature specification from `/specs/bos-system-specs/033-vfs-mount/spec.md`
 
 ## Summary
