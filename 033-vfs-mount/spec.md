@@ -6,7 +6,11 @@
 
 **Input**: "It would be very cool if the user could mount BOS on their Linux/macOS computer — sort of like Google Drive or OneDrive. Maybe using FuseFS?"
 
-> A marketplace-distributed service item exposes its host's VFS (`data/vfs/`) via a WebDAV server endpoint. macOS ships a native WebDAV client (`Finder → Go → Connect to Server`); Linux uses `davfs2`. This gives local-filesystem semantics with no kernel extension required on either platform. FUSE is handled by the OS's own WebDAV layer, not by BOS. The service is consumed as a normal BOS marketplace item (see `009-installed-apps`, `028-marketplace-sandbox`); the item INCLUDES both the WebDAV service and a Settings panel for token management. Companion: `006-data-isolation` (VFS ownership), `007-gitfs` (VFS contents).
+> A marketplace-distributed service item exposes its host's VFS (`data/vfs/`) via a WebDAV server endpoint. macOS ships a native WebDAV client (`Finder → Go → Connect to Server`); Linux uses `davfs2`. This gives local-filesystem semantics with no kernel extension required on either platform. FUSE is handled by the OS's own WebDAV layer, not by BOS.
+
+**Marketplace item**: This feature IS a BOS Marketplace item, shipped at `data/user-apps/items/vfs-webdav-mount/` and registered in `data/user-apps/marketplace.json`. The item BUNDLES both the WebDAV service and a Settings panel for token management. Installing the marketplace item activates the feature for the user.
+
+The service is consumed as a normal BOS marketplace item (see `009-installed-apps`, `028-marketplace-sandbox`); the item INCLUDES both the WebDAV service and a Settings panel for token management. Companion: `006-data-isolation` (VFS ownership), `007-gitfs` (VFS contents).
 
 ## User Scenarios & Testing *(mandatory)*
 
