@@ -2,75 +2,78 @@
 
 **Branch**: `034-secrets-authentication` | **Date**: 2026-08-01 | **Spec**: `./spec.md`
 
-**Input**: Feature specification from `data/specs/bos-system-specs/034-secrets-authentication/spec.md`
+**Input**: Feature specification from `bos-system-specs/034-secrets-authentication/spec.md`
 
 ## Summary
 
-Generalize 033-vfs-mount's WebDAV-only mount-token system into a generic, namespaced secret
-mechanism any BOS service can use, and replace Bastion's WebDAV-specific routing special-case
-(`WEBDAV_PREFIX`/`isWebdavPath` + `provider.getUser()`) with a protocol-agnostic one: Bastion
-resolves routing by hashing a presented Basic-auth credential and scanning a small, non-reversible,
-per-user companion index it already has filesystem access to (via the existing `/user-data`
-bind-mount) — never by asking the identity provider who a username belongs to. Authentication
-itself stays exactly where it is today: the target container's own encrypted secret store is the
-only thing that ever validates a secret.
+Introduce a generic, namespaced secret-issuing mechanism any BOS service can use, plus a
+protocol-agnostic routing capability in Bastion: when a request carries no session cookie but a
+parseable `Authorization: Basic` header, Bastion resolves which user's container to route it to by
+hashing the presented credential and scanning a small, non-reversible, per-user companion index it
+already has filesystem access to — never by asking the configured identity provider who owns a
+username, and never by checking a path allowlist. Authentication of the request itself always
+remains the target service's own responsibility, inside its own container. This feature is
+delivered and verified entirely on its own terms, using a self-contained example service for
+acceptance testing — it does not require any other feature to exist first.
 
 ## Technical Context
 
-**Language/Version**: TypeScript throughout — Next.js 16 App Router (BOS server code, Node.js
-runtime) and Node/Express (Bastion, a separate sub-project at `bastion/`).
+**Language/Version**: TypeScript throughout — the BOS server (Next.js App Router, Node.js runtime)
+and Bastion (Node/Express, a separate sub-project with its own `package.json`/`tsconfig.json`).
 
-**Primary Dependencies**: No new dependencies. Reuses `src/lib/integrations/secrets/store.ts`
-(`SecretsStore`, AES-256-GCM + scrypt), `src/os/data-dir.ts` (`dataDir()`), and Bastion's existing
-`bastion/src/docker.ts`/`config.ts` (`cfg.volumeBase`, already bind-mounted). Node's built-in
-`crypto` module covers the new fast companion hash (`sha256`); no new npm package is needed on
-either side.
+**Primary Dependencies**: No new dependencies on either side. BOS side reuses whatever encrypted,
+per-user key/value store already exists for at-rest secret storage (server-only, Node `crypto`).
+Bastion side reuses its existing per-user data bind-mount and Node's built-in `crypto` (`sha256`)
+for the companion-index lookup — no new npm package needed.
 
-**Storage**: Two per-user, file-based stores, both already living under each user's `data/`
-directory (no new volumes, no new database service):
-1. The existing encrypted `SecretsStore` file — unchanged, holds the authoritative, salted scrypt
-   hash of each secret.
-2. A new plaintext JSON file, `data/system/credentials-index.json` — the non-reversible routing
-   companion, one fast unsalted hash + `service` name per entry.
+**Storage**: Two per-user, file-based stores, both living under each user's own data directory (no
+new volumes, no new database service):
+1. An encrypted, per-user secret store — holds the authoritative, salted hash of each issued
+   secret. If a suitable encrypted store already exists in the codebase for other purposes, this
+   feature reuses it rather than introducing a second one; otherwise this feature provides one.
+2. A new plaintext JSON file — the non-reversible routing companion index — one fast, unsalted hash
+   + `service` name per entry.
 
-**Testing**: Existing project test runner (`tests/services/*.test.ts` pattern, Vitest-style
-per-file unit tests) for the generic secret module and the companion-index read/write helpers;
-a Node-level unit test for Bastion's new `resolveCredential()` scan (no live Docker/Keycloak needed
-— it's a pure filesystem scan against fixture directories).
+**Testing**: Unit tests for the generic secret module and the companion-index read/write helpers,
+using a self-contained example `service` namespace (no dependency on any other feature); a
+filesystem-fixture-based unit test for Bastion's routing-lookup function (no live Docker/Keycloak
+required for that test); separate integration/manual verification against real Bastion deployments
+in both auth-provider modes (see tasks.md).
 
 **Target Platform**: Linux (Docker Compose multi-user deployment via `bastion/`, and standalone
-single-container / local-dev `next dev`).
+single-container / local-dev).
 
-**Project Type**: Web service (`src/`) + companion reverse-proxy sub-project (`bastion/`) — two
-TypeScript projects in one repo, each with its own `package.json`/`tsconfig.json` (per
-CLAUDE.md's existing description of `bastion/`).
+**Project Type**: Web service (BOS server code) + companion reverse-proxy sub-project (`bastion/`)
+— two independently-built TypeScript projects in one repository.
 
 **Performance Goals**: Bastion's routing lookup is a linear scan over provisioned users' single
-small JSON files — must stay well under user-perceptible latency at the default
-`MAX_CONCURRENT_INSTANCES` (50). No caching is required at this scale; if scale grows substantially
-in the future, an in-memory reverse-index rebuilt on file-change would be the next step, but that's
-explicitly not needed now.
+small JSON files — must stay well under user-perceptible latency at the deployment's configured
+concurrent-user cap. No caching is required at this scale; if scale grows substantially in the
+future, an in-memory reverse-index rebuilt on file-change would be the natural next step, but is
+explicitly not needed for this feature.
 
-**Constraints**: No new external services or databases (matches "all runtime state persists as
-files under `./data`," CLAUDE.md). Must preserve per-user data isolation — no change may let one
-user's container read or write another user's directory; only Bastion (which already has
-cross-user filesystem access for provisioning) gains a new *read* path, and only over non-reversible
-hashes. Must not require a Keycloak admin-API client/service account. Must not introduce a native
-mount client or OAuth device-code flow (explicitly out of scope, see spec Assumptions).
+**Constraints**: No new external services or databases — all new state is plain files under each
+user's own data directory. Must preserve per-user data isolation: no change may let one user's
+container read or write another user's directory; only Bastion (which already has cross-user
+filesystem access for provisioning, in any deployment where this feature applies) gains a new
+*read* path, and only over non-reversible hashes, never secret material. Must not require an
+identity-provider admin-API client/service account. Must not introduce a native OAuth-capable
+client or an OAuth device-code flow (explicitly out of scope, see spec.md Assumptions).
 
-**Scale/Scope**: Bounded by `MAX_CONCURRENT_INSTANCES` (default 50, operator-configurable). Two
-call sites migrate to the generic mechanism in this feature (WebDAV mint + WebDAV verify); the
-mechanism itself is designed for N future callers with zero Bastion changes per FR-008.
+**Scale/Scope**: Bounded by however many users a given Bastion deployment provisions concurrently
+(operator-configurable). This feature delivers the generic mechanism plus one self-contained
+example consumer for its own acceptance testing; it is designed for N independent future callers
+with zero Bastion changes per FR-008, and does not itself modify any pre-existing consumer as part
+of its core scope (see spec.md User Story 6).
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-No constitution file exists in this spec store (`bos-system-specs/.specify/memory/constitution.md`
-is not present in this checkout) — this section falls back to CLAUDE.md's stated working rules,
-which this plan follows: work stays on a feature branch, no changes to secrets/`package.json`/
-lockfiles/build config beyond what's required, `npx tsc --noEmit` + `npm run lint` after edits, and
-`docs/` gets updated for the architecture change (see Phase 6 below). No violations to record in
+No constitution file exists in this spec store — this section follows this codebase's stated
+general working rules instead: work stays on a feature branch, no changes to secrets/lockfiles/
+build config beyond what's required, type-check and lint after edits, and developer docs get
+updated for the architecture change (see Phase 7 in tasks.md). No violations to record in
 Complexity Tracking.
 
 ## Project Structure
@@ -78,143 +81,131 @@ Complexity Tracking.
 ### Documentation (this feature)
 
 ```text
-data/specs/bos-system-specs/034-secrets-authentication/
+bos-system-specs/034-secrets-authentication/
 ├── spec.md      # Feature specification
 ├── plan.md      # This file
-└── tasks.md     # Task breakdown (this feature's Phase 2 output)
+└── tasks.md     # Task breakdown
 ```
 
 ### Source Code (repository root)
 
 ```text
 src/lib/secrets/
-├── service-secrets.ts      # NEW — generic createSecret/verifySecret/listSecrets/revokeSecret,
-│                           #        namespaced by `service`; wraps the existing SecretsStore
-└── credentials-index.ts    # NEW — writeIndexEntry/removeIndexEntry/readIndex against
-                             #        data/system/credentials-index.json
-
-src/lib/webdav/
-├── tokens.ts                # MODIFIED — becomes a thin wrapper over service-secrets.ts with
-│                             #            service = "vfs-webdav" (keeps createToken/verifyToken/
-│                             #            listTokens/revokeToken/hasAnyToken call sites unchanged)
-└── auth.ts                  # UNCHANGED — still calls verifyToken(); the wrapper absorbs the change
+├── service-secrets.ts      # NEW — generic createSecret/verifySecret/listSecrets/revokeSecret/
+│                           #        hasAnySecret, namespaced by `service`; owns the authoritative
+│                           #        encrypted per-user store (FR-001, FR-002)
+└── credentials-index.ts    # NEW — writeIndexEntry/removeIndexEntry/readIndex against a per-user
+                             #        plaintext routing-companion file (FR-003, FR-011)
 
 bastion/src/
-├── credential-routing.ts    # NEW — resolveCredential(rawSecret): { username, service } | null;
-│                             #        scans every dir under cfg.volumeBase for
-│                             #        data/system/credentials-index.json
-└── proxy.ts                 # MODIFIED — remove WEBDAV_PREFIX/isWebdavPath; the no-session branch
-                              #             becomes "Basic auth header present" (any path), and its
-                              #             username resolution switches from provider.getUser() to
-                              #             credential-routing.ts's resolveCredential()
+└── credential-routing.ts   # NEW — resolveCredential(rawSecret): { username, service } | null;
+                             #        scans every provisioned user's companion index (FR-005, FR-006)
+
+bastion/src/proxy.ts         # MODIFIED — the existing no-session branch gains (or, if a
+                              #             protocol-specific special case already exists here from
+                              #             some other feature, is superseded by) a generic
+                              #             "Basic auth present → resolveCredential() routing"
+                              #             branch (FR-005, FR-007, FR-008). This feature does not
+                              #             assume what proxy.ts currently contains — see the
+                              #             Integration Note below.
 
 docs/dev/
-└── (relevant architecture doc) — updated to describe the generic secret mechanism and note that
-    033-vfs-mount's WebDAV tokens are now one caller of it, per CLAUDE.md's "update docs/ when
-    architecture changes" rule.
+└── (an architecture doc covering server-side services/auth) — updated to describe the generic
+    secret mechanism as a reusable building block.
 ```
 
-**Structure Decision**: Single-project layout for the BOS side (`src/lib/secrets/`, alongside the
-existing `src/lib/webdav/` and `src/lib/integrations/secrets/`), plus the corresponding change in
-the separate `bastion/` sub-project it already has (per CLAUDE.md: "`bastion/` is a standalone
-Node.js/Express sub-project with its own `package.json` and `tsconfig.json`"). No new top-level
-project or directory is introduced — this generalizes existing modules in place.
+**Structure Decision**: Single-project layout for the BOS side (a new `src/lib/secrets/` module,
+independent of any specific protocol), plus the corresponding new capability in the separate
+`bastion/` sub-project. No new top-level project or directory is introduced.
+
+### Integration Note (non-blocking)
+
+This feature does not read, assume, or depend on the current contents of `bastion/src/proxy.ts`
+beyond "it is where Bastion's per-request routing decision is made." If, at implementation time,
+`proxy.ts` already contains a protocol-specific special case (for example, one introduced by a
+prior, independently-developed feature covering a specific mount protocol), that special case
+SHOULD be superseded by this feature's generic branch as part of implementation — but this feature
+is fully specified, implementable, and testable even if no such prior special case exists. Nothing
+in this plan requires it to.
 
 ## Data Model
 
-### ServiceSecret (generalizes 033-vfs-mount's `TokenRecord`)
+### ServiceSecret
 
 | Field       | Type   | Notes                                                              |
 |-------------|--------|---------------------------------------------------------------------|
-| `tokenId`   | string | UUID, unchanged from today                                          |
-| `service`   | string | Namespace, e.g. `"vfs-webdav"` — new field; was an implicit constant |
-| `hash`      | string | `"<saltHex>:<hashHex>"`, scrypt — unchanged algorithm/format         |
-| `label`     | string | Unchanged                                                            |
-| `createdAt` | string | ISO timestamp, unchanged                                             |
+| `secretId`  | string | Unique identifier                                                    |
+| `service`   | string | Namespace, e.g. `"example-protocol"` — caller-chosen                 |
+| `hash`      | string | Salted, slow (scrypt-class) hash of the raw secret                   |
+| `label`     | string | Optional, caller-supplied                                            |
+| `createdAt` | string | ISO timestamp                                                        |
 
-Stored via `getSecretsStore().set(service, tokenId, record)` — same store, `service` replaces the
-hardcoded `NAMESPACE` constant as a parameter.
+Stored in a per-user encrypted store, keyed by `(service, secretId)`.
 
-### CredentialsIndexEntry (new)
+### CredentialsIndexEntry
 
 | Field       | Type   | Notes                                                                 |
-|-------------|--------|------------------------------------------------------------------------|
-| `hash`      | string | `sha256(rawSecret)` hex — **not** the scrypt hash; unsalted, deterministic, fast — this is the map key, not a separate field |
+|-------------|--------|--------------------------------------------------------------------------|
+| `hash`      | string | `sha256(rawSecret)` hex — **not** `ServiceSecret.hash`; unsalted, deterministic, fast — this is the map key |
 | `service`   | string | Which service this secret belongs to                                   |
 | `createdAt` | string | ISO timestamp                                                          |
 
-Stored as a single JSON file at `data/system/credentials-index.json`:
+Stored as a single JSON file per user, e.g. `data/system/credentials-index.json`:
 
 ```json
 {
   "version": 1,
   "entries": {
-    "<sha256hex>": { "service": "vfs-webdav", "createdAt": "..." }
+    "<sha256hex>": { "service": "example-protocol", "createdAt": "..." }
   }
 }
 ```
 
 **Why a second, different hash for the same secret**: `ServiceSecret.hash` is intentionally slow
-and salted (scrypt) to resist offline brute-force if the encrypted store were ever exfiltrated —
-correct for the authoritative check, but unusable for a fast lookup-by-value scan (you can't derive
-it from a candidate secret without already knowing which salt to use). The companion index instead
-uses a fast, unsalted `sha256` purely so Bastion can compute one hash from a presented credential
-and do an O(1) map lookup per user directory. This is safe specifically because the secret is a
-high-entropy, BOS-generated random token (never a user-chosen password) — preimage resistance
-alone is sufficient; hash speed doesn't matter for brute-force resistance against 256 bits of
+and salted to resist offline brute-force if the encrypted store were ever exfiltrated — correct for
+the authoritative check, but unusable for a fast lookup-by-value scan (you can't derive it from a
+candidate secret without already knowing which salt to use). The companion index instead uses a
+fast, unsalted `sha256` purely so Bastion can compute one hash from a presented credential and do an
+O(1) map lookup per user directory. This is safe specifically because the secret is a high-entropy,
+BOS-generated random token (never a user-chosen password) — preimage resistance alone is
+sufficient; hash speed doesn't matter for brute-force resistance against a secret with that much
 entropy. The index entry alone is also not sufficient to authenticate anything (FR-011) — it only
-tells Bastion which user's container to try; that container's own scrypt-based check remains the
+tells Bastion which user's container to try; that container's own authoritative check remains the
 real gate.
 
-## Routing Flow (replaces `isWebdavPath` branch in `bastion/src/proxy.ts`)
+## Routing Flow
 
 ```text
-request arrives, no session cookie
+request arrives at Bastion, no session cookie
   │
-  ├─ Authorization: Basic present? ──no──▶ clearSession(); redirect to /login   (unchanged)
+  ├─ Authorization: Basic present? ──no──▶ existing no-session behavior (e.g. redirect to /login)
   │
   yes
   │
   ▼
-parse username/password from Basic header (password = the raw secret)
+parse username/password from the Basic header (password = the raw secret; username is unused)
   │
   ▼
 resolveCredential(password):
-  for each dir in readdirSync(cfg.volumeBase):        # one dir per provisioned username
-    read dir/data/system/credentials-index.json
-    if sha256(password) in entries → return { username: dir, service: entries[hash].service }
+  for each directory under the per-user data root:        # one per provisioned username
+    read <dir>/data/system/credentials-index.json
+    if sha256(password) in entries → return { username: <dir>, service: entries[hash].service }
   return null
   │
-  ├─ null ──▶ 401, WWW-Authenticate: Basic realm="BrowserOS"    (unchanged shape)
+  ├─ null ──▶ 401, WWW-Authenticate: Basic realm="BrowserOS"
   │
   found { username, service }
   │
   ▼
 rewrite Authorization → "Bearer " + password
-routeToContainer(username, ...)                        # unchanged — same proxy path as today
+route to that user's container (existing container-routing machinery, unchanged)
   │
   ▼
-target container's own service-secrets verify (unchanged authoritative check)
+target container's own service-secrets verification (unchanged authoritative check — FR-007)
 ```
 
-The Basic-auth *username* the client sends is no longer used for anything (mirrors the
-already-documented "elsewhere, the username is ignored" standalone behavior — this makes it true
-for the Bastion+Basic-auth case too, for any auth provider).
-
-## Migration
-
-Existing `vfs-webdav`-namespaced `ServiceSecret` records created under 033-vfs-mount predate the
-companion index and have no corresponding `credentials-index.json` entry. Two options, to be
-decided during Phase 2 (see tasks.md):
-
-- **(a) Lazy backfill**: on next successful direct verification (standalone) or on next Settings
-  page load, write the missing index entry for any existing secret that lacks one.
-- **(b) No backfill, document it**: existing tokens continue to work standalone (FR-004 doesn't
-  depend on the index) but won't route via Bastion until regenerated; Settings UI could surface
-  "regenerate to enable Bastion mounting" for pre-existing tokens.
-
-Given how recently 033-vfs-mount shipped and how few tokens are likely to exist in the wild, (a) is
-recommended as low-cost insurance, but this is a task-level decision, not a blocking one.
+The Basic-auth *username* the client sends is never used for anything — only the presented secret
+determines routing.
 
 ## Complexity Tracking
 
