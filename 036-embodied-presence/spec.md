@@ -185,6 +185,19 @@ focus order; unpinning restores normal stacking.
 
 - **FR-018**: `live-avatar` keeps only its `plugin/` facet. The `app/` facet is
   removed, and with it the dock entry, desktop icon and installed-app record.
+- **FR-019**: A plugin-only item MUST be installable, visible and removable
+  without an `app` facet. Concretely: the Marketplace offers Install for
+  `voiceEngine` / `integration` / `serverPlugin` facets and shows what the item
+  is; Settings → Apps lists installed plugin items; and one `uninstall-item` op
+  removes an item whatever it is made of, dispatching on the facets that are
+  actually INSTALLED rather than on what a manifest currently claims.
+
+  *Why this is a requirement:* removing the `app` facet in FR-018 silently
+  removed the only handle the UI had on the item. It could no longer be installed
+  (the Marketplace knew three facets, none of them plugin), it appeared nowhere
+  once installed (Settings → Apps lists apps; Settings → Plugins is the unrelated
+  assistant-plugin registry), and it could not be uninstalled at all. An item's
+  management surface must not depend on it happening to ship a window.
 
 ### Key Entities
 
@@ -210,6 +223,9 @@ focus order; unpinning restores normal stacking.
   sequence.
 - **SC-006**: `live-avatar` appears in neither the dock nor the desktop grid, and
   the face still works.
+- **SC-006b**: A plugin-only item can be installed from the Marketplace, is listed
+  under Settings → Apps once installed, and uninstalling it deregisters the engine
+  (it disappears from `GET /api/voice`) as well as removing the item link.
 - **SC-007**: After a page reload, no face is present and `voiceOutput` is at most
   `"audio"`.
 
