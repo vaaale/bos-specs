@@ -89,3 +89,18 @@ converge staging dir (`/tmp/okf-knowledge-base-converge`, pending `app_build`):
 
 Authoritative: `user-specs/040-okf-knowledge-base/{design.md,plan.md,tool-surface.md,tasks.md}`
 (Phase 8, "Convergence" section of `tasks.md`).
+
+## 040-okf-knowledge-base — VFS storage fix (2026-08-15)
+
+The OKF service was writing every bundle to the **wrong location**: `services/index.js`'s `resolveHostBundleRoot()` mapped the VFS-style `bundleRoot` (`/KnowledgeBase`) onto a **host** path derived from the service's own config directory (`dataDir()/system/config/<id>/../..` → `dataDir()/system/`), so bundles landed at `dataDir()/system/KnowledgeBase/` — inside BOS's internal `system/` control directory, NOT the real VFS root `dataDir()/vfs/KnowledgeBase/` that the Files app and every VFS consumer reads. The service, tools, and config-app were internally consistent (create → list → read all agreed), so it looked like it worked in isolation while being invisible/absent from the user's actual knowledge base folder — the classic "not working" report that doesn't crash anything. The earlier 502/proxy-race fix (client-side retry in the config-app) was a symptom, not this root cause.
+
+Fixed (installed via `app_build` from `/tmp/okf-knowledge-base-vfs-fix`, then worker restarted):
+- **New `services/lib/vfs-bridge.js`** — loopback HTTP client to BOS's own `/api/fs` (`list`/`stat`/`exists`/`readText`/`writeText`/`mkdir`/`remove`), using `process.env.PORT` (inherited from the Next.js main thread) to find BOS's server — the sanctioned way for an unbundled worker-thread service to reach the VFS (docs `os-shell/virtual-file-system.md`, `target-marketplace-item.md` "Reaching the VFS from a service"; same pattern as the webdav-vfs-mount item).
+- **Rewrote `services/lib/okf-core.js`** so every read/write/mkdir goes through `vfs-bridge` instead of host `fs`/`fsp`; dropped the local atomic-write dance since `/api/fs` `write` already does atomic, parent-dir-creating writes server-side.
+- **Removed `resolveHostBundleRoot`/`hostBundleRoot`** from `services/index.js`; `bundleRoot` is now the one logical VFS path used everywhere.
+- **One-time, additive-only migration** on startup (`initialize`): copies any bundles stranded at the old host location into the real VFS (skipping already-present names), then archives — never deletes — the legacy directory (renamed to `<legacyRoot>.migrated-<ts>`).
+- Fixed `service.json`'s `bundleRoot` schema description (said "filesystem path", reinforcing the confusion) → "BOS VFS path… visible in the Files app."
+
+Verified live: worker running on fresh bound port, `GET /config` 200, `GET /bundles` 200; all 14 previously-stranded bundles recovered into `/app/data/vfs/KnowledgeBase/`; legacy dir archived.
+
+Authoritative: `user-specs/040-okf-knowledge-base/spec.md` (FR-001/FR-016 — bundles under the VFS root `/KnowledgeBase/`, atomic + path-safe writes).
