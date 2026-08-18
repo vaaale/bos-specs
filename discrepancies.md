@@ -43,6 +43,23 @@ replaces both — stores are mounted as git worktrees on the code's feature
 branch; direct edits commit-on-save; review/promote of specs is coupled to the
 code promote. Authoritative: `020` FR-001..FR-007.
 
+## Project layer inserted between a store and its features (037)
+
+`018-external-spec-store` FR-002 (a store's top level lists its features) and
+FR-009 ("reusing the existing spec-tree UI," which was flat) are superseded:
+a store's top level now holds **Projects** (folders with a `project.json`),
+and a directory at any depth under a Project is a feature iff it directly
+contains `spec.md` — not a fixed depth. Feature numbering resets per Project,
+so a bare `NNN-slug` is no longer store-wide unique; only the full path is.
+Existing content is migrated into one default Project per store (`bos-system-specs`
+→ "BOS", `user-specs` → "User") idempotently on boot. `020-branch-coupled-specs`
+is unaffected — its store-level worktree/draft-branch/promote mechanics are
+unchanged. The per-project git workflow described alongside the Project layer
+(activate/discard/push, mandatory-feature-branch editing, rename/delete,
+history browsing) is specified but **not yet implemented** — only the Project
+layer and migration have shipped so far. Item-owned stores are unaffected by
+any of this. Authoritative: `037-project-layer`.
+
 ## 040-okf-knowledge-base — convergence pass (2026-08-15)
 
 The installed `okf-knowledge-base` marketplace item passed its e2e suite (8/8,
