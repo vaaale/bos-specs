@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Workflow Manager — UI Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  tailwind.config = { corePlugins: { preflight: false } };
+</script>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: #0f1117;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .font-mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  * { box-sizing: border-box; }
+</style>
+</head>
+<body class="text-xs text-white/90">
+
+<!-- ================= WINDOW CHROME (implied window) ================= -->
+<div class="flex h-screen flex-col">
+  <div class="flex shrink-0 select-none items-center gap-2 border-b border-white/10 bg-[#15171e] px-3 py-2">
+    <div class="flex gap-1.5">
+      <span class="h-3 w-3 rounded-full" style="background:#ff5f57"></span>
+      <span class="h-3 w-3 rounded-full" style="background:#febc2e"></span>
+      <span class="h-3 w-3 rounded-full" style="background:#28c840"></span>
+    </div>
+    <div class="flex-1 text-center text-xs text-white/50">Workflow Manager</div>
+    <div class="flex items-center gap-1 text-white/40">
+      <i data-lucide="search" class="h-3.5 w-3.5"></i>
+    </div>
+  </div>
+
+  <!-- ================= APP TOOLBAR ================= -->
+  <div class="flex shrink-0 items-center gap-2 border-b border-white/10 bg-white/5 px-3 py-2">
+    <div class="flex items-center gap-2">
+      <div class="flex h-6 w-6 items-center justify-center rounded bg-violet-500/30">
+        <i data-lucide="workflow" class="h-4 w-4 text-violet-300"></i>
+      </div>
+      <span class="text-sm font-medium">Workflow Manager</span>
+    </div>
+
+    <div class="ml-2 flex items-center gap-1.5">
+      <!-- service status pill -->
+      <span id="service-pill" class="flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-100">
+        <i data-lucide="server" class="h-3 w-3"></i>
+        <span id="service-label">Service running</span>
+      </span>
+    </div>
+
+    <div class="flex-1"></div>
+
+    <div class="flex items-center gap-1">
+      <!-- view switcher (for mockup navigation) -->
+      <button id="nav-list" onclick="go('list')" class="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10">
+        <i data-lucide="list" class="h-3.5 w-3.5"></i> List
+      </button>
+      <button onclick="go('detail')" class="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10">
+        <i data-lucide="sliders-horizontal" class="h-3.5 w-3.5"></i> Detail
+      </button>
+      <button onclick="go('run')" class="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10">
+        <i data-lucide="play" class="h-3.5 w-3.5"></i> Run
+      </button>
+      <!-- service toggle (mockup-only control) -->
+      <button id="service-toggle" onclick="toggleService()" class="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10" title="Toggle service state (mockup)">
+        <i data-lucide="power" class="h-3.5 w-3.5"></i>
+      </button>
+      <button onclick="toggleEmpty()" class="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10" title="Toggle empty list (mockup)">
+        <i data-lucide="folder-x" class="h-3.5 w-3.5"></i>
+      </button>
+      <span class="mx-1 h-4 w-px bg-white/10"></span>
+      <button class="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10" title="Refresh /Workflows">
+        <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i> Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= SERVICE STOPPED BANNER ================= -->
+  <div id="stopped-banner" class="hidden shrink-0 items-center gap-2 border-b border-amber-400/20 bg-amber-400/10 px-3 py-2 text-amber-100">
+    <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0"></i>
+    <span class="flex-1">The Workflows service is not running. Workflow tools are unavailable and runs are refused.</span>
+    <button class="rounded bg-amber-400/20 px-2 py-1 text-xs font-medium hover:bg-amber-400/30">Start service</button>
+  </div>
+
+  <!-- ================= BODY ================= -->
+  <div class="min-h-0 flex-1 overflow-auto p-3">
+
+    <!-- ============ VIEW: LIST ============ -->
+    <div id="view-list" class="space-y-3">
+      <div class="flex items-center gap-2">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-white/50">Workflows</h3>
+        <span class="font-mono text-white/40">/Workflows/</span>
+        <div class="flex-1"></div>
+        <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-xs hover:bg-white/20">
+          <i data-lucide="plus" class="h-3.5 w-3.5"></i> New workflow
+        </button>
+      </div>
+
+      <!-- populated list -->
+      <div id="list-populated" class="grid auto-rows-min grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2">
+        <div class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3 hover:bg-white/10" onclick="go('detail')">
+          <div class="flex items-center gap-2">
+            <div class="flex h-7 w-7 items-center justify-center rounded bg-violet-500/30">
+              <i data-lucide="workflow" class="h-4 w-4 text-violet-300"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium">Data Pipeline</div>
+              <div class="truncate font-mono text-[11px] text-white/40">wflow-datapipeline · v3</div>
+            </div>
+            <span class="flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-100">
+              <i data-lucide="check-circle-2" class="h-2.5 w-2.5"></i> Ready
+            </span>
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-white/50">
+            <span class="flex items-center gap-1"><i data-lucide="list-checks" class="h-3 w-3"></i> 6 steps</span>
+            <span class="flex items-center gap-1"><i data-lucide="bot" class="h-3 w-3"></i> 2 agents</span>
+          </div>
+          <div class="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
+              <i data-lucide="play" class="h-3 w-3"></i> Run
+            </button>
+            <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
+              <i data-lucide="pencil" class="h-3 w-3"></i> Edit
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3 hover:bg-white/10" onclick="go('detail')">
+          <div class="flex items-center gap-2">
+            <div class="flex h-7 w-7 items-center justify-center rounded bg-violet-500/30">
+              <i data-lucide="workflow" class="h-4 w-4 text-violet-300"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium">Weekly Summary Email</div>
+              <div class="truncate font-mono text-[11px] text-white/40">wflow-weekly-summary · v1</div>
+            </div>
+            <span class="flex items-center gap-1 rounded-full border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] text-sky-100">
+              <i data-lucide="loader-2" class="h-2.5 w-2.5 animate-spin"></i> Running
+            </span>
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-white/50">
+            <span class="flex items-center gap-1"><i data-lucide="list-checks" class="h-3 w-3"></i> 4 steps</span>
+            <span class="flex items-center gap-1"><i data-lucide="bot" class="h-3 w-3"></i> 1 agent</span>
+          </div>
+          <div class="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
+              <i data-lucide="eye" class="h-3 w-3"></i> View
+            </button>
+            <button class="flex items-center gap-1 rounded bg-red-400/10 px-2 py-1 text-[11px] text-red-200 hover:bg-red-400/20">
+              <i data-lucide="square" class="h-3 w-3"></i> Cancel
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3 hover:bg-white/10" onclick="go('detail')">
+          <div class="flex items-center gap-2">
+            <div class="flex h-7 w-7 items-center justify-center rounded bg-violet-500/30">
+              <i data-lucide="workflow" class="h-4 w-4 text-violet-300"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium">Deploy &amp; Notify</div>
+              <div class="truncate font-mono text-[11px] text-white/40">wflow-deploy-notify · v2</div>
+            </div>
+            <span class="flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-100">
+              <i data-lucide="alert-triangle" class="h-2.5 w-2.5"></i> Failed
+            </span>
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-white/50">
+            <span class="flex items-center gap-1"><i data-lucide="list-checks" class="h-3 w-3"></i> 9 steps</span>
+            <span class="flex items-center gap-1"><i data-lucide="bot" class="h-3 w-3"></i> 3 agents</span>
+          </div>
+          <div class="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
+              <i data-lucide="play" class="h-3 w-3"></i> Re-run
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3 hover:bg-white/10" onclick="go('detail')">
+          <div class="flex items-center gap-2">
+            <div class="flex h-7 w-7 items-center justify-center rounded bg-violet-500/30">
+              <i data-lucide="workflow" class="h-4 w-4 text-violet-300"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium">Report Generation</div>
+              <div class="truncate font-mono text-[11px] text-white/40">wflow-report-gen · v4</div>
+            </div>
+            <span class="flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-100">
+              <i data-lucide="check-circle-2" class="h-2.5 w-2.5"></i> Ready
+            </span>
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-white/50">
+            <span class="flex items-center gap-1"><i data-lucide="list-checks" class="h-3 w-3"></i> 3 steps</span>
+            <span class="flex items-center gap-1"><i data-lucide="bot" class="h-3 w-3"></i> 1 agent</span>
+          </div>
+          <div class="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
+              <i data-lucide="play" class="h-3 w-3"></i> Run
+            </button>
+            <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
+              <i data-lucide="pencil" class="h-3 w-3"></i> Edit
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- empty state -->
+      <div id="list-empty" class="hidden flex-col items-center gap-3 rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-10 text-center">
+        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/5">
+          <i data-lucide="folder-x" class="h-6 w-6 text-white/40"></i>
+        </div>
+        <div>
+          <div class="text-sm font-medium">No workflows in /Workflows/</div>
+          <div class="mt-1 text-white/50">Create one in the app, or place a workflow JSON here — the engine, Files, and the app all read the same location.</div>
+        </div>
+        <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20">
+          <i data-lucide="plus" class="h-3.5 w-3.5"></i> Create a workflow
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ VIEW: DETAIL / EDITOR ============ -->
+    <div id="view-detail" class="hidden space-y-3">
+      <!-- header -->
+      <div class="flex items-center gap-2">
+        <button onclick="go('list')" class="flex items-center gap-1 rounded px-1.5 py-1 text-white/60 hover:bg-white/10">
+          <i data-lucide="chevron-left" class="h-3.5 w-3.5"></i> Back
+        </button>
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/30">
+          <i data-lucide="workflow" class="h-5 w-5 text-violet-300"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium">Data Pipeline</span>
+            <span class="flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-100">
+              <i data-lucide="check-circle-2" class="h-2.5 w-2.5"></i> Ready
+            </span>
+          </div>
+          <div class="flex items-center gap-2 font-mono text-[11px] text-white/40">
+            <span>wflow-datapipeline</span><span>·</span><span>v3</span><span>·</span><span class="flex items-center gap-1"><i data-lucide="bot" class="h-3 w-3"></i>2 agents</span>
+          </div>
+        </div>
+        <div class="flex-1"></div>
+        <button onclick="go('run')" class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20">
+          <i data-lucide="play" class="h-3.5 w-3.5"></i> Run
+        </button>
+        <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20">
+          <i data-lucide="pencil" class="h-3.5 w-3.5"></i> Edit
+        </button>
+        <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20">
+          <i data-lucide="file-json" class="h-3.5 w-3.5"></i> Export
+        </button>
+        <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs text-red-300 hover:bg-red-400/20">
+          <i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Delete
+        </button>
+      </div>
+
+      <!-- detail tabs -->
+      <div class="flex shrink-0 items-center gap-1 border-b border-white/10">
+        <button class="rounded px-2 py-1.5 text-xs text-white bg-white/15">Steps</button>
+        <button class="rounded px-2 py-1.5 text-xs text-white/60 hover:bg-white/10">Dependencies</button>
+        <button class="rounded px-2 py-1.5 text-xs text-white/60 hover:bg-white/10">Config</button>
+      </div>
+
+      <!-- steps list -->
+      <div class="space-y-1">
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div class="flex h-6 w-6 items-center justify-center rounded bg-emerald-400/20">
+            <i data-lucide="check" class="h-3.5 w-3.5 text-emerald-300"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-medium">ingest</div>
+            <div class="font-mono text-[11px] text-white/40">tool · fetch:csv</div>
+          </div>
+          <span class="flex items-center gap-1 font-mono text-[11px] text-white/40"><i data-lucide="clock" class="h-3 w-3"></i> 60s</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div class="flex h-6 w-6 items-center justify-center rounded bg-violet-400/20">
+            <i data-lucide="bot" class="h-3.5 w-3.5 text-violet-300"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-medium">clean</div>
+            <div class="font-mono text-[11px] text-white/40">ag-ui · normalize</div>
+          </div>
+          <span class="flex items-center gap-1 font-mono text-[11px] text-white/40"><i data-lucide="git-branch" class="h-3 w-3"></i> ← ingest</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div class="flex h-6 w-6 items-center justify-center rounded bg-violet-400/20">
+            <i data-lucide="bot" class="h-3.5 w-3.5 text-violet-300"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-medium">transform</div>
+            <div class="font-mono text-[11px] text-white/40">ag-ui · map</div>
+          </div>
+          <span class="flex items-center gap-1 font-mono text-[11px] text-white/40"><i data-lucide="git-branch" class="h-3 w-3"></i> ← clean</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div class="flex h-6 w-6 items-center justify-center rounded bg-emerald-400/20">
+            <i data-lucide="check" class="h-3.5 w-3.5 text-emerald-300"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-medium">load</div>
+            <div class="font-mono text-[11px] text-white/40">delegate · db</div>
+          </div>
+          <span class="flex items-center gap-1 font-mono text-[11px] text-white/40"><i data-lucide="git-branch" class="h-3 w-3"></i> ← transform</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ VIEW: RUN ============ -->
+    <div id="view-run" class="hidden space-y-3">
+      <!-- run header -->
+      <div class="flex items-center gap-2">
+        <button onclick="go('detail')" class="flex items-center gap-1 rounded px-1.5 py-1 text-white/60 hover:bg-white/10">
+          <i data-lucide="chevron-left" class="h-3.5 w-3.5"></i> Back
+        </button>
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/30">
+          <i data-lucide="workflow" class="h-5 w-5 text-violet-300"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium">Data Pipeline</span>
+            <span class="flex items-center gap-1 rounded-full border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] text-sky-100">
+              <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-300"></span> Running
+            </span>
+          </div>
+          <div class="flex items-center gap-2 font-mono text-[11px] text-white/40">
+            <span>run #7</span><span>·</span><span>started 09:41:22</span>
+          </div>
+        </div>
+        <div class="flex-1"></div>
+        <button id="cancel-btn" onclick="cancelRun()" class="flex items-center gap-1 rounded bg-red-400/20 px-2 py-1.5 text-xs font-medium text-red-200 hover:bg-red-400/30">
+          <i data-lucide="square" class="h-3.5 w-3.5"></i> Cancel run
+        </button>
+      </div>
+
+      <!-- progress bar -->
+      <div class="space-y-1">
+        <div class="flex items-center justify-between text-[11px] text-white/50">
+          <span class="flex items-center gap-1"><i data-lucide="activity" class="h-3 w-3"></i> 3 of 6 steps</span>
+          <span class="font-mono">50%</span>
+        </div>
+        <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div class="h-full w-1/2 rounded-full bg-sky-400/70"></div>
+        </div>
+      </div>
+
+      <!-- step statuses -->
+      <div class="space-y-1">
+        <div class="flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2">
+          <i data-lucide="check-circle-2" class="h-4 w-4 shrink-0 text-emerald-300"></i>
+          <span class="flex-1 font-medium">ingest</span>
+          <span class="text-[11px] text-emerald-200">completed · 1.2s</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2">
+          <i data-lucide="check-circle-2" class="h-4 w-4 shrink-0 text-emerald-300"></i>
+          <span class="flex-1 font-medium">clean</span>
+          <span class="text-[11px] text-emerald-200">completed · 3.4s</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-sky-400/20 bg-sky-400/10 px-3 py-2">
+          <i data-lucide="loader-2" class="h-4 w-4 shrink-0 animate-spin text-sky-300"></i>
+          <span class="flex-1 font-medium">transform</span>
+          <span class="flex items-center gap-1 text-[11px] text-sky-200">
+            <i data-lucide="refresh-cw" class="h-3 w-3 animate-spin"></i> running · retry 1/3
+          </span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 opacity-70">
+          <i data-lucide="circle-dot" class="h-4 w-4 shrink-0 text-white/40"></i>
+          <span class="flex-1 font-medium">load</span>
+          <span class="text-[11px] text-white/40">pending</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 opacity-70">
+          <i data-lucide="circle-dot" class="h-4 w-4 shrink-0 text-white/40"></i>
+          <span class="flex-1 font-medium">report</span>
+          <span class="text-[11px] text-white/40">pending</span>
+        </div>
+      </div>
+
+      <!-- event stream -->
+      <div>
+        <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide text-white/50">Event stream</h3>
+        <div class="rounded-lg border border-white/10 bg-black/30 p-2 font-mono text-[11px] leading-5">
+          <div class="text-white/40"><span class="text-white/70">09:41:24</span> step.start ingest</div>
+          <div class="text-white/40"><span class="text-white/70">09:41:25</span> step.complete ingest (1.2s)</div>
+          <div class="text-white/40"><span class="text-white/70">09:41:25</span> step.start clean</div>
+          <div class="text-white/40"><span class="text-white/70">09:41:29</span> step.complete clean (3.4s)</div>
+          <div class="text-white/40"><span class="text-white/70">09:41:29</span> step.start transform</div>
+          <div class="text-amber-200/80"><span class="text-white/70">09:41:32</span> step.retry transform (attempt 2)</div>
+          <div class="text-sky-200"><span class="text-white/70">09:41:33</span> step.running transform <span class="text-white/40">— streaming…</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const views = { list: "view-list", detail: "view-detail", run: "view-run" };
+  let current = "list";
+  let serviceRunning = true;
+
+  function go(name) {
+    document.getElementById(views[current]).classList.add("hidden");
+    document.getElementById(views[name]).classList.remove("hidden");
+    current = name;
+    renderService();
+    lucide.createIcons();
+  }
+
+  function renderService() {
+    const pill = document.getElementById("service-pill");
+    const label = document.getElementById("service-label");
+    const banner = document.getElementById("stopped-banner");
+    const cancel = document.getElementById("cancel-btn");
+
+    if (serviceRunning) {
+      pill.className = "flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-100";
+      label.textContent = "Service running";
+      banner.classList.add("hidden");
+      banner.classList.remove("flex");
+      if (cancel) { cancel.classList.remove("hidden"); cancel.querySelector('i').className = "h-3.5 w-3.5"; cancel.querySelector('i').setAttribute('data-lucide','square'); }
+    } else {
+      pill.className = "flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-100";
+      label.textContent = "Service stopped";
+      banner.classList.remove("hidden");
+      banner.classList.add("flex");
+      if (cancel) { cancel.classList.add("hidden"); }
+    }
+    lucide.createIcons();
+  }
+
+  function toggleService() { serviceRunning = !serviceRunning; renderService(); }
+  function toggleEmpty() {
+    document.getElementById("list-populated").classList.toggle("hidden");
+    document.getElementById("list-empty").classList.toggle("hidden");
+    document.getElementById("list-empty").classList.toggle("flex");
+    lucide.createIcons();
+  }
+
+  function cancelRun() {
+    const btn = document.getElementById("cancel-btn");
+    btn.classList.remove("bg-red-400/20","hover:bg-red-400/30");
+    btn.classList.add("bg-white/10","hover:bg-white/20");
+    btn.innerHTML = '<i data-lucide="square" class="h-3.5 w-3.5"></i> Cancelling…';
+    lucide.createIcons();
+    setTimeout(() => {
+      // mock: mark the run cancelled
+      const banner = document.getElementById("view-run").querySelector('span[class*="sky-300"]').closest('span');
+      const chip = document.querySelector('#view-run span.text-sky-100');
+      chip.className = "flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-100";
+      chip.innerHTML = '<i data-lucide="ban" class="h-2.5 w-2.5"></i> Cancelled';
+      lucide.createIcons();
+    }, 800);
+  }
+
+  lucide.createIcons();
+</script>
+</body>
+</html>
