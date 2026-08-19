@@ -467,6 +467,89 @@ modify — dependencies, not deliverables:
 - **Consequences**: No data loss, no overwrite; migration can be re-run safely;
   the legacy archive remains recoverable.
 
+> **SI-3 note for `implement`**: the migration mutex is effectively moot — a
+> worker thread's `parentPort` message handler is serial, and migration runs to
+> completion before any `tool_call` is dispatched (declarations are posted after
+> `initialized`, migration before the tool surface is live). It is harmless but
+> adds no real concurrency protection; keep it only as cheap defensive
+> documentation, not as a synchronization mechanism.
+
+### ADR-6: Resolve BOS's HTTP origin from `NEXT_PUBLIC_APP_ORIGIN` (MF-1)
+
+- **Context**: `services/vfs.js` needs BOS's own HTTP origin for loopback
+  `/api/fs` and `/api/workflows/*` calls. The original design claimed the worker
+  manager "injects `BOS_PORT`" — **false**; no `BOS_PORT` exists anywhere in
+  src/ (only `BOS_PORT_BASE`/`BOS_PORT_POOL_SIZE`, the service-port pool in
+  `PortChecker.ts`). `ServiceManager` passes only `{ configDirPath, logsPath,
+  serviceId }` (verified `src/core/service/ServiceManager.ts`), and
+  `runtime.json` holds the service's own port, not BOS's.
+- **Options**: (a) Read `process.env.NEXT_PUBLIC_APP_ORIGIN`/`APP_ORIGIN` with a
+  `http://localhost:3000` fallback — the exact pattern BOS itself uses for
+  public-origin resolution (`src/lib/integrations/oauth/origin.ts`,
+  `src/lib/integrations/webhooks/manager.ts`); (b) a BOS-source change to pass
+  BOS's origin into worker `initialize`/`workerData`.
+- **Decision**: (a). It uses a mechanism that demonstrably exists, requires **no
+  BOS-source change**, and matches how the rest of BOS resolves its own origin.
+- **Consequences**: No extra worker-manager plumbing; in a reverse-proxied
+  deployment the loopback call may traverse the public origin rather than
+  staying on 127.0.0.1 — acceptable for auth-gated routes, flagged in §7. If a
+  future design needs a guaranteed in-container loopback origin, that would be a
+  `bos-core` change to pass BOS's origin explicitly.
+
+### ADR-7: Retire the built-in `workflowTools()` server tools (MF-3)
+
+- **Context**: US1 requires the workflow tools to appear as service-declared
+  native tools. But `registry.ts`'s `assistantTools()` spreads service tools
+  **first** and built-ins **after**, so a built-in wins every name collision —
+  the existing `workflowTools()` (7 tools) shadows 7 of the 10 service tools,
+  and the rewrite would be moot. The design previously left this as an "open
+  question" with a contradictory "shadowed-or-removed" position.
+- **Options**: (a) Retire `workflowTools()` (delete module + registry
+  registration) — a `bos-core` change; (b) gate the server set behind
+  "service-not-running" (keep both, but hide built-ins while the service runs);
+  (c) leave both registered (shadowed — rewrite moot).
+- **Decision**: (a) **retire**. Option (b) is rejected: it leaves dead
+  duplicate code, requires runtime gating logic that 039 does not provide for
+  built-in-vs-service collisions, and still leaves the shadowing ambiguity; the
+  service is the single authority for the workflow tool surface. The service
+  tools are behaviorally identical (spec Assumption — sourced from
+  `workflowTools()`'s own definitions), so the assistant loses no capability.
+- **Consequences**: This is the **one** `bos-core` change in the design. It
+  **tensions the spec Assumption** "this spec only changes the marketplace item,
+  not BOS source" — acknowledged explicitly (see §2, §6). It must run on a
+  feature branch, isolated to the two files; the execution engine
+  (`src/lib/workflows/*`) is untouched. Flagged for Build Studio to reconcile
+  the assumption before `plan`; if the assumption is non-negotiable, US1 cannot
+  be met and the alternative (b) would need a 039 extension to prefer
+  service-declared tools over built-ins on collision — a larger `bos-core`
+  change.
+
+### ADR-8: `workflow_run` is fire-and-poll, not synchronous (MF-2)
+
+- **Context**: A multi-step workflow run exceeds the kernel's 30s tool-call
+  timeout (`TOOL_CALL_TIMEOUT_MS = 30_000` in `ServiceManager.ts`; the run
+  route's `maxDuration = 600` exists precisely because runs are long). Buffering
+  NDJSON events and returning one `tool_result` at run end breaks SC-002/SC-006
+  for any non-trivial run.
+- **Options**: (a) Return a `runId` immediately; caller polls `workflow_status`;
+  (b) raise the per-service timeout via `serviceToolBridge().setToolCallTimeoutMs()`.
+- **Decision**: (a). Option (b) is rejected **because it is not effective
+  today**: verified in source — the bridge's `setToolCallTimeoutMs()` writes
+  `this.toolCallTimeoutMs`, but `ServiceManager`'s dispatcher calls
+  `waitForToolResult(worker, callId, TOOL_CALL_TIMEOUT_MS, signal)` with the
+  **hardcoded module const**, ignoring the bridge field. Making the timeout
+  actually configurable would itself be a `bos-core` change, and even then a
+  synchronous multi-minute tool call is fragile (holds the run's tool slot,
+  single failure point). Fire-and-poll keeps each `tool_call` bounded (<1s),
+  streams progress via `workflow_status` (which mirrors every engine event into
+  the runtime status map), and lets cancellation stay on the `workflow_cancel`
+  path.
+- **Consequences**: `workflow_run` returns `runId` + `workflowId` and the caller
+  (assistant or app) polls `workflow_status`; step events still stream to the
+  **app** via the NDJSON route directly (no IPC timeout involved). Trade-off:
+  the assistant must issue follow-up `workflow_status` calls — acceptable, and
+  consistent with the existing `workflow_status` tool.
+
 ---
 
 ## 7. Risks / Open Questions
