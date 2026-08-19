@@ -413,9 +413,12 @@ modify — dependencies, not deliverables:
 - **Context**: 039 tool dispatch is worker IPC (in-process), so the workflow
   tools technically don't need a network port. But the service still binds one:
   (a) every worker-thread service binds a real port — that's what the
-  Supervisor's proxy forwards to (`services.md` §6/§11); (b) a future
-  `loopback-http` tool transport (039 FR-008) and the app's config reads
-  (`GET /api/services/<id>/config` → `runtime.port`) rely on it.
+  Supervisor's proxy forwards to (`services.md` §6/§11); (b) the reserved
+  `loopback-http` tool transport value — a type-level reservation only, with
+  **no route wired in v1** (services.md §15; FR-008 is the `tool_call`/
+  `tool_result`/`tool_error` IPC contract, not a shipped HTTP path) — and the
+  app's config reads (`GET /api/services/<id>/config` → `runtime.port`) rely
+  on it.
 - **Options**: (a) No port (incorrect — no such mechanism); (b) fixed port
   (collision risk); (c) port defaulting to `0`.
 - **Decision**: (c). `configSchema.port` defaults `0` (OS-assigned, never
