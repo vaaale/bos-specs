@@ -49,9 +49,14 @@ existing `/api/workflows/*` routes (see §6).
 | **IV. Minimize Blast Radius** | Complies with a scoped exception. The item rewrite itself is BOS-source-free; but retiring `workflowTools()` (§4/ADR-7) is a **deliberate `bos-core` change** on a feature branch, isolated to removing one server-tool module + its registry registration. The execution engine is untouched. |
 | **V. The VFS Is Not the Source** | Complies, and is the core correctness fix. Workflows are persisted to the *real* VFS `/Workflows/` via the loopback `/api/fs` bridge — never a host path under `dataDir()/system/` derived from the service's own config dir. This closes the recurring invisible-content bug. |
 | **VI. Specs & Docs Stay in Sync** | Complies. This `design.md` is written alongside `spec.md`; the rewrite is tracked by the feature spec. (BOS docs `services.md` §15 already documents the `deploymentMode: "tools"` contract this item opts into.) |
-| **VII. Respect Boundaries** | Complies. The design modifies only the item's own files under `data/user-apps/items/workflows/`. It does not touch `package.json`, lockfiles, or BOS source. |
+| **VII. Respect Boundaries** | Complies with a scoped exception. The design's *item* files stay under `data/user-apps/items/workflows/` and never touch `package.json`/lockfiles. The single exception is the `bos-core` retirement of `workflowTools()`, scoped to `src/lib/assistant/tools/server/workflows.ts` + `src/lib/assistant/registry.ts` (ADR-7). |
 
-No conflicts flagged.
+No conflicts flagged, but one **tension acknowledged** (see §6/ADR-7): the
+spec Assumption "this spec only changes the marketplace item, not BOS source"
+is **relaxed** — retiring the shadowing built-in `workflowTools()` is a
+required `bos-core` change. This does not contradict the constitution; it is a
+deliberate, minimal, feature-branch-scoped exception flagged for Build Studio
+to reconcile before `plan`.
 
 ---
 
