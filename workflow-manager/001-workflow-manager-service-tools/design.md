@@ -225,7 +225,17 @@ Helpers wrapping the real VFS HTTP API over loopback
 worker-thread path (`target-marketplace-item.md`, `services.md` §6):
 
 ```js
-const BOS_ORIGIN = () => `http://127.0.0.1:${process.env.BOS_PORT}`; // BOS's own port, injected by the worker manager
+// BOS's own HTTP origin. Resolved from the same env var the rest of BOS uses
+// for its public origin (see src/lib/integrations/oauth/origin.ts,
+// src/lib/integrations/webhooks/manager.ts). No `BOS_PORT` exists anywhere in
+// src/ — only BOS_PORT_BASE/BOS_PORT_POOL_SIZE in PortChecker.ts (the service
+// -port pool), so it is never injected by the worker manager. The loopback
+// host is always 127.0.0.1; only the port varies.
+const BOS_ORIGIN = () => {
+  const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? process.env.APP_ORIGIN;
+  if (origin) return origin.replace(/\/$/, "");
+  return "http://localhost:3000"; // fallback for plain `npm run dev` (Next.js default port)
+};
 
 async function vfsList(p)   { /* GET /api/fs?op=list&path= */ }
 async function vfsRead(p)   { /* GET /api/fs?op=read&path= */ }
