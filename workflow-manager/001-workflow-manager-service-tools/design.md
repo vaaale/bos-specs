@@ -217,7 +217,7 @@ Each handler implements the workflow operation against the real VFS through
 | `workflow_create` | Call `POST /api/workflows/generate` (BOS generate route) then `POST /api/workflows` to persist; or call generate via loopback and save via `/api/fs`. |
 | `workflow_read` | `vfs.read('/Workflows/<id>-workflow.json')`. |
 | `workflow_modify` | Read workflow, deep-merge patch, write back via `/api/fs`, then validate. |
-| `workflow_run` | Gate on service running state (`runner.js`), then `POST /api/workflows/run` and stream step events back (FR-007/008). |
+| `workflow_run` | Gate on service running state (`runner.js`), then `POST /api/workflows/run` to start the run and **return a `runId` immediately** (fire-and-poll — ADR-8); caller polls `workflow_status` for progress/final state. (FR-007/008). |
 | `workflow_status` | `GET /api/workflows/status?id=<id>` (engine's runtime status). |
 | `workflow_cancel` | `POST /api/workflows/cancel?id=<id>` (engine's `cancelWorkflow`). |
 | `workflow_delete` | `DELETE` the workflow + execution-log JSON via `/api/fs`. |
