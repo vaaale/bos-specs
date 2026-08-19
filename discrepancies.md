@@ -63,7 +63,7 @@ any of this. Authoritative: `037-project-layer`.
 ## 040-okf-knowledge-base — convergence pass (2026-08-15)
 
 The installed `okf-knowledge-base` marketplace item passed its e2e suite (8/8,
-see `user-specs/040-okf-knowledge-base/test-results.md`) but a spec/design audit
+see `data/user-apps/items/okf-knowledge-base/spec/test-results.md`) but a spec/design audit
 against the as-built `services/lib/http-bridge.js`, `services/lib/tools.js`, and
 `app/config-app/index.html` found three gaps + one drift, now closed in a
 converge staging dir (`/tmp/okf-knowledge-base-converge`, pending `app_build`):
@@ -100,11 +100,11 @@ converge staging dir (`/tmp/okf-knowledge-base-converge`, pending `app_build`):
   request-origin check and no e2e coverage. Added an `isLoopbackAddress`
   check against `req.socket.remoteAddress` plus rejection of any
   `X-Forwarded-For`/`X-Real-IP` header naming a non-loopback address (403),
-  and an e2e assertion (`GAP3` test in `e2e/040-okf-knowledge-base.spec.ts`)
+  and an e2e assertion (`GAP3` test in `data/user-apps/items/okf-knowledge-base/e2e/okf-knowledge-base.spec.ts`)
   that a non-loopback-presenting request is rejected while a loopback
   request succeeds.
 
-Authoritative: `user-specs/040-okf-knowledge-base/{design.md,plan.md,tool-surface.md,tasks.md}`
+Authoritative: `data/user-apps/items/okf-knowledge-base/spec/{design.md,plan.md,tool-surface.md,tasks.md}`
 (Phase 8, "Convergence" section of `tasks.md`).
 
 ## 040-okf-knowledge-base — VFS storage fix (2026-08-15)
@@ -120,4 +120,4 @@ Fixed (installed via `app_build` from `/tmp/okf-knowledge-base-vfs-fix`, then wo
 
 Verified live: worker running on fresh bound port, `GET /config` 200, `GET /bundles` 200; all 14 previously-stranded bundles recovered into `/app/data/vfs/KnowledgeBase/`; legacy dir archived.
 
-Authoritative: `user-specs/040-okf-knowledge-base/spec.md` (FR-001/FR-016 — bundles under the VFS root `/KnowledgeBase/`, atomic + path-safe writes).
+Authoritative: `data/user-apps/items/okf-knowledge-base/spec/spec.md` (FR-001/FR-016 — bundles under the VFS root `/KnowledgeBase/`, atomic + path-safe writes).
