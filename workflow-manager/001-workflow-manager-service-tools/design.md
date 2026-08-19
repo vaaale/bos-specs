@@ -351,7 +351,7 @@ delegation below (ADR-7). No other BOS-source files are modified.
 | `services/handlers.js` | **Create** | Tool handlers for list/create/read/modify/run/status/cancel/delete/export/validate. |
 | `services/vfs.js` | **Create** | Loopback `/api/fs` bridge helpers (FR-004, NFR-004). |
 | `services/migration.js` | **Create** | One-time additive legacy-workflow migration (FR-005). |
-| `services/runner.js` | **Create** | Run orchestration — state gate, NDJSON step-event streaming, cancellation (FR-007/008/009). |
+| `services/runner.js` | **Create** | Run orchestration — state gate, fire-and-poll run start (runId), cancellation via `workflow_cancel` (FR-007/008/009, ADR-8). |
 | `app/src/main.tsx` | **Rewrite** | App UI — list/detail/run views (mockup-driven), reads `/Workflows` through the service. |
 | `app/` (supporting components/CSS) | **Modify** | Components for list cards, detail editor, run view + event stream. |
 | `config/workflows.json` | **Modify** | `{ "port": 0, "host": "127.0.0.1" }`. |
