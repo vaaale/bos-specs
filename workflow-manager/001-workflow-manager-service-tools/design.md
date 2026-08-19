@@ -293,13 +293,19 @@ mutates `/Workflows` (a simple in-worker mutex around the write path).
   refused before dispatch (schema/registry-level). The worker additionally
   re-checks a `healthy` flag it sets after successful bind + migration, and
   returns `tool_error` "Workflows service is not ready" if unset.
-- **Streaming (FR-008)**: `workflow_run` calls `POST /api/workflows/run` with
-  an NDJSON body stream, reads each NDJSON event (step.start/complete/fail/
-  retry/cancel, workflow.*), and emits each as an `ExecutionEvent` in the
-  `tool_result` payload (same `encodeNested`-style tree the current
-  `workflow_run` produces) — so the app and assistant observe progress and
-  final state. The NDJSON stream is consumed with a timeout/cancellation
-  wrapper (NFR-001).
+- **Streaming (FR-008) + timeout (ADR-8)**: `workflow_run` is **fire-and-poll**,
+  not synchronous — a multi-step run exceeds the 30s kernel tool-call timeout
+  (`TOOL_CALL_TIMEOUT_MS = 30_000` in `ServiceManager.ts`; the run route's
+  `maxDuration = 600` exists precisely because runs are long). It therefore
+  (1) `POST /api/workflows/run` once to *start* the engine's NDJSON stream,
+  (2) immediately return a `runId` + `workflowId` `tool_result` (bounded, <1s,
+  well within 30s), and (3) let the caller poll `workflow_status` for
+  progress/final state. The engine's step events are still streamed for the
+  **app** (which consumes the NDJSON stream directly, no IPC timeout
+  involved) and are also persisted to the execution log, so `workflow_status`
+  reflects live step statuses (`src/lib/workflows/runner.ts` mirrors every
+  event into the runtime status map). See ADR-8 for why this is chosen over
+  raising the per-service timeout.
 
 #### `app/src/main.tsx` — app UI
 
