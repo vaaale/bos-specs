@@ -479,9 +479,14 @@ modify — dependencies, not deliverables:
    declarations (sourced from the app's existing capabilities). Confirm exact
    names/schemas for these three.
 3. **`/api/workflows/run` NDJSON streaming contract**: The service consumes the
-   run stream over loopback. Need to confirm the route's request/response shape
-   (streaming NDJSON vs. buffered) and that cancellation propagates through the
-   loopback fetch (AbortController on the service side → `cancelWorkflow`).
+   run stream over loopback (for the app path). Confirmed shape: `POST
+   /api/workflows/run` returns `application/x-ndjson` (buffered NDJSON via
+   `ReadableStream`, `maxDuration = 600`). **Cancellation is NOT via
+   fetch-abort** — `runWorkflowStream`'s `finally { await driver }` keeps the
+   run going on consumer disconnect; cancellation is exclusively via
+   `cancelWorkflow(id)` through `POST /api/workflows/cancel` (`src/app/api/
+   workflows/cancel/route.ts`). This is why `workflow_cancel` is the only
+   cancellation path (SI-1).
 4. **`process.env.BOS_PORT` availability in the worker**: The loopback origin
    must resolve BOS's own port. Confirm how `ServiceManager` exposes BOS's port
    to worker `initialize` (or read it from `runtime.json`/config context) —
