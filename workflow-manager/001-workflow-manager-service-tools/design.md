@@ -494,10 +494,17 @@ modify — dependencies, not deliverables:
    `cancelWorkflow(id)` through `POST /api/workflows/cancel` (`src/app/api/
    workflows/cancel/route.ts`). This is why `workflow_cancel` is the only
    cancellation path (SI-1).
-4. **`process.env.BOS_PORT` availability in the worker**: The loopback origin
-   must resolve BOS's own port. Confirm how `ServiceManager` exposes BOS's port
-   to worker `initialize` (or read it from `runtime.json`/config context) —
-   this must be grounded in source before `implement`, not guessed.
+4. **Loopback origin resolution — RESOLVED (MF-1/ADR-6)**: There is **no**
+   `BOS_PORT` in src/ and `ServiceManager` passes only
+   `{ configDirPath, logsPath, serviceId }` to the worker; `runtime.json` holds
+   the service's *own* port, not BOS's. The origin is resolved from
+   `NEXT_PUBLIC_APP_ORIGIN`/`APP_ORIGIN` (the same env var the rest of BOS uses)
+   with a `http://localhost:3000` fallback — grounded in `oauth/origin.ts`,
+   `webhooks/manager.ts`. No BOS-source change needed for this. Residual caveat:
+   in a reverse-proxied deployment the worker's loopback calls to
+   `NEXT_PUBLIC_APP_ORIGIN` may traverse the public origin rather than staying
+   on 127.0.0.1 — acceptable (the VFS/workflow routes are auth-gated), flagged
+   for `implement` to confirm under Bastion.
 5. **App capability grants**: The app needs `services:read` (and possibly
    `fs:read`) granted in Settings → Apps after install — never auto-granted.
    The mockup's "Start service" button must route through the granted
