@@ -605,7 +605,7 @@ The mockup defines three views that map directly onto the Component design:
 |---|---|
 | **List view** (`#view-list`) | `app/src/main.tsx` list view; cards read real VFS `/Workflows/` via the service (FR-006). Status pills (Ready/Running/Failed) from `workflow_status`. Empty state when `/Workflows/` is empty. |
 | **Detail/editor view** (`#view-detail`) | Detail view; steps list, dependencies, config tabs; Run / Edit / Export / Delete actions → `workflow_run`/`workflow_modify`/`workflow_export`/`workflow_delete` (through the service or its tools). |
-| **Run view** (`#view-run`) | Run view; progress bar, per-step statuses, live event stream (FR-008), Cancel run (FR-009). |
+| **Run view** (`#view-run`) | Run view; progress bar, per-step statuses, live event stream (FR-008), Cancel run (FR-009 — routes through `workflow_cancel` → `POST /api/workflows/cancel`, never fetch-abort). |
 
 The mockup's **service-stopped banner** (`#stopped-banner`) and **service
 status pill** (`#service-pill`) reflect the service state — when stopped, tools
