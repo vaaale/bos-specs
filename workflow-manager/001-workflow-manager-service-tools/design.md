@@ -255,7 +255,7 @@ async function vfsRename(p,to){ /* POST /api/fs { op:'rename', path, to } */ }
 ```
 
 The service resolves BOS's HTTP origin from `NEXT_PUBLIC_APP_ORIGIN`/`APP_ORIGIN`
-with a `http://localhost:3000` fallback (see §11 ADR-6) — **not** from any
+with a `http://localhost:3000` fallback (see §6 ADR-6) — **not** from any
 injected `BOS_PORT`, which does not exist in src/ (verified: `ServiceManager`
 passes only `{ configDirPath, logsPath, serviceId }` to the worker, and
 `runtime.json` holds the service's *own* bound port, not BOS's). The loopback
