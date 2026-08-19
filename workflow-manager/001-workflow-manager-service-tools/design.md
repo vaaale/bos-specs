@@ -331,8 +331,9 @@ Files, and assistant all read the same real-VFS location.
 
 ## 4. Concrete File/Module Plan
 
-Only files this feature **creates or modifies** (all under the item root
-`data/user-apps/items/workflows/`). No BOS-source files are modified.
+Only files this feature **creates or modifies** — the item files under the item
+root `data/user-apps/items/workflows/`, plus the single scoped `bos-core`
+delegation below (ADR-7). No other BOS-source files are modified.
 
 | Path (item root) | Action | Purpose |
 |---|---|---|
