@@ -471,17 +471,15 @@ modify — dependencies, not deliverables:
 
 ## 7. Risks / Open Questions
 
-1. **Server-tool retirement (highest)**: The existing BOS-source
+1. **Server-tool retirement — RESOLVED (MF-3/ADR-7)**: The existing BOS-source
    `workflowTools()` (`workflow_create/modify/run/status/cancel/export/validate`)
-   will collide by name with the service-declared tools. Per 039, a built-in
-   wins a name collision — so if `workflowTools()` stays registered, the
-   service's tools are shadowed and the rewrite is moot. **Open question for
-   `implement`**: retire/remove `workflowTools()` from
-   `src/lib/assistant/tools/server/workflows.ts` (and its registration) as part
-   of this change, or gate it behind service-not-running. This is a *role*
-   change to a BOS-source file, not a modification this item makes — it needs
-   an explicit decision before `implement`, and may need a `bos-core` follow-up
-   delegation if removal is required.
+   collides by name with 7 of the 10 service-declared tools. Verified in
+   `registry.ts`: service tools are spread **first**, built-ins **after**, so a
+   built-in wins every collision — if `workflowTools()` stayed registered, the
+   service's 7 overlapping tools would be shadowed and the rewrite moot. **Decision:
+   retire `workflowTools()`** — delete the module + remove its registry
+   registration, as a scoped `bos-core` delegation (see §4). The gating-
+   behind-service-not-running alternative was rejected (ADR-7).
 2. **The `workflow_list`/`workflow_read`/`workflow_delete` tools don't exist in
    the current `workflowTools()` set** — FR-002 requires 10 tools but the
    current server set has 7. The design adds list/read/delete as new
