@@ -46,7 +46,7 @@ existing `/api/workflows/*` routes (see §6).
 | Principle | Compliance |
 |---|---|
 | **II. Server Authority & SSR Boundary** | Complies. The service talks to BOS only over loopback HTTP (`/api/fs`, `/api/workflows/*`) and worker IPC — no direct filesystem or Node API access to the VFS. |
-| **IV. Minimize Blast Radius** | Complies. This is a marketplace-item rewrite — no BOS-source change, no feature branch required. The item installs via `app_build` behind one symlink; the execution engine is untouched. |
+| **IV. Minimize Blast Radius** | Complies with a scoped exception. The item rewrite itself is BOS-source-free; but retiring `workflowTools()` (§4/ADR-7) is a **deliberate `bos-core` change** on a feature branch, isolated to removing one server-tool module + its registry registration. The execution engine is untouched. |
 | **V. The VFS Is Not the Source** | Complies, and is the core correctness fix. Workflows are persisted to the *real* VFS `/Workflows/` via the loopback `/api/fs` bridge — never a host path under `dataDir()/system/` derived from the service's own config dir. This closes the recurring invisible-content bug. |
 | **VI. Specs & Docs Stay in Sync** | Complies. This `design.md` is written alongside `spec.md`; the rewrite is tracked by the feature spec. (BOS docs `services.md` §15 already documents the `deploymentMode: "tools"` contract this item opts into.) |
 | **VII. Respect Boundaries** | Complies. The design modifies only the item's own files under `data/user-apps/items/workflows/`. It does not touch `package.json`, lockfiles, or BOS source. |
