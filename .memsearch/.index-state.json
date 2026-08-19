@@ -1,11 +1,11 @@
 {
   "collection": "ms_bos_system_specs_0bab5ffd",
   "failed_files": [],
-  "indexed_chunks": 1,
-  "indexed_files": 7,
-  "last_completed_at": "2026-08-18T16:08:13.393571Z",
-  "last_started_at": "2026-08-18T16:08:11.361052Z",
-  "last_success_at": "2026-08-18T16:08:13.393571Z",
+  "indexed_chunks": 2,
+  "indexed_files": 8,
+  "last_completed_at": "2026-08-19T09:26:58.961425Z",
+  "last_started_at": "2026-08-19T09:26:56.734045Z",
+  "last_success_at": "2026-08-19T09:26:58.961425Z",
   "milvus_uri": "~/.memsearch/milvus.db",
   "operation": "index",
   "paths": [
@@ -13,6 +13,6 @@
   ],
   "schema_version": 1,
   "status": "ok",
-  "total_files": 7,
-  "updated_at": "2026-08-18T16:08:13.393571Z"
+  "total_files": 8,
+  "updated_at": "2026-08-19T09:26:58.961425Z"
 }
