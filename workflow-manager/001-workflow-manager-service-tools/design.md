@@ -306,6 +306,14 @@ mutates `/Workflows` (a simple in-worker mutex around the write path).
   reflects live step statuses (`src/lib/workflows/runner.ts` mirrors every
   event into the runtime status map). See ADR-8 for why this is chosen over
   raising the per-service timeout.
+- **Cancellation (FR-009, SI-1)**: cancellation is **never** via aborting the
+  loopback fetch — `runWorkflowStream`'s `finally { await driver }` keeps the
+  run alive even if the consumer disconnects. The only way to halt a run is
+  `cancelWorkflow(id)`, reached exclusively through the `workflow_cancel` tool
+  → `POST /api/workflows/cancel` (`src/app/api/workflows/cancel/route.ts`,
+  which aborts the engine's per-run `AbortController`). Both the app's Cancel
+  button and the `workflow_cancel` tool therefore route through this single
+  handler.
 
 #### `app/src/main.tsx` — app UI
 
