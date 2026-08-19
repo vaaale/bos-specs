@@ -245,13 +245,16 @@ async function vfsDelete(p) { /* POST /api/fs { op:'delete', path } */ }
 async function vfsRename(p,to){ /* POST /api/fs { op:'rename', path, to } */ }
 ```
 
-The service reads BOS's own port from its `initialize` config/`runtime.json`
-context (the worker manager supplies the BOS port alongside `serviceId`); the
-loopback host is always `127.0.0.1`. Small JSON files (workflows, execution
-logs) use the JSON `/api/fs` route — no `/api/fs/raw` needed (these are
-trivially small). No special auth headers for plain VFS content under
-`/Workflows` (unmounted path → no feature scope; per-user container
-isolation applies in multi-user deployments).
+The service resolves BOS's HTTP origin from `NEXT_PUBLIC_APP_ORIGIN`/`APP_ORIGIN`
+with a `http://localhost:3000` fallback (see §11 ADR-6) — **not** from any
+injected `BOS_PORT`, which does not exist in src/ (verified: `ServiceManager`
+passes only `{ configDirPath, logsPath, serviceId }` to the worker, and
+`runtime.json` holds the service's *own* bound port, not BOS's). The loopback
+host is always `127.0.0.1`. Small JSON files (workflows, execution logs) use
+the JSON `/api/fs` route — no `/api/fs/raw` needed (these are trivially small).
+No special auth headers for plain VFS content under `/Workflows` (unmounted
+path → no feature scope; per-user container isolation applies in multi-user
+deployments).
 
 #### `services/migration.js` — additive legacy migration
 
