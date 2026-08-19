@@ -13,14 +13,18 @@ Workflow Manager UI, id `workflows`) and a service facet (a background
 worker-thread daemon), rewritten so the workflow tools are exposed as
 native service-declared tools via the 039 `tool_declare`/worker-IPC contract.
 
-This **agrees** with spec.md's `App Target` field (`marketplace-item`). There is
-no `bos-core` component to this change: the workflow execution engine stays in
-BOS source (`src/lib/workflows/runner.ts`), the service-tool bridge and worker
-IPC are already implemented BOS mechanisms (039, bos-core), and the migration +
-tool surface live entirely inside the item. The only BOS-source file whose
-*role* changes is `src/lib/assistant/tools/server/workflows.ts`
-(`workflowTools()`), but this design **does not modify it** — see Integration
-points; its tool set is simply superseded by the service-declared equivalents.
+This **agrees** with spec.md's `App Target` field (`marketplace-item`) for the
+feature as a whole — the migration + tool surface + service facet live entirely
+inside the item. However, the review resolved the previously-deferred name-
+collision (MF-3): retiring the built-in `workflowTools()` server tools is
+**required** for US1, and that is a `bos-core` change (removing
+`src/lib/assistant/tools/server/workflows.ts` and its registration in
+`src/lib/assistant/registry.ts`). This design therefore spans **two** target
+shapes: the marketplace-item rewrite (this spec's primary deliverable) **plus**
+a small, explicitly-scoped `bos-core` delegation to retire `workflowTools()`
+(§4 file plan, ADR-7). This **tensions the spec Assumption** "this spec only
+changes the marketplace item, not BOS source" — acknowledged explicitly in
+§2/§6; the execution engine itself still stays in BOS source untouched.
 
 ### Facets
 
