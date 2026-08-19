@@ -341,8 +341,19 @@ Only files this feature **creates or modifies** (all under the item root
 | `app/` (supporting components/CSS) | **Modify** | Components for list cards, detail editor, run view + event stream. |
 | `config/workflows.json` | **Modify** | `{ "port": 0, "host": "127.0.0.1" }`. |
 
-No entries for `bos-core` or `builtin-app` target shapes (they do not apply —
-omitted, not marked N/A).
+### `bos-core` delegation (ADR-7 — required for US1, scoped exception)
+
+| Path (BOS source, feature branch) | Action | Purpose |
+|---|---|---|
+| `src/lib/assistant/tools/server/workflows.ts` | **Retire (delete)** | Remove the `workflowTools()` set that shadows the service's 7 overlapping tools (registry.ts spreads service tools first, built-ins win every collision). |
+| `src/lib/assistant/registry.ts` | **Modify** | Remove the `workflowTools` import + `...workflowTools()` spread. |
+
+This is the **only** BOS-source change in the design, and it exists *solely* to
+un-shadow the service-declared tools — the execution engine
+(`src/lib/workflows/*`) stays untouched. It tensions the spec Assumption (see
+§6/ADR-7).
+
+No entries for the `builtin-app` target shape (does not apply — omitted).
 
 ---
 
