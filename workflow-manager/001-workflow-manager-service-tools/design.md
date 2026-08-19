@@ -2,7 +2,7 @@
 
 **Spec**: `user-specs/workflow-manager/001-workflow-manager-service-tools/`
 **App Target (spec.md)**: `marketplace-item` — **agreed**
-**Date**: 2026-08-18
+**Date**: 2026-08-18 (revised — architect-reviewer MF-1..MF-3, SI-1..SI-3)
 
 ---
 
