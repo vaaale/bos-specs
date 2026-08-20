@@ -84,6 +84,7 @@ The Workflow Manager app renders each workflow as an interactive graph — nodes
 1. **Given** a workflow with steps and dependencies, **When** the user opens it in the app, **Then** it renders as a graph with nodes (steps) and edges (dependencies).
 2. **Given** a workflow with branching (parallel) steps, **When** the user views it, **Then** the graph shows the branches and their concurrent structure.
 3. **Given** a branching workflow, **When** the user navigates or edits it, **Then** they can select/author individual branch steps and their dependencies without losing the branching structure.
+4. **Given** a workflow is running, **When** the user views it in the app, **Then** the graph highlights the active (currently-executing) step and updates live as steps complete, so execution progress is visible at a glance.
 
 ---
 
@@ -100,6 +101,7 @@ Running a workflow is gated by the service being in a healthy running state, and
 1. **Given** the service is running, **When** a user runs a workflow, **Then** step events stream and the final state (completed/failed/cancelled) is reported.
 2. **Given** the service is stopped, **When** a user attempts to run a workflow, **Then** BOS returns a clear error that the Workflows service is not running.
 3. **Given** a running workflow is cancelled, **When** the user cancels it, **Then** in-progress steps are marked cancelled and the scheduler halts.
+4. **Given** a workflow is running, **When** the user observes the run view, **Then** the graph renders the active step highlighted in real time and reflects each step's live status (pending/running/completed/failed/cancelled).
 
 ## Requirements *(mandatory)*
 
@@ -117,6 +119,8 @@ Running a workflow is gated by the service being in a healthy running state, and
 - **FR-010**: Service-declared workflow tools MUST be gated by the existing tool-gating model (allowlist, deferred approval) exactly like built-in tools (per 039 FR-005).
 - **FR-011**: Stopping or uninstalling the service MUST remove its declared tools from the registry, so no stale tool call to a stopped service is possible (per 039 FR-006).
 - **FR-012**: The app MUST render each workflow as an interactive graph — nodes are steps, edges are dependencies — and MUST support branching workflows (parallel steps that run concurrently), including navigating and authoring individual branch steps without losing the branching structure.
+- **FR-013**: During a workflow run, the graph view MUST highlight the active (currently-executing) step and reflect each step's live status (pending/running/completed/failed/cancelled), updating in real time as execution progresses.
+- **FR-014**: The workflow surface MUST be fully controllable through the service-declared tools — building (create), modifying (modify), executing (run), stopping (cancel), plus read/status/delete/export/validate — such that every workflow lifecycle operation is achievable via tools without requiring the UI.
 
 ### Non-Functional Requirements
 
@@ -142,6 +146,8 @@ Running a workflow is gated by the service being in a healthy running state, and
 - **SC-004**: Service-declared workflow tools are gated by the same rules as built-in tools — no tool auto-executes when the user's gate config requires approval.
 - **SC-005**: Stopping or uninstalling the service removes its workflow tools from the registry immediately, such that no stale tool call to a stopped service is possible.
 - **SC-006**: A workflow run streams step events and reports a final state (completed/failed/cancelled) for every executed workflow.
+- **SC-007**: During a workflow run, the graph highlights the active step live and reflects per-step status, matching the streamed execution events.
+- **SC-008**: Every workflow lifecycle operation (build/modify/run/stop) is achievable via the service-declared tools without requiring the UI.
 
 ## Assumptions
 
@@ -152,3 +158,4 @@ Running a workflow is gated by the service being in a healthy running state, and
 - Migration is additive-only and idempotent: stranded workflows are copied into the real VFS (skipping any that already exist) and the legacy location is archived (renamed), never deleted.
 - The Workflow Manager app retains the graph view and branching capability from the previous UI: workflows render as an interactive node-edge graph, and branching (parallel) steps are supported for viewing and authoring.
 - Per user approval, the built-in `workflowTools()` server tools (`src/lib/assistant/tools/server/workflows.ts` + its registry registration) are **retired** via a scoped `bos-core` delegation so the service-declared tools are not shadowed. This relaxes the earlier "no BOS source change" assumption; the workflow execution engine itself stays untouched.
+- The workflow tool surface is the complete control plane: every lifecycle operation (build/modify/run/stop) is achievable through the service-declared tools, with the app UI as a parallel surface rather than a requirement. The graph view additionally surfaces live execution state (active-step highlight) during runs.
