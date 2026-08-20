@@ -8,6 +8,8 @@
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing. This is a **dual-scope** feature — a `bos-core` retirement (foundational, on the active feature branch `bos/042-workflow-manager-service`) + a `marketplace-item` re-implementation (service-owned engine under `data/user-apps/items/workflows/`, delivered via `app_build`).
 
+**User stories (from spec.md)**: US1 tool surface (P1) · US2 gating/lifecycle (P2) · US3 real-VFS management (P2) · US4 graph UI (P2) · US5 execution via service (P3) · US6 historical runs (P2) · US7 dynamic routing (P1) · US8 parallel + ephemeral (P1) · US9 skill (P2).
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
@@ -43,7 +45,7 @@
 - [ ] T012 [P] Service foundation: implement `services/engine/node-model.js` — orthogonal node axes (agent source: static/ephemeral × output type: delegate/tool/research/ag-ui)
 - [ ] T013 [P] Service foundation: implement `services/engine/validate.js` — DAG acyclicity + node schema validation (re-implemented from retired engine)
 - [ ] T014 Service foundation: implement `services/engine/store.js` — workflow + run CRUD over loopback `/api/fs`
-- [ ] T015 [P] Service foundation: implement `services/index.js` — worker entry: lifecycle + `tool_declare` + worker-IPC + migration bootstrap
+- [ ] T015 [P] Service foundation: implement `services/index.js` — worker entry: lifecycle + `tool_declare` + worker-IPC + migration bootstrap + structured log channel (NFR-005)
 
 **Checkpoint**: Foundation ready — the bos-core retirement has landed, the service skeleton + node model + validation + store + vfs are in place. User story implementation can now begin.
 
@@ -51,7 +53,7 @@
 
 ## Phase 3: User Story 1 — 039-Compliant Tool Surface (Priority: P1) 🎯 MVP
 
-**Goal**: The workflow tools are exposed as service-declared native tools (039), replacing the retired server tools — the assistant can list/create/read/modify/run/status/cancel/delete/export/validate workflows.
+**Goal**: The workflow tools are exposed as service-declared native tools (039), replacing the retired server tools — the assistant can list/create/read/modify/run/status/cancel/delete/export/validate workflows (FR-001/002/003).
 
 **Independent Test**: Launch the service; confirm 12 tools are declared (`workflow_list/create/read/modify/run/status/cancel/delete/export/validate/run_list/run_get`); a workflow can be created, listed, read, and deleted via the tools without the UI.
 
@@ -68,7 +70,7 @@
 - [ ] T019 [P] [US1] Implement `services/tools.js` — 12 tool declarations + input JSON-schemas (FR-002/014/016/024)
 - [ ] T020 [US1] Implement `services/handlers.js` — tool handlers wired to the engine (create/read/modify/delete/export/validate/run/status/cancel/list/run_list/run_get) (depends on T019, T014)
 - [ ] T021 [US1] Implement `workflow_list` returning `workflow_id`, `status` (running/idle), `run_id` when running (FR-024) in `services/handlers.js`
-- [ ] T022 [US1] Add validation + error handling for all 12 tool handlers (per 039 R10, no leaked pending waits)
+- [ ] T022 [US1] Add validation + error handling for all 12 tool handlers (per 039 R10, no leaked pending waits) + structured logs for `tool_call dispatched/resolved/schema-rejected/timeout` (NFR-005)
 
 **Checkpoint**: US1 fully functional — the assistant can control workflows end-to-end via the 12 tools, independent of the UI.
 
@@ -98,30 +100,30 @@
 
 ---
 
-## Phase 5: User Story 3 — Fire-and-Poll Run + Status (Priority: P1)
+## Phase 5: User Story 5 — Workflow Execution Runs Through the Service (Fire-and-Poll) (Priority: P3)
 
-**Goal**: `workflow_run` is asynchronous fire-and-poll (returns `runId` immediately, ADR-8); `workflow_status`/`workflow_run_get` report live progress; `workflow_list` exposes running state for agent polling (FR-024).
+**Goal**: `workflow_run` is asynchronous fire-and-poll (returns `runId` immediately, ADR-8); `workflow_status`/`workflow_run_get` report live progress; `workflow_list` exposes running state for agent polling (FR-024). Execution runs through the service (US5).
 
 **Independent Test**: Run a workflow via `workflow_run`; confirm it returns a `runId` in <1s (not blocking); poll `workflow_status` to observe progress; cancel it; confirm `workflow_list` reflects `running` → `idle`.
 
-### Tests for User Story 2 (unit + e2e, in scope) ⚠️
+### Tests for User Story 5 (unit + e2e, in scope) ⚠️
 
-- [ ] T023 [P] [US2] Unit test for executor (delegate contract) in `<item>/services/__tests__/executor.test.js`
-- [ ] T024 [P] [US2] E2E test for the fire-and-poll run contract — `workflow_run` returns a `runId` immediately, `workflow_status` reports progress, `workflow_cancel` flips `running` → `idle` — in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [ ] T023 [P] [US5] Unit test for executor (delegate contract) in `<item>/services/__tests__/executor.test.js`
+- [ ] T024 [P] [US5] E2E test for the fire-and-poll run contract — `workflow_run` returns a `runId` immediately, `workflow_status` reports progress, `workflow_cancel` flips `running` → `idle` — in `e2e/001-workflow-manager-service-tools.spec.ts`
 
-### Implementation for User Story 2
+### Implementation for User Story 5
 
-- [ ] T025 [P] [US2] Implement `services/engine/executor.js` — loopback `POST /api/subagents/delegate` per node (ADR-1), NDJSON, fire-and-poll `runId` (depends on T011)
-- [ ] T026 [US2] Implement run-state tracking + `workflow_status`/`workflow_run_get` live status in `services/engine/store.js` + `services/runs.js` (depends on T025)
-- [ ] T027 [US2] Implement cancellation (Option (b)): worker aborts its in-flight delegate fetch; inner-loop linked-abort settles `cancelled` — no bos-core delegate-route change (depends on T025)
+- [ ] T025 [P] [US5] Implement `services/engine/executor.js` — loopback `POST /api/subagents/delegate` per node (ADR-1), NDJSON, fire-and-poll `runId` (depends on T011)
+- [ ] T026 [US5] Implement run-state tracking + `workflow_status`/`workflow_run_get` live status in `services/engine/store.js` + `services/runs.js` (depends on T025)
+- [ ] T027 [US5] Implement cancellation (Option (b)): worker aborts its in-flight delegate fetch; inner-loop linked-abort settles `cancelled` — no bos-core delegate-route change (depends on T025)
 
-**Checkpoint**: US1 + US2 work — workflows can be run asynchronously, polled, and cancelled via tools.
+**Checkpoint**: US1 + US2 + US5 — workflows can be run asynchronously, polled, and cancelled via tools.
 
 ---
 
-## Phase 5: User Story 3 — Real-VFS Persistence + Historical Runs (Priority: P2)
+## Phase 6: User Story 3 — Workflows Listed/Managed from Real VFS + Historical Runs (Priority: P2)
 
-**Goal**: Workflows persist to real VFS `/Workflows/` via loopback `/api/fs` (ADR-2, never host paths); each run is a first-class persisted entity (`/Workflows/.runs/<workflowId>/<runId>.json`) — historical replay via `workflow_run_list`/`workflow_run_get` (US6/FR-015/016/017).
+**Goal**: Workflows persist to real VFS `/Workflows/` via loopback `/api/fs` (ADR-2, never host paths); the app lists/manages workflows from the same real-VFS location (US3); each run is a first-class persisted entity (`/Workflows/.runs/<workflowId>/<runId>.json`) — historical replay via `workflow_run_list`/`workflow_run_get` (US6/FR-015/016/017).
 
 **Independent Test**: Create + run a workflow; confirm the workflow JSON + run log exist in the real VFS; list + read the historical run via `workflow_run_list`/`workflow_run_get`; delete a workflow and confirm its run log is removed.
 
@@ -138,11 +140,11 @@
 - [ ] T033 [US3] Implement `services/migration.js` — additive legacy-workflow migration (ADR-5, copy + archive, never delete) (depends on T014)
 - [ ] T034 [US3] Wire real-VFS workflow + run storage into `handlers.js` (create/read/delete/export read/write `/Workflows/*`) (depends on T032)
 
-**Checkpoint**: US1 + US2 + US3 work — workflows and runs persist to the real VFS, historical runs are tool-reachable.
+**Checkpoint**: US1 + US2 + US5 + US3 — workflows and runs persist to the real VFS, historical runs are tool-reachable.
 
 ---
 
-## Phase 6: User Story 7 — Dynamic Routing (Priority: P1)
+## Phase 7: User Story 7 — Dynamic Routing to Sub-Agents (Priority: P1)
 
 **Goal**: A node may declare candidate sub-agents; the node's agent selects the appropriate candidate(s) as its last action — exactly one in the single-choice case, several in the parallel case — with retry-loop enforcement (US7/FR-018); single-child nodes delegate automatically (FR-019).
 
@@ -159,11 +161,11 @@
 - [ ] T038 [US7] Wire router into the scheduler for multi-candidate nodes (depends on T037)
 - [ ] T039 [US7] Add validation for `candidateAgents[]` in `validate.js` (must exist, must be resolvable)
 
-**Checkpoint**: US1+2+3+7 — workflows can dynamically route to the appropriate sub-agent at run time.
+**Checkpoint**: US1+2+5+3+7 — workflows can dynamically route to the appropriate sub-agent at run time.
 
 ---
 
-## Phase 7: User Story 8 — Parallel Execution + Ephemeral Agents (Priority: P1)
+## Phase 8: User Story 8 — Parallel Execution + Ephemeral Agents (Priority: P1)
 
 **Goal**: Independent ready branches + Research-node fan-out run concurrently up to `maxConcurrentSteps` (scheduling semantics, FR-020); nodes are configurable as ephemeral agents (task + tools + skills) when no existing BOS agent matches (FR-021); Research output type fans out sub-agents in parallel (FR-022).
 
@@ -181,15 +183,15 @@
 - [ ] T044 [US8] Implement research output type — fan out multiple sub-agents in parallel, collect outputs (depends on T043)
 - [ ] T045 [US8] Implement ephemeral agent node execution — task + tools + skills via the delegate route (ADR-1, open item #3: skill scoping) (depends on T043)
 
-**Checkpoint**: US1+2+3+7+8 — workflows can route dynamically AND run branches/sub-agents in parallel, with ephemeral-agent nodes.
+**Checkpoint**: US1+2+5+3+7+8 — workflows can route dynamically AND run branches/sub-agents in parallel, with ephemeral-agent nodes.
 
 ---
 
-## Phase 8: User Story 4 + 5 — Graph UI with Active-Step Highlight (Priority: P1)
+## Phase 9: User Story 4 + 5 — Graph UI with Active-Step Highlight (Priority: P2/P3)
 
-**Goal**: The app renders each workflow as an interactive graph (nodes + dependency edges, branching support) — FR-012; during a run the graph highlights the active step + live per-step status (pending/running/completed/failed/cancelled) — FR-013. The UI is a parallel surface to the tools (FR-014).
+**Goal**: The app renders each workflow as an interactive graph (nodes + dependency edges, branching support) — FR-012; during a run the graph highlights the active step + live per-step status (pending/running/completed/failed/cancelled) — FR-013. The UI is a parallel surface to the tools (FR-014). App lists workflows from the real VFS (US4).
 
-**Independent Test**: Open the app; see the list of workflows; open one to see the graph; run it and confirm the active step highlights + per-step statuses update live; cancel and confirm the graph reflects it.
+**Independent Test**: Open the app; see the list of workflows from the real VFS; open one to see the graph; run it and confirm the active step highlights + per-step statuses update live; cancel and confirm the graph reflects it.
 
 ### Tests for User Story 4+5 (e2e, in scope) ⚠️
 
@@ -198,15 +200,15 @@
 
 ### Implementation for User Story 4+5
 
-- [ ] T048 [P] [US45] Build the app facet `app/src/main.tsx` — list view, service pill, stopped banner, empty state (mockup-driven, `mockup.html` is the binding UI contract)
+- [ ] T048 [P] [US45] Build the app facet `app/src/main.tsx` — list view (from real VFS), service pill, stopped banner, empty state (mockup-driven, `mockup.html` is the binding UI contract)
 - [ ] T049 [US45] Implement the graph view in `app/src/` — nodes + dependency edges, branching, active-step highlight + live per-step status (FR-012/013) (depends on T048)
 - [ ] T050 [US45] Add tool-affordance labels on primary action buttons (`workflow_run`/`workflow_cancel`/`workflow_create`/etc.) per FR-014 (depends on T048)
 
-**Checkpoint**: US1+2+3+7+8+45 — the graph UI works end-to-end, mirroring the tool surface.
+**Checkpoint**: US1+2+5+3+7+8+45 — the graph UI works end-to-end, mirroring the tool surface.
 
 ---
 
-## Phase 9: User Story 6 — Historical-Run Inspection (Priority: P2)
+## Phase 10: User Story 6 — Historical-Run Inspection (Priority: P2)
 
 **Goal**: The app provides a run selector on the detail view; an opened historical run renders each step's final outcome (executed/completed/failed/cancelled/neutral) from the persisted run log + replays the event stream (US6/FR-017). The mockup's historical-runs UI is the binding contract.
 
@@ -221,11 +223,11 @@
 - [ ] T052 [P] [US6] Implement run selector in the detail view `app/src/` (lists historical runs with id/timestamp/state) (depends on T048, T032)
 - [ ] T053 [US6] Implement historical-run graph replay — per-step final outcome from the run log, distinct from live state; replayed event stream (depends on T052)
 
-**Checkpoint**: US1+2+3+7+8+45+6 — historical runs are inspectable in the app, replaying from the persisted log.
+**Checkpoint**: US1+2+5+3+7+8+45+6 — historical runs are inspectable in the app, replaying from the persisted log.
 
 ---
 
-## Phase 10: User Story 9 — Workflow Manager Skill (Priority: P2)
+## Phase 11: User Story 9 — Workflow Manager Skill (Priority: P2)
 
 **Goal**: The app ships a skill instructing the assistant how to build/execute/retrieve workflows via the workflow tools (US9/FR-023).
 
@@ -240,11 +242,11 @@
 - [ ] T055 [P] [US9] Author `skills/workflow-manager/SKILL.md` — instructions for building workflows (ephemeral/Research nodes, candidate agents, required tools/skills), executing, retrieving results, historical-run inspection (depends on T019, T020)
 - [ ] T056 [US9] Wire the skill into the item so the assistant can load it (per `target-marketplace-item.md` skill bundling)
 
-**Checkpoint**: US1+2+3+7+8+45+6+9 — the assistant can build/execute/retrieve workflows guided by the bundled skill.
+**Checkpoint**: US1+2+5+3+7+8+45+6+9 — the assistant can build/execute/retrieve workflows guided by the bundled skill.
 
 ---
 
-## Phase 11: Documentation (Usage + Dev — first-class deliverable) 📚
+## Phase 12: Documentation (Usage + Dev — first-class deliverable) 📚
 
 **Purpose**: Thorough, accurate documentation for BOTH end users (usage) and developers (dev/architecture). Written against the implemented code and the binding mockup. All docs live under the item's `docs/` subfolder (created in T001) except the bos-core architecture doc.
 
@@ -263,11 +265,11 @@
 
 ---
 
-## Phase 12: Polish & Cross-Cutting Concerns
+## Phase 13: Polish & Cross-Cutting Concerns
 
 **Purpose**: Improvements that affect multiple user stories + final assembly.
 
-- [ ] T062 [P] Wire `workflow_create` generation path — confirm whether generation uses the delegate route (ephemeral planner) or the workflow-builder agent constructs directly (open item #2); implement chosen path in `engine/generate.js`
+- [ ] T062 [P] Wire `workflow_create` generation path — confirm whether generation uses the delegate route (ephemeral planner) or the workflow-builder agent constructs directly (open item #2); implement chosen path in `engine/generate.js` + unit test for `engine/generate.js` in `<item>/services/__tests__/generate.test.js`
 - [ ] T063 [P] Resolve ephemeral-node skill scoping (open item #3) — fold skills into task text if the delegate route can't scope per-node skills
 - [ ] T064 [P] Confirm + finalize the 5 net-new tool names/schemas (`list`/`read`/`delete`/`run_list`/`run_get`) (open item #4)
 - [ ] T065 [P] Document capability grants (`services:read`, `fs:read`) for the app in the usage doc + settings note (open item #5)
@@ -283,17 +285,18 @@
 - **Setup (Phase 1)**: No dependencies — can start immediately
 - **Foundational (Phase 2)**: Depends on Setup; **BLOCKS all user stories** (the bos-core retirement must land so the service owns the surface without shadowing)
 - **User Stories (Phase 3+)**: All depend on Foundational
-- **Documentation (Phase 11)**: Depends on the implemented user stories (docs must be written against the code + mockup)
-- **Polish (Final Phase)**: Depends on all user stories + documentation
+- **Documentation (Phase 12)**: Depends on the implemented user stories (docs must be written against the code + mockup)
+- **Polish (Phase 13)**: Depends on all user stories + documentation
 
 ### User Story Dependencies
 
 - **US1 (P1)**: After Foundational — tool surface (no dependencies on other stories)
-- **US2 (P1)**: After US1 — fire-and-poll run (depends on executor T025)
-- **US3 (P2)**: After US1/US2 — real-VFS persistence + runs (depends on store T014)
-- **US7 (P1)**: After US2 — dynamic routing (depends on router T037)
+- **US2 (P2)**: After US1 — gating/lifecycle (depends on T019/T020)
+- **US5 (P3)**: After US1 — fire-and-poll run (depends on executor T025)
+- **US3 (P2)**: After US1/US5 — real-VFS management + runs (depends on store T014, executor T025)
+- **US7 (P1)**: After US5 — dynamic routing (depends on router T037)
 - **US8 (P1)**: After US7 — parallel execution + ephemeral agents (depends on scheduler T043)
-- **US4+5 (P1)**: After US1 — graph UI (depends on app T048)
+- **US4+5 (P2/P3)**: After US1 — graph UI (depends on app T048)
 - **US6 (P2)**: After US4+5 — historical-run inspection (depends on T048, T032)
 - **US9 (P2)**: After US1 — skill (depends on T019/T020)
 
@@ -343,15 +346,16 @@ Task: "Implement workflow_list with live status (FR-024)"
 
 1. Setup + Foundational → Foundation ready (old engine retired, service skeleton + node model + store in place)
 2. US1 (tool surface) → Test → MVP
-3. US2 (fire-and-poll run) → Test → poll workflows via tools
-4. US3 (real-VFS persistence + historical runs) → Test → data survives + replayable
-5. US7 (dynamic routing) → Test → workflows adapt mid-run
-6. US8 (parallel execution + ephemeral agents) → Test → branches/sub-agents run concurrently
-7. US4+5 (graph UI) → Test → graph with active-step highlight
-8. US6 (historical-run inspection) → Test → replay from log
-9. US9 (skill) → Test → assistant builds/executes via the skill
-10. Documentation (usage + dev) → Test → accurate, code-matching docs
-11. Each story adds value without breaking previous stories
+3. US2 (gating/lifecycle) → Test → tools gated + removed on stop
+4. US5 (fire-and-poll run) → Test → poll workflows via tools
+5. US3 (real-VFS persistence + historical runs) → Test → data survives + replayable
+6. US7 (dynamic routing) → Test → workflows adapt mid-run
+7. US8 (parallel execution + ephemeral agents) → Test → branches/sub-agents run concurrently
+8. US4+5 (graph UI) → Test → graph with active-step highlight
+9. US6 (historical-run inspection) → Test → replay from log
+10. US9 (skill) → Test → assistant builds/executes via the skill
+11. Documentation (usage + dev) → Test → accurate, code-matching docs
+12. Each story adds value without breaking previous stories
 
 ### Parallel Team Strategy
 
@@ -359,7 +363,7 @@ With multiple developers:
 
 1. Team completes Setup + Foundational together
 2. Once Foundational is done:
-   - Developer A: US1 (tool surface) → US2 (fire-and-poll)
+   - Developer A: US1 (tool surface) → US2 (gating/lifecycle)
    - Developer B: US3 (persistence + runs) → US9 (skill)
    - Developer C: US7 (routing) → US8 (parallel)
    - Developer D: US4+5 (graph UI) → US6 (historical replay)
@@ -377,6 +381,7 @@ With multiple developers:
 - Commit after each task or logical group
 - The bos-core retirement (T005..T010) is on the active feature branch `bos/042-workflow-manager-service`; the marketplace item is built via `app_build` (no branch needed)
 - The mockup (`mockup.html`) is the binding UI contract for US4+5 and US6 — the app must match it
-- **E2e tests are required for EVERY user story** — US1 (tool surface), US2 (fire-and-poll), US3 (persistence + historical), US7 (routing), US8 (parallel + ephemeral), US45 (graph UI), US6 (historical replay), US9 (skill) — all in `e2e/001-workflow-manager-service-tools.spec.ts`
+- **E2e tests are required for EVERY user story** — US1 (tool surface), US2 (gating/lifecycle), US3 (persistence + historical), US5 (fire-and-poll), US7 (routing), US8 (parallel + ephemeral), US45 (graph UI), US6 (historical replay), US9 (skill) — all in `e2e/001-workflow-manager-service-tools.spec.ts`
 - **Documentation (usage + dev) is a first-class deliverable** — written against the implemented code, not the pre-implementation design
 - Docs drift (T061) + spec/code drift tracking per constitution
+- **NFR-005 structured logging** is covered in T015 (log channel) + T022 (tool_call dispatch/resolve/schema-rejected/timeout logs)
