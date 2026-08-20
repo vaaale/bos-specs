@@ -74,7 +74,31 @@
 
 ---
 
-## Phase 4: User Story 2 — Fire-and-Poll Run + Status (Priority: P1)
+## Phase 4: User Story 2 — Service Tools Respect Tool Gating and Lifecycle (Priority: P2)
+
+**Goal**: Service-declared workflow tools are governed by the same tool-gating model as built-in tools (allowlist, deferred approval per 039 FR-005), and stop/uninstall removes the declared tools from the registry (per 039 FR-006). The service never auto-executes a gated tool without approval, and no stale tool call to a stopped service is possible (FR-010/011).
+
+**Independent Test**: With a restrictive tool-gate config, verify a workflow tool is not auto-executed without approval; stop the service and verify the tools disappear from the registry and are no longer callable. Testable in isolation.
+
+### Tests for User Story 2 (unit + e2e, in scope) ⚠️
+
+> **NOTE: Write these FIRST, ensure they FAIL before implementation**
+
+- [ ] T018a [P] [US2] Unit test for tool gating — a gated workflow tool is not auto-executed without approval (per 039 FR-005) — in `<item>/services/__tests__/tools.test.js`
+- [ ] T018b [P] [US2] Unit test for lifecycle cleanup — stopping/uninstalling the service removes declared tools from the registry (per 039 FR-006) — in `<item>/services/__tests__/handlers.test.js`
+- [ ] T018c [P] [US2] E2E test for tool gating + lifecycle — with a restrictive gate config a workflow tool is deferred; stopping the service removes the tools — in `e2e/001-workflow-manager-service-tools.spec.ts`
+
+### Implementation for User Story 2
+
+- [ ] T018d [P] [US2] Implement 039 tool-gating wiring — ensure service-declared workflow tools respect the allowlist/deferred-approval model exactly like built-in tools (FR-010)
+- [ ] T018e [US2] Implement registry-cleanup on stop/uninstall — service teardown removes its declared tools from the registry (FR-011), no stale tool call to a stopped service
+- [ ] T018f [US2] Wire lifecycle hooks — `tool_declare` on start, tool-registry removal on stop/uninstall, gating respected end-to-end
+
+**Checkpoint**: US1 + US2 — workflow tools are gated like built-in tools, disappear on stop/uninstall, and are never auto-executed without approval.
+
+---
+
+## Phase 5: User Story 3 — Fire-and-Poll Run + Status (Priority: P1)
 
 **Goal**: `workflow_run` is asynchronous fire-and-poll (returns `runId` immediately, ADR-8); `workflow_status`/`workflow_run_get` report live progress; `workflow_list` exposes running state for agent polling (FR-024).
 
