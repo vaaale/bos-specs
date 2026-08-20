@@ -75,8 +75,10 @@
         <i data-lucide="folder-x" class="h-3.5 w-3.5"></i>
       </button>
       <span class="mx-1 h-4 w-px bg-white/10"></span>
+      <!-- FR-014: Refresh -> workflow_status -->
       <button class="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10" title="Refresh /Workflows">
         <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i> Refresh
+        <span class="font-mono text-[9px] text-white/30">workflow_status</span>
       </button>
     </div>
   </div>
@@ -97,8 +99,10 @@
         <h3 class="text-xs font-semibold uppercase tracking-wide text-white/50">Workflows</h3>
         <span class="font-mono text-white/40">/Workflows/</span>
         <div class="flex-1"></div>
+        <!-- FR-014: New/Create -> workflow_create -->
         <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-xs hover:bg-white/20">
           <i data-lucide="plus" class="h-3.5 w-3.5"></i> New workflow
+          <span class="font-mono text-[9px] text-white/30">workflow_create</span>
         </button>
       </div>
 
@@ -124,9 +128,11 @@
           <div class="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
               <i data-lucide="play" class="h-3 w-3"></i> Run
+              <span class="font-mono text-[9px] text-white/30">workflow_run</span>
             </button>
             <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
               <i data-lucide="pencil" class="h-3 w-3"></i> Edit
+              <span class="font-mono text-[9px] text-white/30">workflow_modify</span>
             </button>
           </div>
         </div>
@@ -151,9 +157,11 @@
           <div class="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
               <i data-lucide="eye" class="h-3 w-3"></i> View
+              <span class="font-mono text-[9px] text-white/30">workflow_read</span>
             </button>
             <button class="flex items-center gap-1 rounded bg-red-400/10 px-2 py-1 text-[11px] text-red-200 hover:bg-red-400/20">
               <i data-lucide="square" class="h-3 w-3"></i> Cancel
+              <span class="font-mono text-[9px] text-white/30">workflow_cancel</span>
             </button>
           </div>
         </div>
@@ -178,6 +186,7 @@
           <div class="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
               <i data-lucide="play" class="h-3 w-3"></i> Re-run
+              <span class="font-mono text-[9px] text-white/30">workflow_run</span>
             </button>
           </div>
         </div>
@@ -202,9 +211,11 @@
           <div class="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
               <i data-lucide="play" class="h-3 w-3"></i> Run
+              <span class="font-mono text-[9px] text-white/30">workflow_run</span>
             </button>
             <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
               <i data-lucide="pencil" class="h-3 w-3"></i> Edit
+              <span class="font-mono text-[9px] text-white/30">workflow_modify</span>
             </button>
           </div>
         </div>
@@ -221,6 +232,7 @@
         </div>
         <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20">
           <i data-lucide="plus" class="h-3.5 w-3.5"></i> Create a workflow
+          <span class="font-mono text-[9px] text-white/30">workflow_create</span>
         </button>
       </div>
     </div>
@@ -249,15 +261,23 @@
         <div class="flex-1"></div>
         <button onclick="go('run')" class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20">
           <i data-lucide="play" class="h-3.5 w-3.5"></i> Run
+          <span class="font-mono text-[9px] text-white/30">workflow_run</span>
         </button>
         <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20">
           <i data-lucide="pencil" class="h-3.5 w-3.5"></i> Edit
+          <span class="font-mono text-[9px] text-white/30">workflow_modify</span>
         </button>
         <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20">
           <i data-lucide="file-json" class="h-3.5 w-3.5"></i> Export
+          <span class="font-mono text-[9px] text-white/30">workflow_export</span>
+        </button>
+        <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20" title="Validate workflow schema">
+          <i data-lucide="shield-check" class="h-3.5 w-3.5"></i> Validate
+          <span class="font-mono text-[9px] text-white/30">workflow_validate</span>
         </button>
         <button class="flex items-center gap-1 rounded bg-white/10 px-2 py-1.5 text-xs text-red-300 hover:bg-red-400/20">
           <i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Delete
+          <span class="font-mono text-[9px] text-white/30">workflow_delete</span>
         </button>
       </div>
 
@@ -266,6 +286,12 @@
         <button class="rounded px-2 py-1.5 text-xs text-white bg-white/15">Steps</button>
         <button class="rounded px-2 py-1.5 text-xs text-white/60 hover:bg-white/10">Dependencies</button>
         <button class="rounded px-2 py-1.5 text-xs text-white/60 hover:bg-white/10">Config</button>
+      </div>
+
+      <!-- FR-013: DETAIL graph (static / neutral — not running) -->
+      <div>
+        <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide text-white/50">Graph</h3>
+        <div id="detail-graph" class="overflow-x-auto rounded-lg border border-white/10 bg-white/[0.02] p-2"></div>
       </div>
 
       <!-- steps list -->
@@ -310,6 +336,26 @@
           </div>
           <span class="flex items-center gap-1 font-mono text-[11px] text-white/40"><i data-lucide="git-branch" class="h-3 w-3"></i> ← transform</span>
         </div>
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div class="flex h-6 w-6 items-center justify-center rounded bg-sky-400/20">
+            <i data-lucide="shield-check" class="h-3.5 w-3.5 text-sky-300"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-medium">validate</div>
+            <div class="font-mono text-[11px] text-white/40">tool · schema</div>
+          </div>
+          <span class="flex items-center gap-1 font-mono text-[11px] text-white/40"><i data-lucide="git-branch" class="h-3 w-3"></i> ← transform</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div class="flex h-6 w-6 items-center justify-center rounded bg-violet-400/20">
+            <i data-lucide="bot" class="h-3.5 w-3.5 text-violet-300"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-medium">report</div>
+            <div class="font-mono text-[11px] text-white/40">delegate · mail</div>
+          </div>
+          <span class="flex items-center gap-1 font-mono text-[11px] text-white/40"><i data-lucide="git-merge" class="h-3 w-3"></i> ← load, validate</span>
+        </div>
       </div>
     </div>
 
@@ -335,8 +381,10 @@
           </div>
         </div>
         <div class="flex-1"></div>
+        <!-- FR-014: Cancel -> workflow_cancel -->
         <button id="cancel-btn" onclick="cancelRun()" class="flex items-center gap-1 rounded bg-red-400/20 px-2 py-1.5 text-xs font-medium text-red-200 hover:bg-red-400/30">
           <i data-lucide="square" class="h-3.5 w-3.5"></i> Cancel run
+          <span class="font-mono text-[9px] text-white/30">workflow_cancel</span>
         </button>
       </div>
 
@@ -348,6 +396,25 @@
         </div>
         <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
           <div class="h-full w-1/2 rounded-full bg-sky-400/70"></div>
+        </div>
+      </div>
+
+      <!-- FR-013: RUN graph with live per-step status + active-step highlight -->
+      <div>
+        <h3 class="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/50">
+          Graph — live execution
+          <span class="flex items-center gap-1 rounded-full border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] text-sky-200">
+            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-300"></span> transform active
+          </span>
+        </h3>
+        <div id="run-graph" class="overflow-x-auto rounded-lg border border-white/10 bg-white/[0.02] p-2"></div>
+        <!-- legend -->
+        <div class="mt-2 flex flex-wrap items-center gap-3 font-mono text-[10px] text-white/50">
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-white/30"></span>pending</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-sky-400"></span>running</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-emerald-400"></span>completed</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-red-400"></span>failed</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-white/20"></span>cancelled</span>
         </div>
       </div>
 
@@ -373,6 +440,11 @@
         <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 opacity-70">
           <i data-lucide="circle-dot" class="h-4 w-4 shrink-0 text-white/40"></i>
           <span class="flex-1 font-medium">load</span>
+          <span class="text-[11px] text-white/40">pending</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 opacity-70">
+          <i data-lucide="circle-dot" class="h-4 w-4 shrink-0 text-white/40"></i>
+          <span class="flex-1 font-medium">validate</span>
           <span class="text-[11px] text-white/40">pending</span>
         </div>
         <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 opacity-70">
@@ -405,6 +477,82 @@
   let current = "list";
   let serviceRunning = true;
 
+  /* ---------- FR-013 graph ---------- */
+  const GRAPH_NODES = [
+    { id: 'ingest',    label: 'ingest',    sub: 'fetch:csv',      icon: 'download',    x: 20,  y: 120 },
+    { id: 'clean',     label: 'clean',     sub: 'ag-ui · normal', icon: 'bot',         x: 160, y: 120 },
+    { id: 'transform', label: 'transform', sub: 'ag-ui · map',    icon: 'bot',         x: 300, y: 120 },
+    { id: 'load',      label: 'load',      sub: 'delegate · db',  icon: 'database',    x: 440, y: 55 },
+    { id: 'validate',  label: 'validate',  sub: 'tool · schema',  icon: 'shield-check',x: 440, y: 185 },
+    { id: 'report',    label: 'report',    sub: 'delegate · mail',icon: 'mail',        x: 580, y: 120 }
+  ];
+  const GRAPH_EDGES = [
+    ['ingest','clean'], ['clean','transform'],
+    ['transform','load'], ['transform','validate'],   // branch
+    ['load','report'], ['validate','report']          // merge
+  ];
+  const NODE_W = 110, NODE_H = 46, GAP_Y = 22;
+  const W = 720, H = 290;
+
+  function graphStyle(status) {
+    switch (status) {
+      case 'running':
+        return { border:'border-sky-400/60', bg:'bg-sky-400/15', text:'text-sky-200',
+                 icon:'text-sky-300', dot:'bg-sky-400', edge:'#38bdf8', glow:true };
+      case 'completed':
+        return { border:'border-emerald-400/50', bg:'bg-emerald-400/10', text:'text-emerald-100',
+                 icon:'text-emerald-300', dot:'bg-emerald-400', edge:'#34d399', glow:false };
+      case 'failed':
+        return { border:'border-red-400/50', bg:'bg-red-400/10', text:'text-red-200',
+                 icon:'text-red-300', dot:'bg-red-400', edge:'#f87171', glow:false };
+      case 'cancelled':
+        return { border:'border-white/20', bg:'bg-white/[0.04]', text:'text-white/40',
+                 icon:'text-white/40', dot:'bg-white/20', edge:'#ffffff40', glow:false };
+      default: // pending / neutral
+        return { border:'border-white/15', bg:'bg-white/5', text:'text-white/60',
+                 icon:'text-white/50', dot:'bg-white/30', edge:'#ffffff26', glow:false };
+    }
+  }
+
+  function renderGraph(containerId, statuses) {
+    const el = document.getElementById(containerId);
+    // edges (colored by source-node status so progress reads along the path)
+    let lines = '';
+    GRAPH_EDGES.forEach(([a,b]) => {
+      const na = GRAPH_NODES.find(n => n.id === a);
+      const nb = GRAPH_NODES.find(n => n.id === b);
+      const x1 = na.x + NODE_W, y1 = na.y + GAP_Y;
+      const x2 = nb.x, y2 = nb.y + GAP_Y;
+      const color = graphStyle(statuses[a] || 'pending').edge;
+      lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1.5" opacity="0.8"/>`;
+    });
+    // nodes
+    let nodes = '';
+    GRAPH_NODES.forEach(n => {
+      const st = graphStyle(statuses[n.id] || 'pending');
+      const glow = st.glow ? 'box-shadow:0 0 14px 3px rgba(56,189,248,0.45);' : '';
+      const dot = statuses[n.id] === 'running'
+        ? `<span class="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full ${st.dot}"></span>` : '';
+      nodes += `
+        <div class="absolute rounded-lg border px-3 py-2 ${st.border} ${st.bg}"
+             style="left:${n.x}px;top:${n.y}px;width:${NODE_W}px;${glow}">
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="${n.icon}" class="h-3 w-3 shrink-0 ${st.icon}"></i>
+            ${dot}
+            <span class="truncate font-medium ${st.text}">${n.label}</span>
+          </div>
+          <div class="mt-0.5 truncate font-mono text-[9px] ${st.icon} opacity-70">${n.sub}</div>
+        </div>`;
+    });
+    el.innerHTML = `
+      <div class="relative" style="height:${H}px;width:${W}px;max-width:none;min-width:${W}px">
+        <svg width="${W}" height="${H}" class="absolute left-0 top-0">${lines}</svg>
+        ${nodes}
+      </div>`;
+    lucide.createIcons();
+  }
+
+  /* ---------- views / navigation ---------- */
   function go(name) {
     document.getElementById(views[current]).classList.add("hidden");
     document.getElementById(views[name]).classList.remove("hidden");
@@ -447,17 +595,31 @@
     const btn = document.getElementById("cancel-btn");
     btn.classList.remove("bg-red-400/20","hover:bg-red-400/30");
     btn.classList.add("bg-white/10","hover:bg-white/20");
-    btn.innerHTML = '<i data-lucide="square" class="h-3.5 w-3.5"></i> Cancelling…';
+    btn.innerHTML = '<i data-lucide="square" class="h-3.5 w-3.5"></i> Cancelling…<span class="font-mono text-[9px] text-white/30">workflow_cancel</span>';
     lucide.createIcons();
     setTimeout(() => {
-      // mock: mark the run cancelled
+      // mock: mark the run cancelled (chip + graph)
       const chip = document.querySelector('#view-run span.text-sky-100');
-      chip.className = "flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-100";
-      chip.innerHTML = '<i data-lucide="ban" class="h-2.5 w-2.5"></i> Cancelled';
+      if (chip) {
+        chip.className = "flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-100";
+        chip.innerHTML = '<i data-lucide="ban" class="h-2.5 w-2.5"></i> Cancelled';
+      }
+      // FR-013: flip active node + downstream to cancelled in graph
+      renderGraph('run-graph', {
+        ingest: 'completed', clean: 'completed', transform: 'cancelled',
+        load: 'cancelled', validate: 'cancelled', report: 'cancelled'
+      });
       lucide.createIcons();
     }, 800);
   }
 
+  /* ---------- initial render ---------- */
+  renderGraph('detail-graph', { ingest:'pending', clean:'pending', transform:'pending',
+                                load:'pending', validate:'pending', report:'pending' });
+  renderGraph('run-graph', {
+    ingest: 'completed', clean: 'completed', transform: 'running',   // active step
+    load: 'pending', validate: 'pending', report: 'pending'
+  });
   lucide.createIcons();
 </script>
 </body>
