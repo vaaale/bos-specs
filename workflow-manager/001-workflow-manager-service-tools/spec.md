@@ -188,7 +188,7 @@ The Workflow Manager app ships a skill that instructs the assistant on how to us
 - **FR-005**: On initialization, the service MUST detect workflows stranded in legacy non-VFS locations and migrate them into the real VFS `/Workflows/` additively (copying/archiving, never deleting the legacy copy).
 - **FR-006**: The app MUST list workflows by reading the real VFS `/Workflows/` root through the service, showing workflows created by the engine, by other tools, or placed by the user.
 - **FR-007**: Workflow execution MUST be gated on the service being in a running state; a run attempt while the service is stopped MUST return a clear error.
-- **FR-008**: A workflow run MUST stream step events (start/complete/fail/retry/cancel) back to the caller so the app and assistant observe progress and final state.
+- **FR-008**: A workflow run MUST be an asynchronous, fire-and-poll operation: `workflow_run` returns a `runId` immediately and does not block for the run's completion; the caller MUST poll `workflow_status` (or `workflow_run_get`) for progress and final state. Step events (start/complete/fail/retry/cancel) stream to the app so it observes live progress and final state.
 - **FR-009**: Cancelling a running workflow MUST mark in-progress steps cancelled and halt the scheduler.
 - **FR-010**: Service-declared workflow tools MUST be gated by the existing tool-gating model (allowlist, deferred approval) exactly like built-in tools (per 039 FR-005).
 - **FR-011**: Stopping or uninstalling the service MUST remove its declared tools from the registry, so no stale tool call to a stopped service is possible (per 039 FR-006).
@@ -230,7 +230,7 @@ The Workflow Manager app ships a skill that instructs the assistant on how to us
 - **SC-003**: A workflow created in the app, via the engine, or placed by the user under `/Workflows/` is listed by the app in 100% of cases (no invisible-content mismatch between app, engine, and Files).
 - **SC-004**: Service-declared workflow tools are gated by the same rules as built-in tools — no tool auto-executes when the user's gate config requires approval.
 - **SC-005**: Stopping or uninstalling the service removes its workflow tools from the registry immediately, such that no stale tool call to a stopped service is possible.
-- **SC-006**: A workflow run streams step events and reports a final state (completed/failed/cancelled) for every executed workflow.
+- **SC-006**: A workflow run is asynchronous and fire-and-poll: `workflow_run` returns a `runId` immediately, and the caller polls `workflow_status`/`workflow_run_get` to observe progress and a final state (completed/failed/cancelled) for every executed workflow.
 - **SC-007**: During a workflow run, the graph highlights the active step live and reflects per-step status, matching the streamed execution events.
 - **SC-008**: Every workflow lifecycle operation (build/modify/run/stop) is achievable via the service-declared tools without requiring the UI.
 - **SC-009**: Every completed run is persisted to the real VFS and inspectable via both the app run selector and the `workflow_run_list`/`workflow_run_get` tools.
