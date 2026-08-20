@@ -239,6 +239,7 @@ The Workflow Manager app ships a skill that instructs the assistant on how to us
 - **SC-011**: A node with multiple candidate sub-agents delegates to the appropriate candidate(s) chosen by its agent as the last action, with retry enforcement on invalid/missing selection.
 - **SC-012**: Independent workflow branches and Research-node fan-out execute in parallel up to `maxConcurrentSteps`, with no serialization of independent steps.
 - **SC-013**: The assistant can load the Workflow Manager skill and correctly build, execute, and retrieve workflows via the workflow tools.
+- **SC-014**: An agent can poll a workflow's live status via `workflow_list` (which returns `workflow_id`, `status` running/idle, and `run_id` when running) followed by `workflow_status`/`workflow_run_get` for detail.
 
 ## Assumptions
 
