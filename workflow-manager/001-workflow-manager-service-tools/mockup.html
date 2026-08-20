@@ -357,6 +357,81 @@
           <span class="flex items-center gap-1 font-mono text-[11px] text-white/40"><i data-lucide="git-merge" class="h-3 w-3"></i> ← load, validate</span>
         </div>
       </div>
+
+      <!-- RUN SELECTOR: historical runs (workflow_run_list) -->
+      <div>
+        <h3 class="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/50">
+          Historical runs
+          <span class="rounded bg-white/10 px-1 py-0.5 font-mono text-[9px] text-white/50">workflow_run_list</span>
+        </h3>
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="run-select-6" onclick="openHistoryRun(6)" class="run-select-btn flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 hover:bg-white/10">
+            <span class="font-mono font-medium text-white/80">#6</span>
+            <span class="font-mono text-[11px] text-white/40">16:20:04 · 2025-06-02</span>
+            <span class="flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-100">
+              <i data-lucide="check-circle-2" class="h-2.5 w-2.5"></i> completed
+            </span>
+          </button>
+          <button id="run-select-5" onclick="openHistoryRun(5)" class="run-select-btn flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 hover:bg-white/10">
+            <span class="font-mono font-medium text-white/80">#5</span>
+            <span class="font-mono text-[11px] text-white/40">11:05:47 · 2025-06-01</span>
+            <span class="flex items-center gap-1 rounded-full border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-[10px] text-red-100">
+              <i data-lucide="alert-triangle" class="h-2.5 w-2.5"></i> failed
+            </span>
+          </button>
+          <button id="run-select-4" onclick="openHistoryRun(4)" class="run-select-btn flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 hover:bg-white/10">
+            <span class="font-mono font-medium text-white/80">#4</span>
+            <span class="font-mono text-[11px] text-white/40">09:12:33 · 2025-05-30</span>
+            <span class="flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-100">
+              <i data-lucide="ban" class="h-2.5 w-2.5"></i> cancelled
+            </span>
+          </button>
+          <button id="run-select-3" onclick="openHistoryRun(3)" class="run-select-btn flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 hover:bg-white/10">
+            <span class="font-mono font-medium text-white/80">#3</span>
+            <span class="font-mono text-[11px] text-white/40">18:02:19 · 2025-05-29</span>
+            <span class="flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-100">
+              <i data-lucide="check-circle-2" class="h-2.5 w-2.5"></i> completed
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- HISTORICAL INSPECTION PANEL (workflow_run_get) -->
+      <div id="history-panel" class="hidden space-y-3 rounded-lg border border-violet-400/25 bg-violet-400/[0.03] p-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="history" class="h-4 w-4 shrink-0 text-violet-300"></i>
+          <span id="history-label" class="font-mono text-[11px] text-violet-200">Run #5 · failed · replaying from log</span>
+          <span class="rounded bg-violet-400/20 px-1 py-0.5 font-mono text-[9px] text-violet-200">workflow_run_get</span>
+          <div class="flex-1"></div>
+          <button onclick="closeHistory()" class="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] hover:bg-white/20">
+            <i data-lucide="x" class="h-3 w-3"></i> Exit replay
+          </button>
+        </div>
+
+        <div>
+          <h3 class="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/50">
+            Graph — final outcome
+            <span class="rounded bg-white/10 px-1 py-0.5 font-mono text-[9px] text-white/50">historical · static</span>
+          </h3>
+          <div id="history-graph" class="overflow-x-auto rounded-lg border border-white/10 bg-white/[0.02] p-2"></div>
+          <div class="mt-2 flex flex-wrap items-center gap-3 font-mono text-[10px] text-white/50">
+            <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-emerald-400"></span>completed</span>
+            <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-red-400"></span>failed</span>
+            <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-white/20"></span>cancelled</span>
+            <span class="flex items-center gap-1"><span class="h-2 w-2 rounded border border-white/40 bg-white/[0.04]"></span>neutral · never ran</span>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/50">
+            Replayed event stream
+            <span class="flex items-center gap-1 rounded bg-amber-400/15 px-1 py-0.5 font-mono text-[9px] text-amber-200">
+              <i data-lucide="history" class="h-2.5 w-2.5"></i> historical
+            </span>
+          </h3>
+          <div id="history-stream" class="rounded-lg border border-white/10 bg-black/30 p-2 font-mono text-[11px] leading-5"></div>
+        </div>
+      </div>
     </div>
 
     <!-- ============ VIEW: RUN ============ -->
@@ -552,6 +627,112 @@
     lucide.createIcons();
   }
 
+  /* ---------- historical runs (workflow_run_list / workflow_run_get) ---------- */
+  const HISTORICAL_RUNS = {
+    6: {
+      label: '#6', time: '16:20:04', date: '2025-06-02', state: 'completed',
+      outcomes: { ingest:'completed', clean:'completed', transform:'completed',
+                  load:'completed', validate:'completed', report:'completed' },
+      events: [
+        ['16:20:05','step.start ingest',''],
+        ['16:20:06','step.complete ingest (1.2s)',''],
+        ['16:20:06','step.start clean',''],
+        ['16:20:10','step.complete clean (3.4s)',''],
+        ['16:20:10','step.start transform',''],
+        ['16:20:19','step.complete transform (9.1s)',''],
+        ['16:20:19','step.start load',''],
+        ['16:20:20','step.complete load (0.8s)',''],
+        ['16:20:20','step.start validate',''],
+        ['16:20:21','step.complete validate (0.4s)',''],
+        ['16:20:21','step.start report',''],
+        ['16:20:24','step.complete report (2.7s)',''],
+        ['16:20:24','workflow.run_completed (6 steps, 17.6s)','text-emerald-200/80']
+      ]
+    },
+    5: {
+      label: '#5', time: '11:05:47', date: '2025-06-01', state: 'failed',
+      outcomes: { ingest:'completed', clean:'completed', transform:'failed',
+                  load:'neutral', validate:'neutral', report:'neutral' },
+      events: [
+        ['11:05:48','step.start ingest',''],
+        ['11:05:49','step.complete ingest (1.1s)',''],
+        ['11:05:49','step.start clean',''],
+        ['11:05:52','step.complete clean (3.0s)',''],
+        ['11:05:52','step.start transform',''],
+        ['11:06:01','step.fail transform (SchemaError: field "amount" missing)','text-red-200/90'],
+        ['11:06:01','workflow.run_failed — downstream steps skipped','text-amber-200/80'],
+        ['11:06:01','step.skip load (neutral · never ran)','text-white/45'],
+        ['11:06:01','step.skip validate (neutral · never ran)','text-white/45'],
+        ['11:06:01','step.skip report (neutral · never ran)','text-white/45']
+      ]
+    },
+    4: {
+      label: '#4', time: '09:12:33', date: '2025-05-30', state: 'cancelled',
+      outcomes: { ingest:'completed', clean:'cancelled', transform:'neutral',
+                  load:'neutral', validate:'neutral', report:'neutral' },
+      events: [
+        ['09:12:34','step.start ingest',''],
+        ['09:12:35','step.complete ingest (1.0s)',''],
+        ['09:12:35','step.start clean',''],
+        ['09:12:41','step.cancel clean (cancelled mid-run)','text-amber-200/80'],
+        ['09:12:41','workflow.cancelled — downstream steps skipped','text-amber-200/80'],
+        ['09:12:41','step.skip transform (neutral · never ran)','text-white/45'],
+        ['09:12:41','step.skip load (neutral · never ran)','text-white/45'],
+        ['09:12:41','step.skip validate (neutral · never ran)','text-white/45'],
+        ['09:12:41','step.skip report (neutral · never ran)','text-white/45']
+      ]
+    },
+    3: {
+      label: '#3', time: '18:02:19', date: '2025-05-29', state: 'completed',
+      outcomes: { ingest:'completed', clean:'completed', transform:'completed',
+                  load:'completed', validate:'completed', report:'completed' },
+      events: [
+        ['18:02:20','step.start ingest',''],
+        ['18:02:24','step.complete ingest (3.9s)',''],
+        ['18:02:24','step.start clean',''],
+        ['18:02:26','step.complete clean (2.1s)',''],
+        ['18:02:26','step.start transform',''],
+        ['18:02:33','step.complete transform (7.2s)',''],
+        ['18:02:33','step.start load',''],
+        ['18:02:34','step.complete load (0.9s)',''],
+        ['18:02:34','step.start validate',''],
+        ['18:02:35','step.complete validate (0.5s)',''],
+        ['18:02:35','step.start report',''],
+        ['18:02:39','step.complete report (3.6s)',''],
+        ['18:02:39','workflow.run_completed (6 steps, 19.0s)','text-emerald-200/80']
+      ]
+    }
+  };
+
+  function openHistoryRun(id) {
+    const run = HISTORICAL_RUNS[id];
+    // header label: "Run #N · state · replaying from log"
+    document.getElementById('history-label').textContent =
+      `Run ${run.label} · ${run.state} · replaying from log`;
+    // selector highlight
+    document.querySelectorAll('.run-select-btn').forEach(b => b.classList.remove('ring-1','ring-violet-400/60'));
+    const btn = document.getElementById('run-select-' + id);
+    if (btn) btn.classList.add('ring-1','ring-violet-400/60');
+    // historical graph: static final outcome (no running glow)
+    renderGraph('history-graph', run.outcomes);
+    // replayed event stream (clearly historical)
+    const el = document.getElementById('history-stream');
+    let html = '';
+    run.events.forEach(([t, msg, cls]) => {
+      html += `<div class="${cls}"><span class="text-white/70">${t}</span> ${msg}</div>`;
+    });
+    el.innerHTML = html;
+    // reveal panel
+    document.getElementById('history-panel').classList.remove('hidden');
+    lucide.createIcons();
+  }
+
+  function closeHistory() {
+    document.getElementById('history-panel').classList.add('hidden');
+    document.querySelectorAll('.run-select-btn').forEach(b => b.classList.remove('ring-1','ring-violet-400/60'));
+    lucide.createIcons();
+  }
+
   /* ---------- views / navigation ---------- */
   function go(name) {
     document.getElementById(views[current]).classList.add("hidden");
@@ -621,6 +802,8 @@
     load: 'pending', validate: 'pending', report: 'pending'
   });
   lucide.createIcons();
+  // pre-select run #5 (failed) so downstream neutral nodes are visible
+  openHistoryRun(5);
 </script>
 </body>
 </html>
