@@ -468,10 +468,12 @@ dependencies, not deliverables:
   part of the service protocol and would be net-new bos-core; (c) recreates a retired
   surface; (d) is structurally impossible.
 - **Consequences**: The worker stays the engine (model/scheduler/routing/persistence);
-  each node's execution is one loopback delegate call. The main open risk is
-  **cancellation** of an in-flight node (the delegate route has no cancel/runId endpoint
-  today) — see §7. If cancellation precision matters, a small bos-core extension to the
-  delegate route (a `runId`-keyed abort) is the recommended follow-up.
+  each node's execution is one loopback delegate call. **Cancellation is resolved as
+  Option (b) (user-approved)**: the worker aborts its in-flight delegate fetch and relies
+  on the inner loop's linked-abort settling `cancelled` — no bos-core extension to the
+  delegate route (see §7). If mid-node cancellation precision is ever needed, a small
+  bos-core extension to the delegate route (a `runId`-keyed abort) is the recommended
+  follow-up.
 
 ### ADR-2 (kept) — Persist workflows + runs to the real VFS via loopback `/api/fs`, never a host path
 
