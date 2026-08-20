@@ -561,14 +561,16 @@ dependencies, not deliverables:
 
 ## 7. Risks / Open Items
 
-1. **Node-execution cancellation (open — must resolve before plan).** The worker cancels
-   a workflow by aborting its own loopback delegate fetch. But `/api/subagents/delegate`
+1. **Node-execution cancellation (RESOLVED — Option (b), user-approved).** The worker cancels
+   a workflow by aborting its own loopback delegate fetch. `/api/subagents/delegate`
    has **no cancel endpoint / runId-keyed abort controller** today (verified in
-   `src/app/api/subagents/delegate/route.ts`). Two sub-options: (a) extend the route with
-   a cancel/runId param (small bos-core change), or (b) rely on the worker aborting its
-   fetch + the inner loop's linked-abort settling `cancelled` (per `agent-loop.ts`'s
-   `runServerTool`). This is the **single execution-contract risk**; recommend (a) for
-   precise mid-node cancellation. **Flagged for Build Studio** — decide before `plan`.
+   `src/app/api/subagents/delegate/route.ts`). **Decision: Option (b)** — the worker
+   aborts its in-flight delegate fetch and relies on the inner loop's linked-abort
+   settling `cancelled` (per `agent-loop.ts`'s `runServerTool`). **No bos-core extension
+   to the delegate route is made.** This is accepted as a known limitation: cancellation
+   settles at the step/loop boundary, not as a precise mid-node abort. If mid-node
+   cancellation precision is ever needed, revisit Option (a) (a `runId`-keyed abort on
+   the delegate route) as a separate follow-up.
 2. **Generation requires an LLM call.** `engine/generate.js` re-implements workflow
    generation from a task description, which needs an LLM call. The worker can reach it
    via the delegate route (an ephemeral "planner" agent) — but this couples generation to
