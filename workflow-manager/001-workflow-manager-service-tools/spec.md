@@ -71,7 +71,23 @@ The Workflow Manager app lists workflows that live in the user's real VFS `/Work
 
 ---
 
-### User Story 4 - Workflow Execution Runs Through the Service (Priority: P3)
+### User Story 4 - Workflows Are Shown as a Graph with Branching (Priority: P2)
+
+The Workflow Manager app renders each workflow as an interactive graph — nodes are steps, edges are dependencies — so users can see branching/parallel structure at a glance and navigate/author branching workflows, exactly as the previous UI did.
+
+**Why this priority**: The graph visualization is a first-class, previously-available capability the user explicitly wants retained. Workflows are DAGs whose branches run concurrently; losing the graph view would regress the product. It sits alongside the real-VFS listing as core app functionality.
+
+**Independent Test**: Open a workflow with multiple branches (parallel steps) in the app; confirm it renders as a node-edge graph showing the branches and dependencies, and that branching steps can be navigated/edited. Testable in isolation.
+
+**Acceptance Scenarios**:
+
+1. **Given** a workflow with steps and dependencies, **When** the user opens it in the app, **Then** it renders as a graph with nodes (steps) and edges (dependencies).
+2. **Given** a workflow with branching (parallel) steps, **When** the user views it, **Then** the graph shows the branches and their concurrent structure.
+3. **Given** a branching workflow, **When** the user navigates or edits it, **Then** they can select/author individual branch steps and their dependencies without losing the branching structure.
+
+---
+
+### User Story 5 - Workflow Execution Runs Through the Service (Priority: P3)
 
 Running a workflow is gated by the service being in a healthy running state, and the run streams step events back so the app and assistant see progress and results.
 
@@ -100,6 +116,7 @@ Running a workflow is gated by the service being in a healthy running state, and
 - **FR-009**: Cancelling a running workflow MUST mark in-progress steps cancelled and halt the scheduler.
 - **FR-010**: Service-declared workflow tools MUST be gated by the existing tool-gating model (allowlist, deferred approval) exactly like built-in tools (per 039 FR-005).
 - **FR-011**: Stopping or uninstalling the service MUST remove its declared tools from the registry, so no stale tool call to a stopped service is possible (per 039 FR-006).
+- **FR-012**: The app MUST render each workflow as an interactive graph — nodes are steps, edges are dependencies — and MUST support branching workflows (parallel steps that run concurrently), including navigating and authoring individual branch steps without losing the branching structure.
 
 ### Non-Functional Requirements
 
@@ -133,4 +150,5 @@ Running a workflow is gated by the service being in a healthy running state, and
 - BOS source already implements 039 (service-tool-bridge, worker IPC, `deploymentMode` validation, gating fixes); this spec only changes the marketplace item, not BOS source.
 - Workflows persist as JSON files under `/Workflows/` (VFS), matching the existing engine's store (`src/lib/workflows/store.ts`).
 - Migration is additive-only and idempotent: stranded workflows are copied into the real VFS (skipping any that already exist) and the legacy location is archived (renamed), never deleted.
-- No UI redesign for the Workflow Manager app is in scope beyond making it list/read workflows from the real VFS and drive the service-declared tools; the existing app layout is retained.
+- The Workflow Manager app retains the graph view and branching capability from the previous UI: workflows render as an interactive node-edge graph, and branching (parallel) steps are supported for viewing and authoring.
+- Per user approval, the built-in `workflowTools()` server tools (`src/lib/assistant/tools/server/workflows.ts` + its registry registration) are **retired** via a scoped `bos-core` delegation so the service-declared tools are not shadowed. This relaxes the earlier "no BOS source change" assumption; the workflow execution engine itself stays untouched.
