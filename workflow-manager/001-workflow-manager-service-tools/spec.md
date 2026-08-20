@@ -215,7 +215,7 @@ The Workflow Manager app ships a skill that instructs the assistant on how to us
 
 ## Key Entities *(include if feature involves data)*
 
-- **Workflow**: A user-authored multi-step graph — id, name, version, agents, steps (ag-ui/delegate/tool), dependencies, config (max concurrency, default retry/timeout). Persisted as JSON at the real VFS `/Workflows/<id>-workflow.json`.
+- **Workflow**: A user-authored multi-step graph — id, name, version, nodes, dependencies, config (max concurrency, default retry/timeout). Persisted as JSON at the real VFS `/Workflows/<id>-workflow.json`.
 - **WorkflowTool**: A native tool the service declares via `tool_declare` — name, description, input JSON-schema, mapped into the `AssistantTool` registry.
 - **ExecutionEvent / StepRuntimeState**: Streamed events and per-step runtime status during a workflow run, used for progress reporting and cancellation.
 - **Run**: A single execution of a workflow — id (`runId`), workflow id, start/end timestamp, final state (completed/failed/cancelled), per-step outcomes, and the persisted event log. Stored at the real VFS under `/Workflows/.runs/<workflowId>/<runId>.json` (or equivalent real-VFS run-log location), never a host path.
