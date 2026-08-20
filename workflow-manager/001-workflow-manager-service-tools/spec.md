@@ -207,7 +207,7 @@ The Workflow Manager app ships a skill that instructs the assistant on how to us
 
 ### Non-Functional Requirements
 
-- **NFR-001**: A workflow tool invocation MUST return a result within 30 seconds by default, with timeout/cancellation handled per 039 (R10) without leaking pending waits or crashing BOS.
+- **NFR-001**: A workflow tool invocation MUST return a result within 30 seconds by default (per 039 R10) without leaking pending waits or crashing BOS. **`workflow_run` is an exception — it is an asynchronous, fire-and-poll operation**: it MUST return a `runId` immediately (well within 30s) and MUST NOT block until the workflow completes; the caller MUST poll `workflow_status` (or `workflow_run_get`) for progress and final state. Long-running workflows therefore do not violate this timeout.
 - **NFR-002**: Tool-execution errors inside the service MUST be reported to the assistant as tool errors without crashing BOS (per 039 FR-007).
 - **NFR-003**: The service MUST bind a configurable port defaulting to `0` (OS-assigned, non-colliding) per marketplace service conventions.
 - **NFR-004**: All storage reads/writes MUST go through the real-VFS loopback bridge; the service MUST NOT write to a host path under `dataDir()/system/` derived from its own config dir.
