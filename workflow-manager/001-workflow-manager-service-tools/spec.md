@@ -124,33 +124,38 @@ Workflow runs are persisted as first-class entities so that, after a run complet
 
 ### User Story 7 - Dynamic Routing to Sub-Agents (Priority: P1)
 
-A workflow node MAY declare a list of candidate sub-agents it can delegate to. When the node's agent executes, it MUST choose exactly one candidate as its last action — enforced by a retry-loop if it fails to produce a valid choice. A node with exactly one child delegates to it automatically, with no choice step required.
+A workflow node MAY declare a list of candidate sub-agents it can delegate to. When the node's agent executes, it selects the appropriate candidate(s) as its last action — exactly one in the non-parallel (single-choice) case, or several in parallel where the task fans out — with the selection enforced by a retry-loop on invalid/missing selection. A node with exactly one child delegates to it automatically, with no choice step required.
 
-**Why this priority**: The current engine binds each step to a static `agentId`; it cannot express "choose between Finance / Construction / Shipping / Other at run time." Dynamic routing is where the real user value lives — the workflow adapts mid-run based on information gathered by earlier nodes (e.g. the company's business type).
+**Why this priority**: The retired BOS engine bound each step to a static `agentId`; it could not express "choose between Finance / Construction / Shipping / Other at run time." Dynamic routing is where the real user value lives — the workflow adapts mid-run based on information gathered by earlier nodes (e.g. the company's business type).
 
-**Independent Test**: Build a workflow whose node has multiple candidate sub-agents; run it; confirm the node's agent selects exactly one candidate as its last action and the run proceeds along the chosen path; confirm an invalid/missing selection is retried. Testable in isolation.
+**Independent Test**: Build a workflow whose node has multiple candidate sub-agents; run it; confirm the node's agent selects the appropriate candidate(s) as its last action and the run proceeds along the chosen path(s); confirm an invalid/missing selection is retried. Testable in isolation.
 
 **Acceptance Scenarios**:
 
-1. **Given** a node declares a list of candidate sub-agents, **When** the node's agent executes, **Then** it selects exactly one candidate as its last action and the run delegates to that agent.
+1. **Given** a node declares a list of candidate sub-agents, **When** the node's agent executes, **Then** it selects the appropriate candidate(s) as its last action — exactly one in the single-choice case, several in the parallel case — and the run delegates accordingly.
 2. **Given** a node's agent fails to select a valid candidate, **When** the run continues, **Then** the selection is retried until a valid choice is made (retry-loop), not silently defaulted.
 3. **Given** a node has exactly one child, **When** it completes, **Then** delegation to that child happens automatically without requiring a choice action.
+4. **Given** a node is a parallel/Research node, **When** it routes, **Then** it may delegate to multiple candidates concurrently.
 
 ---
 
-### User Story 8 - Parallel Node Execution via Ephemeral / Research Nodes (Priority: P1)
+### User Story 8 - Parallel Execution and Ephemeral Agents (Priority: P1)
 
-Nodes are modeled as ephemeral agents — a task description plus a configurable tool list and skill list. A Research-type node runs several sub-agents in parallel; when the workflow builder detects independent questions, it creates Research children and the engine runs them concurrently (up to `maxConcurrentSteps`). Independent ready branches genuinely execute in parallel.
+Two orthogonal capabilities:
 
-**Why this priority**: Parallel execution is essential for a multi-agent system — a sustainability analysis with several independent questions should fan out research agents rather than serialize them.
+1. **Parallel execution** — independent ready branches and Research-node fan-out run concurrently up to the workflow's `maxConcurrentSteps` cap. This is scheduling semantics, independent of node type.
+2. **Ephemeral agents** — a node MAY be configured as an ephemeral agent (a task description plus a configurable tool list and skill list) when no existing BOS agent perfectly matches the task — the common case. This is node configuration, orthogonal to parallel execution; an ephemeral node may run alone or in parallel with others.
 
-**Independent Test**: Build a workflow with multiple independent Research children; run it; confirm the parallel branches execute concurrently (up to the concurrency cap) rather than sequentially. Testable in isolation.
+**Why this priority**: Parallel execution is essential for a multi-agent system — a sustainability analysis with several independent questions should fan out research agents rather than serialize them. Ephemeral agents make the workflow self-sufficient when no dedicated agent exists.
+
+**Independent Test**: Build a workflow with multiple independent Research children; run it; confirm the parallel branches execute concurrently (up to the concurrency cap). Separately, configure an ephemeral-agent node with a task + tools + skills and confirm it executes. Testable in isolation.
 
 **Acceptance Scenarios**:
 
 1. **Given** a workflow has multiple independent ready branches, **When** the run dispatches, **Then** they execute concurrently up to the workflow's `maxConcurrentSteps` cap.
 2. **Given** a workflow builder detects independent questions, **When** it generates the workflow, **Then** it creates Research-type children and assigns them to run in parallel.
 3. **Given** a Research node, **When** it runs, **Then** multiple sub-agents are spawned in parallel and their outputs are collected.
+4. **Given** no existing BOS agent matches a node's task, **When** the workflow is built, **Then** the node is configured as an ephemeral agent with a task, tool list, and skill list.
 
 ---
 
@@ -189,11 +194,12 @@ The Workflow Manager app ships a skill that instructs the assistant on how to us
 - **FR-015**: Each workflow run MUST be persisted as a first-class run entity (with its execution-log events and per-step final outcomes) to the real VFS, so completed runs remain inspectable and auditable after execution.
 - **FR-016**: The service MUST declare `workflow_run_list` (list historical runs for a workflow) and `workflow_run_get` (read a specific run's details, per-step outcomes, and event log) so historical run inspection is achievable via tools without requiring the UI.
 - **FR-017**: The app MUST provide a run selector on the workflow detail view listing that workflow's historical runs, and MUST render the graph + event stream replayed from a selected run's persisted log (per-step outcomes: executed/completed, failed, cancelled, neutral), distinct from the live run view.
-- **FR-018**: A node MUST be able to declare a list of candidate sub-agents for dynamic routing; when the node's agent executes it MUST select exactly one candidate as its last action, with the selection enforced by a retry-loop on invalid or missing selection.
+- **FR-018**: A node MUST be able to declare a list of candidate sub-agents for dynamic routing; when the node's agent executes it MUST select the appropriate candidate(s) as its last action — exactly one in the single-choice case, several in the parallel case — with the selection enforced by a retry-loop on invalid or missing selection.
 - **FR-019**: A node with exactly one child MUST delegate to it automatically, without requiring a choice action.
-- **FR-020**: Nodes MUST be modeled as ephemeral agents with a task description, a configurable tool list, and a configurable skill list.
-- **FR-021**: The workflow engine MUST support a Research node type that fans out multiple sub-agents and runs them in parallel, and MUST run independent ready branches concurrently up to the workflow's `maxConcurrentSteps` cap.
-- **FR-022**: The app MUST ship a Workflow Manager skill that instructs the assistant to build, execute, and retrieve workflows (including historical-run inspection) via the workflow tools.
+- **FR-020**: Parallel execution MUST be supported as scheduling semantics: independent ready branches and Research-node fan-out run concurrently up to the workflow's `maxConcurrentSteps` cap, independent of node type.
+- **FR-021**: Nodes MUST be configurable as ephemeral agents — a task description plus a configurable tool list and skill list — used when no existing BOS agent matches the task; an ephemeral node may run alone or in parallel with others.
+- **FR-022**: A Research node type MUST fan out multiple sub-agents and run them in parallel, collecting their outputs.
+- **FR-023**: The app MUST ship a Workflow Manager skill that instructs the assistant to build, execute, and retrieve workflows (including historical-run inspection) via the workflow tools.
 
 ### Non-Functional Requirements
 
@@ -209,7 +215,7 @@ The Workflow Manager app ships a skill that instructs the assistant on how to us
 - **WorkflowTool**: A native tool the service declares via `tool_declare` — name, description, input JSON-schema, mapped into the `AssistantTool` registry.
 - **ExecutionEvent / StepRuntimeState**: Streamed events and per-step runtime status during a workflow run, used for progress reporting and cancellation.
 - **Run**: A single execution of a workflow — id (`runId`), workflow id, start/end timestamp, final state (completed/failed/cancelled), per-step outcomes, and the persisted event log. Stored at the real VFS under `/Workflows/.runs/<workflowId>/<runId>.json` (or equivalent real-VFS run-log location), never a host path.
-- **Node (Ephemeral Agent)**: A workflow node modeled as an ephemeral agent — task description, configurable tool list, configurable skill list, and a type (`ephemeral` default / `research` for parallel fan-out). A node may declare candidate sub-agents for dynamic routing.
+- **Node (Ephemeral Agent)**: A workflow node modeled as an ephemeral agent — task description, configurable tool list, configurable skill list, and a type (`ephemeral` default / `research` for parallel fan-out). A node may declare candidate sub-agents for dynamic routing. Parallel execution is a scheduling property (independent ready branches run concurrently up to `maxConcurrentSteps`), orthogonal to node type.
 
 ## Success Criteria *(mandatory)*
 
@@ -225,8 +231,8 @@ The Workflow Manager app ships a skill that instructs the assistant on how to us
 - **SC-008**: Every workflow lifecycle operation (build/modify/run/stop) is achievable via the service-declared tools without requiring the UI.
 - **SC-009**: Every completed run is persisted to the real VFS and inspectable via both the app run selector and the `workflow_run_list`/`workflow_run_get` tools.
 - **SC-010**: A historical run's graph replays each step's final outcome from the persisted run log with 100% fidelity, distinct from live-run state.
-- **SC-011**: A node with multiple candidate sub-agents delegates to a valid candidate chosen by its agent as the last action, with retry enforcement on invalid/missing selection.
-- **SC-012**: Independent workflow branches and Research nodes execute in parallel up to `maxConcurrentSteps`, with no serialization of independent steps.
+- **SC-011**: A node with multiple candidate sub-agents delegates to the appropriate candidate(s) chosen by its agent as the last action, with retry enforcement on invalid/missing selection.
+- **SC-012**: Independent workflow branches and Research-node fan-out execute in parallel up to `maxConcurrentSteps`, with no serialization of independent steps.
 - **SC-013**: The assistant can load the Workflow Manager skill and correctly build, execute, and retrieve workflows via the workflow tools.
 
 ## Assumptions
