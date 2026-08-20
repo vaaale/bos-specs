@@ -103,12 +103,29 @@ Running a workflow is gated by the service being in a healthy running state, and
 3. **Given** a running workflow is cancelled, **When** the user cancels it, **Then** in-progress steps are marked cancelled and the scheduler halts.
 4. **Given** a workflow is running, **When** the user observes the run view, **Then** the graph renders the active step highlighted in real time and reflects each step's live status (pending/running/completed/failed/cancelled).
 
+---
+
+### User Story 6 - Historical Runs Are Inspectable (Priority: P2)
+
+Workflow runs are persisted as first-class entities so that, after a run completes, the user (or assistant via tools) can reopen a historical run and inspect exactly what happened — each step's outcome (executed/completed, failed, cancelled, or neutral/never-ran) and the event stream — replayed from the persisted run log.
+
+**Why this priority**: A run's live graph state currently only exists while it is executing; once done it disappears, so there is no way to answer "why did `transform` retry 3×" or "which step failed" after the fact. Persisting runs makes execution inspectable and auditable, and is the missing historical half of the run concept already introduced by ADR-8 (`runId` + execution log).
+
+**Independent Test**: Run a workflow, wait for it to finish, then open the workflow's run list and select the completed run; confirm the graph replays each step's final outcome from the run log and the event stream is shown. Testable in isolation.
+
+**Acceptance Scenarios**:
+
+1. **Given** a workflow has completed one or more runs, **When** the user opens the workflow and views its run list, **Then** the historical runs are shown with id, timestamp, and final state.
+2. **Given** a historical run is selected, **When** the user inspects it, **Then** each step node on the graph reflects its outcome from that run (executed/completed, failed, cancelled, or neutral — never ran, e.g. downstream of a failure).
+3. **Given** a historical run is selected, **When** the user inspects it, **Then** the run's event stream (step start/complete/fail/retry/cancel) is shown replayed from the persisted run log.
+4. **Given** a run is still executing, **When** the user opens its run view, **Then** the live graph updates in real time; once complete, the run remains available in history for later inspection.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: The Workflow Manager service MUST set `deploymentMode: "tools"` on its manifest and emit `tool_declare` for each workflow tool at startup.
-- **FR-002**: The service MUST declare at minimum the following workflow tools, each with a name, description, and input JSON-schema: list/create/read/modify/run/status/cancel/delete/export/validate workflows (the 039-compliant native-tool surface replacing the current BOS-source `workflowTools()` set).
+- **FR-002**: The service MUST declare at minimum the following workflow tools, each with a name, description, and input JSON-schema: list/create/read/modify/run/status/run_list/run_get/cancel/delete/export/validate workflows (the 039-compliant native-tool surface replacing the current BOS-source `workflowTools()` set).
 - **FR-003**: Each declared tool MUST validate its arguments against its input JSON-schema before executing (per 039 FR-004); invalid calls MUST be rejected without dispatch.
 - **FR-004**: The service MUST persist workflows to the real VFS `/Workflows/` root via the loopback `/api/fs` bridge (the sanctioned unbundled-worker-thread path), so workflows are visible in Files and to the workflow engine.
 - **FR-005**: On initialization, the service MUST detect workflows stranded in legacy non-VFS locations and migrate them into the real VFS `/Workflows/` additively (copying/archiving, never deleting the legacy copy).
@@ -121,6 +138,9 @@ Running a workflow is gated by the service being in a healthy running state, and
 - **FR-012**: The app MUST render each workflow as an interactive graph — nodes are steps, edges are dependencies — and MUST support branching workflows (parallel steps that run concurrently), including navigating and authoring individual branch steps without losing the branching structure.
 - **FR-013**: During a workflow run, the graph view MUST highlight the active (currently-executing) step and reflect each step's live status (pending/running/completed/failed/cancelled), updating in real time as execution progresses.
 - **FR-014**: The workflow surface MUST be fully controllable through the service-declared tools — building (create), modifying (modify), executing (run), stopping (cancel), plus read/status/delete/export/validate — such that every workflow lifecycle operation is achievable via tools without requiring the UI.
+- **FR-015**: Each workflow run MUST be persisted as a first-class run entity (with its execution-log events and per-step final outcomes) to the real VFS, so completed runs remain inspectable and auditable after execution.
+- **FR-016**: The service MUST declare `workflow_run_list` (list historical runs for a workflow) and `workflow_run_get` (read a specific run's details, per-step outcomes, and event log) so historical run inspection is achievable via tools without requiring the UI.
+- **FR-017**: The app MUST provide a run selector on the workflow detail view listing that workflow's historical runs, and MUST render the graph + event stream replayed from a selected run's persisted log (per-step outcomes: executed/completed, failed, cancelled, neutral), distinct from the live run view.
 
 ### Non-Functional Requirements
 
@@ -135,6 +155,7 @@ Running a workflow is gated by the service being in a healthy running state, and
 - **Workflow**: A user-authored multi-step graph — id, name, version, agents, steps (ag-ui/delegate/tool), dependencies, config (max concurrency, default retry/timeout). Persisted as JSON at the real VFS `/Workflows/<id>-workflow.json`.
 - **WorkflowTool**: A native tool the service declares via `tool_declare` — name, description, input JSON-schema, mapped into the `AssistantTool` registry.
 - **ExecutionEvent / StepRuntimeState**: Streamed events and per-step runtime status during a workflow run, used for progress reporting and cancellation.
+- **Run**: A single execution of a workflow — id (`runId`), workflow id, start/end timestamp, final state (completed/failed/cancelled), per-step outcomes, and the persisted event log. Stored at the real VFS under `/Workflows/.runs/<workflowId>/<runId>.json` (or equivalent real-VFS run-log location), never a host path.
 
 ## Success Criteria *(mandatory)*
 
@@ -148,6 +169,8 @@ Running a workflow is gated by the service being in a healthy running state, and
 - **SC-006**: A workflow run streams step events and reports a final state (completed/failed/cancelled) for every executed workflow.
 - **SC-007**: During a workflow run, the graph highlights the active step live and reflects per-step status, matching the streamed execution events.
 - **SC-008**: Every workflow lifecycle operation (build/modify/run/stop) is achievable via the service-declared tools without requiring the UI.
+- **SC-009**: Every completed run is persisted to the real VFS and inspectable via both the app run selector and the `workflow_run_list`/`workflow_run_get` tools.
+- **SC-010**: A historical run's graph replays each step's final outcome from the persisted run log with 100% fidelity, distinct from live-run state.
 
 ## Assumptions
 
@@ -159,3 +182,4 @@ Running a workflow is gated by the service being in a healthy running state, and
 - The Workflow Manager app retains the graph view and branching capability from the previous UI: workflows render as an interactive node-edge graph, and branching (parallel) steps are supported for viewing and authoring.
 - Per user approval, the built-in `workflowTools()` server tools (`src/lib/assistant/tools/server/workflows.ts` + its registry registration) are **retired** via a scoped `bos-core` delegation so the service-declared tools are not shadowed. This relaxes the earlier "no BOS source change" assumption; the workflow execution engine itself stays untouched.
 - The workflow tool surface is the complete control plane: every lifecycle operation (build/modify/run/stop) is achievable through the service-declared tools, with the app UI as a parallel surface rather than a requirement. The graph view additionally surfaces live execution state (active-step highlight) during runs.
+- Runs are persisted as first-class entities to the real VFS (run id, timestamps, final state, per-step outcomes, event log), enabling historical run inspection. The `workflow_run_list`/`workflow_run_get` tools extend the tool surface so historical introspection is tool-reachable; the run selector on the detail view replays a selected run's graph from its persisted log.
