@@ -61,16 +61,16 @@
 
 > **NOTE: Write these FIRST, ensure they FAIL before implementation**
 
-- [ ] T016 [P] [US1] Unit test for tool declarations + schemas in `<item>/services/__tests__/tools.test.js`
-- [ ] T017 [P] [US1] Unit test for tool handlers in `<item>/services/__tests__/handlers.test.js`
-- [ ] T018 [P] [US1] E2E test for the tool surface end-to-end — create/list/read/delete a workflow via the service tools — in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T016 [P] [US1] Unit test for tool declarations + schemas in `<item>/services/__tests__/tools.test.js`
+- [x] T017 [P] [US1] Unit test for tool handlers in `<item>/services/__tests__/handlers.test.js`
+- [x] T018 [P] [US1] E2E test for the tool surface end-to-end — create/list/read/delete a workflow via the service tools — in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T019 [P] [US1] Implement `services/tools.js` — 12 tool declarations + input JSON-schemas (FR-002/014/016/024)
-- [ ] T020 [US1] Implement `services/handlers.js` — tool handlers wired to the engine (create/read/modify/delete/export/validate/run/status/cancel/list/run_list/run_get) (depends on T019, T014)
-- [ ] T021 [US1] Implement `workflow_list` returning `workflow_id`, `status` (running/idle), `run_id` when running (FR-024) in `services/handlers.js`
-- [ ] T022 [US1] Add validation + error handling for all 12 tool handlers (per 039 R10, no leaked pending waits) + structured logs for `tool_call dispatched/resolved/schema-rejected/timeout` (NFR-005)
+- [x] T019 [P] [US1] Implement `services/tools.js` — 12 tool declarations + input JSON-schemas (FR-002/014/016/024)
+- [x] T020 [US1] Implement `services/handlers.js` — tool handlers wired to the engine (create/read/modify/delete/export/validate/run/status/cancel/list/run_list/run_get) (depends on T019, T014)
+- [x] T021 [US1] Implement `workflow_list` returning `workflow_id`, `status` (running/idle), `run_id` when running (FR-024) in `services/handlers.js`
+- [x] T022 [US1] Add validation + error handling for all 12 tool handlers (per 039 R10, no leaked pending waits) + structured logs for `tool_call dispatched/resolved/schema-rejected/timeout` (NFR-005)
 
 **Checkpoint**: US1 fully functional — the assistant can control workflows end-to-end via the 12 tools, independent of the UI.
 
@@ -86,15 +86,15 @@
 
 > **NOTE: Write these FIRST, ensure they FAIL before implementation**
 
-- [ ] T018a [P] [US2] Unit test for tool gating — a gated workflow tool is not auto-executed without approval (per 039 FR-005) — in `<item>/services/__tests__/tools.test.js`
-- [ ] T018b [P] [US2] Unit test for lifecycle cleanup — stopping/uninstalling the service removes declared tools from the registry (per 039 FR-006) — in `<item>/services/__tests__/handlers.test.js`
-- [ ] T018c [P] [US2] E2E test for tool gating + lifecycle — with a restrictive gate config a workflow tool is deferred; stopping the service removes the tools — in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T018a [P] [US2] Unit test for tool gating — a gated workflow tool is not auto-executed without approval (per 039 FR-005) — in `<item>/services/__tests__/tools.test.js`
+- [x] T018b [P] [US2] Unit test for lifecycle cleanup — stopping/uninstalling the service removes declared tools from the registry (per 039 FR-006) — in `<item>/services/__tests__/handlers.test.js`
+- [x] T018c [P] [US2] E2E test for tool gating + lifecycle — with a restrictive gate config a workflow tool is deferred; stopping the service removes the tools — in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T018d [P] [US2] Implement 039 tool-gating wiring — ensure service-declared workflow tools respect the allowlist/deferred-approval model exactly like built-in tools (FR-010)
-- [ ] T018e [US2] Implement registry-cleanup on stop/uninstall — service teardown removes its declared tools from the registry (FR-011), no stale tool call to a stopped service
-- [ ] T018f [US2] Wire lifecycle hooks — `tool_declare` on start, tool-registry removal on stop/uninstall, gating respected end-to-end
+- [x] T018d [P] [US2] Implement 039 tool-gating wiring — ensure service-declared workflow tools respect the allowlist/deferred-approval model exactly like built-in tools (FR-010)
+- [x] T018e [US2] Implement registry-cleanup on stop/uninstall — service teardown removes its declared tools from the registry (FR-011), no stale tool call to a stopped service
+- [x] T018f [US2] Wire lifecycle hooks — `tool_declare` on start, tool-registry removal on stop/uninstall, gating respected end-to-end
 
 **Checkpoint**: US1 + US2 — workflow tools are gated like built-in tools, disappear on stop/uninstall, and are never auto-executed without approval.
 
@@ -108,14 +108,14 @@
 
 ### Tests for User Story 5 (unit + e2e, in scope) ⚠️
 
-- [ ] T023 [P] [US5] Unit test for executor (delegate contract) in `<item>/services/__tests__/executor.test.js`
-- [ ] T024 [P] [US5] E2E test for the fire-and-poll run contract — `workflow_run` returns a `runId` immediately, `workflow_status` reports progress, `workflow_cancel` flips `running` → `idle` — in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T023 [P] [US5] Unit test for executor (delegate contract) in `<item>/services/__tests__/executor.test.js`
+- [x] T024 [P] [US5] E2E test for the fire-and-poll run contract — `workflow_run` returns a `runId` immediately, `workflow_status` reports progress, `workflow_cancel` flips `running` → `idle` — in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 5
 
-- [ ] T025 [P] [US5] Implement `services/engine/executor.js` — loopback `POST /api/subagents/delegate` per node (ADR-1), NDJSON, fire-and-poll `runId` (depends on T011)
-- [ ] T026 [US5] Implement run-state tracking + `workflow_status`/`workflow_run_get` live status in `services/engine/store.js` + `services/runs.js` (depends on T025)
-- [ ] T027 [US5] Implement cancellation (Option (b)): worker aborts its in-flight delegate fetch; inner-loop linked-abort settles `cancelled` — no bos-core delegate-route change (depends on T025)
+- [x] T025 [P] [US5] Implement `services/engine/executor.js` — loopback `POST /api/subagents/delegate` per node (ADR-1), NDJSON, fire-and-poll `runId` (depends on T011)
+- [x] T026 [US5] Implement run-state tracking + `workflow_status`/`workflow_run_get` live status in `services/engine/store.js` + `services/runs.js` (depends on T025)
+- [x] T027 [US5] Implement cancellation (Option (b)): worker aborts its in-flight delegate fetch; inner-loop linked-abort settles `cancelled` — no bos-core delegate-route change (depends on T025)
 
 **Checkpoint**: US1 + US2 + US5 — workflows can be run asynchronously, polled, and cancelled via tools.
 
@@ -129,16 +129,16 @@
 
 ### Tests for User Story 3 (unit + e2e, in scope) ⚠️
 
-- [ ] T028 [P] [US3] Unit test for vfs bridge in `<item>/services/__tests__/vfs.test.js`
-- [ ] T029 [P] [US3] Unit test for run persistence in `<item>/services/__tests__/runs.test.js`
-- [ ] T030 [P] [US3] Unit test for migration (additive, idempotent) in `<item>/services/__tests__/migration.test.js`
-- [ ] T031 [P] [US3] E2E test for real-VFS persistence + historical-run access via tools — create/run, verify workflow JSON + run log persist, `workflow_run_list`/`workflow_run_get` return the run — in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T028 [P] [US3] Unit test for vfs bridge in `<item>/services/__tests__/vfs.test.js`
+- [x] T029 [P] [US3] Unit test for run persistence in `<item>/services/__tests__/runs.test.js`
+- [x] T030 [P] [US3] Unit test for migration (additive, idempotent) in `<item>/services/__tests__/migration.test.js`
+- [x] T031 [P] [US3] E2E test for real-VFS persistence + historical-run access via tools — create/run, verify workflow JSON + run log persist, `workflow_run_list`/`workflow_run_get` return the run — in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T032 [P] [US3] Implement `services/runs.js` — run entity persistence + `workflow_run_list`/`workflow_run_get` (US6, FR-016) (depends on T014, T026)
-- [ ] T033 [US3] Implement `services/migration.js` — additive legacy-workflow migration (ADR-5, copy + archive, never delete) (depends on T014)
-- [ ] T034 [US3] Wire real-VFS workflow + run storage into `handlers.js` (create/read/delete/export read/write `/Workflows/*`) (depends on T032)
+- [x] T032 [P] [US3] Implement `services/runs.js` — run entity persistence + `workflow_run_list`/`workflow_run_get` (US6, FR-016) (depends on T014, T026)
+- [x] T033 [US3] Implement `services/migration.js` — additive legacy-workflow migration (ADR-5, copy + archive, never delete) (depends on T014)
+- [x] T034 [US3] Wire real-VFS workflow + run storage into `handlers.js` (create/read/delete/export read/write `/Workflows/*`) (depends on T032)
 
 **Checkpoint**: US1 + US2 + US5 + US3 — workflows and runs persist to the real VFS, historical runs are tool-reachable.
 
@@ -152,14 +152,14 @@
 
 ### Tests for User Story 7 (unit + e2e, in scope) ⚠️
 
-- [ ] T035 [P] [US7] Unit test for dynamic router (candidate selection + retry-loop) in `<item>/services/__tests__/router.test.js`
-- [ ] T036 [P] [US7] E2E test for dynamic routing — a node with candidate sub-agents selects one and the run proceeds along the chosen path; invalid selection is retried — in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T035 [P] [US7] Unit test for dynamic router (candidate selection + retry-loop) in `<item>/services/__tests__/router.test.js`
+- [x] T036 [P] [US7] E2E test for dynamic routing — a node with candidate sub-agents selects one and the run proceeds along the chosen path; invalid selection is retried — in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 7
 
-- [ ] T037 [P] [US7] Implement `services/engine/router.js` — dynamic routing: candidate selection as last action, retry-loop enforcement, auto-delegate for single child (depends on T012, T025)
-- [ ] T038 [US7] Wire router into the scheduler for multi-candidate nodes (depends on T037)
-- [ ] T039 [US7] Add validation for `candidateAgents[]` in `validate.js` (must exist, must be resolvable)
+- [x] T037 [P] [US7] Implement `services/engine/router.js` — dynamic routing: candidate selection as last action, retry-loop enforcement, auto-delegate for single child (depends on T012, T025)
+- [x] T038 [US7] Wire router into the scheduler for multi-candidate nodes (depends on T037)
+- [x] T039 [US7] Add validation for `candidateAgents[]` in `validate.js` (must exist, must be resolvable)
 
 **Checkpoint**: US1+2+5+3+7 — workflows can dynamically route to the appropriate sub-agent at run time.
 
@@ -173,15 +173,15 @@
 
 ### Tests for User Story 8 (unit + e2e, in scope) ⚠️
 
-- [ ] T040 [P] [US8] Unit test for scheduler (ready-set, concurrency cap, research fan-out) in `<item>/services/__tests__/scheduler.test.js`
-- [ ] T041 [P] [US8] Unit test for node model (agent source × output type) in `<item>/services/__tests__/node-model.test.js`
-- [ ] T042 [P] [US8] E2E test for parallel execution + ephemeral agents — independent branches run concurrently (up to the cap), an ephemeral-agent node executes — in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T040 [P] [US8] Unit test for scheduler (ready-set, concurrency cap, research fan-out) in `<item>/services/__tests__/scheduler.test.js`
+- [x] T041 [P] [US8] Unit test for node model (agent source × output type) in `<item>/services/__tests__/node-model.test.js`
+- [x] T042 [P] [US8] E2E test for parallel execution + ephemeral agents — independent branches run concurrently (up to the cap), an ephemeral-agent node executes — in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 8
 
-- [ ] T043 [P] [US8] Implement `services/engine/scheduler.js` — DAG scheduler: ready-set, `maxConcurrentSteps` cap, research fan-out (depends on T012, T038)
-- [ ] T044 [US8] Implement research output type — fan out multiple sub-agents in parallel, collect outputs (depends on T043)
-- [ ] T045 [US8] Implement ephemeral agent node execution — task + tools + skills via the delegate route (ADR-1, open item #3: skill scoping) (depends on T043)
+- [x] T043 [P] [US8] Implement `services/engine/scheduler.js` — DAG scheduler: ready-set, `maxConcurrentSteps` cap, research fan-out (depends on T012, T038)
+- [x] T044 [US8] Implement research output type — fan out multiple sub-agents in parallel, collect outputs (depends on T043)
+- [x] T045 [US8] Implement ephemeral agent node execution — task + tools + skills via the delegate route (ADR-1, open item #3: skill scoping) (depends on T043)
 
 **Checkpoint**: US1+2+5+3+7+8 — workflows can route dynamically AND run branches/sub-agents in parallel, with ephemeral-agent nodes.
 
