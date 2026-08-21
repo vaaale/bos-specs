@@ -195,14 +195,14 @@
 
 ### Tests for User Story 4+5 (e2e, in scope) ⚠️
 
-- [ ] T046 [P] [US45] E2E test for graph views (list/detail/run + active-step highlight) in `e2e/001-workflow-manager-service-tools.spec.ts`
-- [ ] T047 [P] [US45] E2E test for service-stopped banner + empty state in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T046 [P] [US45] E2E test for graph views (list/detail/run + active-step highlight) in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T047 [P] [US45] E2E test for service-stopped banner + empty state in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 4+5
 
-- [ ] T048 [P] [US45] Build the app facet `app/src/main.tsx` — list view (from real VFS), service pill, stopped banner, empty state (mockup-driven, `mockup.html` is the binding UI contract)
-- [ ] T049 [US45] Implement the graph view in `app/src/` — nodes + dependency edges, branching, active-step highlight + live per-step status (FR-012/013) (depends on T048)
-- [ ] T050 [US45] Add tool-affordance labels on primary action buttons (`workflow_run`/`workflow_cancel`/`workflow_create`/etc.) per FR-014 (depends on T048)
+- [x] T048 [P] [US45] Build the app facet `app/src/main.tsx` — list view (from real VFS), service pill, stopped banner, empty state (mockup-driven, `mockup.html` is the binding UI contract)
+- [x] T049 [US45] Implement the graph view in `app/src/` — nodes + dependency edges, branching, active-step highlight + live per-step status (FR-012/013) (depends on T048)
+- [x] T050 [US45] Add tool-affordance labels on primary action buttons (`workflow_run`/`workflow_cancel`/`workflow_create`/etc.) per FR-014 (depends on T048)
 
 **Checkpoint**: US1+2+5+3+7+8+45 — the graph UI works end-to-end, mirroring the tool surface.
 
@@ -216,12 +216,12 @@
 
 ### Tests for User Story 6 (e2e, in scope) ⚠️
 
-- [ ] T051 [P] [US6] E2E test for historical-run replay (run selector → graph outcomes + replayed event stream) in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T051 [P] [US6] E2E test for historical-run replay (run selector → graph outcomes + replayed event stream) in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 6
 
-- [ ] T052 [P] [US6] Implement run selector in the detail view `app/src/` (lists historical runs with id/timestamp/state) (depends on T048, T032)
-- [ ] T053 [US6] Implement historical-run graph replay — per-step final outcome from the run log, distinct from live state; replayed event stream (depends on T052)
+- [x] T052 [P] [US6] Implement run selector in the detail view `app/src/` (lists historical runs with id/timestamp/state) (depends on T048, T032)
+- [x] T053 [US6] Implement historical-run graph replay — per-step final outcome from the run log, distinct from live state; replayed event stream (depends on T052)
 
 **Checkpoint**: US1+2+5+3+7+8+45+6 — historical runs are inspectable in the app, replaying from the persisted log.
 
@@ -235,12 +235,12 @@
 
 ### Tests for User Story 9 (e2e, in scope) ⚠️
 
-- [ ] T054 [P] [US9] E2E test for the skill — load the Workflow Manager skill, build a workflow from a natural-language trigger, execute and retrieve results — in `e2e/001-workflow-manager-service-tools.spec.ts`
+- [x] T054 [P] [US9] E2E test for the skill — load the Workflow Manager skill, build a workflow from a natural-language trigger, execute and retrieve results — in `e2e/001-workflow-manager-service-tools.spec.ts`
 
 ### Implementation for User Story 9
 
-- [ ] T055 [P] [US9] Author `skills/workflow-manager/SKILL.md` — instructions for building workflows (ephemeral/Research nodes, candidate agents, required tools/skills), executing, retrieving results, historical-run inspection (depends on T019, T020)
-- [ ] T056 [US9] Wire the skill into the item so the assistant can load it (per `target-marketplace-item.md` skill bundling)
+- [x] T055 [P] [US9] Author `skills/workflow-manager/SKILL.md` — instructions for building workflows (ephemeral/Research nodes, candidate agents, required tools/skills), executing, retrieving results, historical-run inspection (depends on T019, T020)
+- [x] T056 [US9] Wire the skill into the item so the assistant can load it (per `target-marketplace-item.md` skill bundling)
 
 **Checkpoint**: US1+2+5+3+7+8+45+6+9 — the assistant can build/execute/retrieve workflows guided by the bundled skill.
 
@@ -252,14 +252,14 @@
 
 ### Usage Documentation
 
-- [ ] T057 [P] Author `docs/usage.md` — end-user guide: what Workflow Manager does, how to build a workflow from a natural-language trigger (with the sustainability-analysis example), the graph views (list/detail/run), historical-run inspection, the service pill + stopped banner, and the bundled skill
-- [ ] T058 [P] Author `docs/tool-reference.md` — the 12 tools (names, descriptions, input schemas, fire-and-poll contract, FR-024 `workflow_list` live status + `run_id`), with worked examples of a full build→run→poll→cancel→inspect loop
+- [x] T057 [P] Author `docs/usage.md` — end-user guide: what Workflow Manager does, how to build a workflow from a natural-language trigger (with the sustainability-analysis example), the graph views (list/detail/run), historical-run inspection, the service pill + stopped banner, and the bundled skill
+- [x] T058 [P] Author `docs/tool-reference.md` — the 12 tools (names, descriptions, input schemas, fire-and-poll contract, FR-024 `workflow_list` live status + `run_id`), with worked examples of a full build→run→poll→cancel→inspect loop
 
 ### Development Documentation
 
-- [ ] T059 [P] Author `docs/dev/architecture.md` — the service-owned engine: node model (agent source × output type), scheduler (ready-set, `maxConcurrentSteps`, research fan-out), router (dynamic routing + retry-loop), executor (loopback `/api/subagents/delegate` contract, ADR-1), storage layout (real VFS `/Workflows/` + `/Workflows/.runs/`), cancellation (Option (b))
-- [ ] T060 [P] Author `docs/dev/contribution.md` — how to extend: adding a tool, adding a node output type, adding a candidate agent, the 039 service-declared-tool contract, unit + e2e test conventions, and the bos-core retirement rationale
-- [ ] T061 [P] Bos-core doc update: update `docs/dev/architecture-overview.md` §14 (workflows subsystem) to record the retirement — docs/spec drift tracking per constitution
+- [x] T059 [P] Author `docs/dev/architecture.md` — the service-owned engine: node model (agent source × output type), scheduler (ready-set, `maxConcurrentSteps`, research fan-out), router (dynamic routing + retry-loop), executor (loopback `/api/subagents/delegate` contract, ADR-1), storage layout (real VFS `/Workflows/` + `/Workflows/.runs/`), cancellation (Option (b))
+- [x] T060 [P] Author `docs/dev/contribution.md` — how to extend: adding a tool, adding a node output type, adding a candidate agent, the 039 service-declared-tool contract, unit + e2e test conventions, and the bos-core retirement rationale
+- [x] T061 [P] Bos-core doc update: update `docs/dev/architecture-overview.md` §14 (workflows subsystem) to record the retirement — docs/spec drift tracking per constitution
 
 **Checkpoint**: Documentation complete — usage + dev docs written against the implemented code and the mockup.
 
@@ -269,12 +269,12 @@
 
 **Purpose**: Improvements that affect multiple user stories + final assembly.
 
-- [ ] T062 [P] Wire `workflow_create` generation path — confirm whether generation uses the delegate route (ephemeral planner) or the workflow-builder agent constructs directly (open item #2); implement chosen path in `engine/generate.js` + unit test for `engine/generate.js` in `<item>/services/__tests__/generate.test.js`
-- [ ] T063 [P] Resolve ephemeral-node skill scoping (open item #3) — fold skills into task text if the delegate route can't scope per-node skills
-- [ ] T064 [P] Confirm + finalize the 5 net-new tool names/schemas (`list`/`read`/`delete`/`run_list`/`run_get`) (open item #4)
-- [ ] T065 [P] Document capability grants (`services:read`, `fs:read`) for the app in the usage doc + settings note (open item #5)
-- [ ] T066 Run the FULL e2e suite (all stories) + all unit tests; fix failures; verify service restart + migration (ADR-5) + cancelled-run settling
-- [ ] T067 Final assembly: `app_build` the item; verify `workflow_list` live status + run_id (FR-024), service-stopped banner, graph views, and docs are packaged with the item
+- [x] T062 [P] Wire `workflow_create` generation path — confirm whether generation uses the delegate route (ephemeral planner) or the workflow-builder agent constructs directly (open item #2); implement chosen path in `engine/generate.js` + unit test for `engine/generate.js` in `<item>/services/__tests__/generate.test.js`
+- [x] T063 [P] Resolve ephemeral-node skill scoping (open item #3) — fold skills into task text if the delegate route can't scope per-node skills
+- [x] T064 [P] Confirm + finalize the 5 net-new tool names/schemas (`list`/`read`/`delete`/`run_list`/`run_get`) (open item #4)
+- [x] T065 [P] Document capability grants (`services:read`, `fs:read`) for the app in the usage doc + settings note (open item #5)
+- [x] T066 Run the FULL e2e suite (all stories) + all unit tests; fix failures; verify service restart + migration (ADR-5) + cancelled-run settling
+- [x] T067 Final assembly: `app_build` the item; verify `workflow_list` live status + run_id (FR-024), service-stopped banner, graph views, and docs are packaged with the item
 
 ---
 
