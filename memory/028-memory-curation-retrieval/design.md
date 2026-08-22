@@ -129,7 +129,7 @@ flowchart TB
 - **`rebuildMemoryIndex`** (`agent-memory.ts`) — called by `topics.ts` after every write; unchanged, and the new topic-file fields are invisible to it (it only reads the first `> ` digest line).
 - **`runToolLoop`** (`llm.ts`) — the slow loop's execution primitive; unchanged.
 - **`/api/memory`** route family — already exposes topic `add`/`replace`/`remove`/`create` (via `topics.ts`) and `/api/memory/search` (via `memorySearch`); this feature changes their *behavior* (soft budget, lifecycle) without changing the route contracts.
-- **`openai` npm SDK** (existing dependency) — `.embeddings.create({ model, input })` for the dense signal; no new dependency.
+- **`openai` npm SDK** (existing — but undeclared/hoisted, see ADR-6 + Constitution VII caveat) — `.embeddings.create({ model, input })` for the dense signal; no new *declared* dependency.
 - **Settings namespace plumbing** — `ai-provider` in `config/registry.ts` already delegates load/save to `getProviderConfig`/`updateProviderConfig`; we only add field declarations so the generic config surface + auto-generated assistant config tools see the new keys (with `secret: true` on the embedding key).
 
 ---
@@ -201,7 +201,7 @@ New format (backward compatible):
 - [2026-01-05] active entry text
 - [2026-01-12] superseded entry text ⟦superseded by=<entryId>@2026-02-01⟧
 ```
-- The **consolidation flag** is an HTML-comment marker line directly under the digest. The parser sets `Topic.consolidate`; the serializer emits it only when set. `currentBudget` measures entry lines only, so the marker never inflates the number. Clearing = removing the line in the final atomic write (FR-007).
+- The **consolidation flag** is an HTML-comment marker line directly under the digest. The parser sets `Topic.consolidate`; the serializer emits it only when set. `currentBudget` keeps its existing baseline unchanged (full serialized length — slug + digest + entries + chrome, i.e. "as today") and **excludes only the new marker line** (treated as metadata), so setting/clearing the flag never changes the reported usage. Clearing = removing the line in the final atomic write (FR-007).
 - **Lifecycle** is an inline trailing tag `⟦superseded by=<entryId>@<ts>⟧` on the entry line. The parser's `ENTRY_LINE` regex is extended to optionally capture it; absent → `state: "active"` (FR-020 edge case: no contradiction → active by default). The existing regex-derived `superseded` heuristic is kept as a *read-time* fallback for legacy files that predate the explicit tag, then the explicit tag is the authority (see ADR-5).
 - **`rebuildMemoryIndex` effect**: none. It reads only the first `> ` line per topic; the marker (comment) and lifecycle tags (on entry lines) are invisible to it. The index stays a clean `slug → digest` table.
 
