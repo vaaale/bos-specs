@@ -179,7 +179,9 @@
     "anthropic": {
       label: "Anthropic", model: "claude-sonnet-4-6", baseUrl: "https://api.anthropic.com",
       basePlaceholder: "https://api.anthropic.com (default)", hasKey: true, keyRequired: true,
-      embedModel: "text-embedding-3-small", embedStatus: "unsupported",
+      embedModel: "", embedModelPlaceholder: "OpenAI-compatible model — or leave blank to disable",
+      embedModelNote: "No standard Anthropic embedding model — set an OpenAI-compatible model, or leave blank to disable embeddings (retrieval degrades to keyword + recency + importance).",
+      embedStatus: "unsupported",
     },
     "openai": {
       label: "OpenAI", model: "gpt-4o", baseUrl: "https://api.openai.com/v1",
@@ -264,9 +266,10 @@
 
     // embeddings — model (required, per-provider default)
     $("embedModel").value = state.embedModel;
-    $("embedModel").placeholder = m.embedModel;
-    $("embedModelHint").innerHTML =
-      'Required — defaults to <code class="text-white/60">' + m.embedModel + '</code> for ' + m.label + '.';
+    $("embedModel").placeholder = m.embedModelPlaceholder || m.embedModel || "embedding model";
+    $("embedModelHint").innerHTML = m.embedModel
+      ? 'Required — defaults to <code class="text-white/60">' + m.embedModel + '</code> for ' + m.label + '.'
+      : '<span class="text-amber-200/80">' + (m.embedModelNote || 'Required — set a model served by your endpoint.') + '</span>';
 
     // embeddings — status line
     const s = EMBED_STATUS[state.embedStatus];
@@ -296,7 +299,7 @@
     anthropic: () => Object.assign(state, {
       provider: "anthropic", model: "claude-sonnet-4-6", baseUrl: "https://api.anthropic.com",
       hasKey: true, keyTyped: "",
-      embedUrl: "", embedHasKey: false, embedKeyTyped: "", embedModel: "text-embedding-3-small",
+      embedUrl: "", embedHasKey: false, embedKeyTyped: "", embedModel: "",
       embedStatus: "unsupported",
     }),
     local: () => Object.assign(state, {
