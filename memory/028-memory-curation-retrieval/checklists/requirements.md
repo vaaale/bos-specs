@@ -31,4 +31,6 @@
 
 ## Notes
 
-- One `[NEEDS CLARIFICATION]` remains: **T3 retrieval backend** (dense vector embeddings vs dependency-free lexical+recency+importance). This is a scope decision the user must make; it does not block stories 1–3 (P1) or the write-path core. All other sections pass.
+- T3 backend resolved by user (2026-08-22): **hybrid dense (embedding) + sparse (BM25)**. Embedding endpoint is a new AI provider config (base URL, API key, model name) with per-field fallback to the LLM provider when left empty. Graceful degradation to sparse+recency+importance when the provider lacks an embeddings endpoint.
+- Spec now touches two subsystems: `src/lib/agent/memory/` and the AI provider config layer + its Settings surface.
+- All checklist items pass.
