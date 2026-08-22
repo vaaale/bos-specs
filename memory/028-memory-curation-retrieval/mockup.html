@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AI Provider — Embeddings subsection · UI Mockup</title>
+<title>AI Provider — Embeddings subsection · UI Contract (final state)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
@@ -41,19 +41,7 @@
     <!-- Scroll body -->
     <div class="min-h-0 overflow-auto p-4">
 
-      <!-- Scenario selector (mockup helper, not shipped UI) -->
-      <div class="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-white/15 bg-white/[0.02] px-3 py-2">
-        <span class="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-white/40">
-          <i data-lucide="layers" class="shrink-0" style="width:13px;height:13px"></i> Preview state
-        </span>
-        <div class="flex items-center gap-1" id="tabs">
-          <button data-scenario="openai" class="rounded px-2 py-1 text-xs transition-colors bg-white/15 text-white">OpenAI · full config</button>
-          <button data-scenario="anthropic" class="rounded px-2 py-1 text-xs transition-colors text-white/60 hover:bg-white/10">Anthropic · no endpoint</button>
-          <button data-scenario="local" class="rounded px-2 py-1 text-xs transition-colors text-white/60 hover:bg-white/10">Local · custom endpoint</button>
-        </div>
-      </div>
-
-      <!-- ===================== AI PROVIDER FORM ===================== -->
+      <!-- ===================== AI PROVIDER FORM (single canonical final state) ===================== -->
       <div class="space-y-3">
 
         <!-- Existing fields -->
@@ -211,19 +199,37 @@
     unknown:     { icon: "help-circle",    cls: "text-white/50",   label: "embeddings: status unknown — test the connection" },
   };
 
-  // Live form state
+  // The single canonical, fully-configured final state this mockup represents:
+  // OpenAI selected, every field populated as the shipped design intends.
   const state = {
     provider: "openai",
-    model: "", baseUrl: "", hasKey: false, keyTyped: "",
-    embedUrl: "", embedHasKey: false, embedKeyTyped: "", embedModel: "",
+    model: "gpt-4o",
+    baseUrl: "https://api.openai.com/v1",
+    hasKey: true,
+    keyTyped: "",
+    embedUrl: "",        // blank -> falls back to the LLM provider's base URL
+    embedHasKey: false,  // blank -> falls back to the LLM provider's API key
+    embedKeyTyped: "",
+    embedModel: "text-embedding-3-small",
     embedStatus: "available",
   };
 
   const $ = (id) => document.getElementById(id);
   const meta = () => PROVIDERS[state.provider];
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   function effectiveEmbedUrl() {
     return state.embedUrl || state.baseUrl || "";
+  }
+
+  function embedModelHintHTML() {
+    const m = meta();
+    if (state.embedModel && state.embedModel !== m.embedModel) {
+      return 'Custom model — <code class="text-white/60">' + esc(state.embedModel) + '</code> in use.';
+    }
+    return m.embedModel
+      ? 'Required — defaults to <code class="text-white/60">' + m.embedModel + '</code> for ' + m.label + '.'
+      : '<span class="text-amber-200/80">' + (m.embedModelNote || 'Required — set a model served by your endpoint.') + '</span>';
   }
 
   function applyState() {
@@ -267,9 +273,7 @@
     // embeddings — model (required, per-provider default)
     $("embedModel").value = state.embedModel;
     $("embedModel").placeholder = m.embedModelPlaceholder || m.embedModel || "embedding model";
-    $("embedModelHint").innerHTML = m.embedModel
-      ? 'Required — defaults to <code class="text-white/60">' + m.embedModel + '</code> for ' + m.label + '.'
-      : '<span class="text-amber-200/80">' + (m.embedModelNote || 'Required — set a model served by your endpoint.') + '</span>';
+    $("embedModelHint").innerHTML = embedModelHintHTML();
 
     // embeddings — status line
     const s = EMBED_STATUS[state.embedStatus];
@@ -277,55 +281,17 @@
       '<i data-lucide="' + s.icon + '" style="width:13px;height:13px" class="shrink-0 ' + s.cls + '"></i>' +
       '<span class="' + s.cls + '">' + s.label + '</span>';
 
-    // tabs active state
-    document.querySelectorAll("#tabs button").forEach((b) => {
-      const on = b.dataset.scenario === activeScenario;
-      b.className = "rounded px-2 py-1 text-xs transition-colors " +
-        (on ? "bg-white/15 text-white" : "text-white/60 hover:bg-white/10");
-    });
-
     lucide.createIcons();
   }
 
-  // ---- Scenarios (preview helper) ----
-  let activeScenario = "openai";
-  const SCENARIOS = {
-    openai: () => Object.assign(state, {
-      provider: "openai", model: "gpt-4o", baseUrl: "https://api.openai.com/v1",
-      hasKey: true, keyTyped: "",
-      embedUrl: "", embedHasKey: false, embedKeyTyped: "", embedModel: "text-embedding-3-small",
-      embedStatus: "available",
-    }),
-    anthropic: () => Object.assign(state, {
-      provider: "anthropic", model: "claude-sonnet-4-6", baseUrl: "https://api.anthropic.com",
-      hasKey: true, keyTyped: "",
-      embedUrl: "", embedHasKey: false, embedKeyTyped: "", embedModel: "",
-      embedStatus: "unsupported",
-    }),
-    local: () => Object.assign(state, {
-      provider: "openai-compatible", model: "local-model", baseUrl: "http://localhost:1234/v1",
-      hasKey: false, keyTyped: "",
-      embedUrl: "http://localhost:1235/v1", embedHasKey: true, embedKeyTyped: "", embedModel: "nomic-embed-text",
-      embedStatus: "unknown",
-    }),
-  };
-
-  function loadScenario(id) {
-    activeScenario = id;
-    SCENARIOS[id]();
-    $("actionStatus").innerHTML = "";
-    applyState();
-  }
-
   // ---- Wire up ----
-  document.querySelectorAll("#tabs button").forEach((b) =>
-    b.addEventListener("click", () => loadScenario(b.dataset.scenario)));
-
+  // The provider <select> is a real control. Changing it re-applies that provider's
+  // own defaults (model / base URL / key requirement / embedding model + status)
+  // from the per-provider metadata table — the real form's behavior. It does NOT
+  // jump between any canned "preview" scenarios.
   $("provider").addEventListener("change", (e) => {
-    const p = e.target.value;
-    const m = PROVIDERS[p];
-    state.provider = p;
-    // switching provider re-applies sensible defaults (like the real form)
+    const m = PROVIDERS[e.target.value];
+    state.provider = e.target.value;
     state.model = m.model;
     state.baseUrl = m.baseUrl;
     state.hasKey = m.hasKey;
@@ -339,12 +305,12 @@
     applyState();
   });
 
+  // light interactivity on the text inputs (typing updates the hints)
   $("baseUrl").addEventListener("input", (e) => { state.baseUrl = e.target.value; $("embedUrl").placeholder = "Uses: " + (effectiveEmbedUrl() || "(none set above)"); });
   $("apiKey").addEventListener("input", (e) => { state.keyTyped = e.target.value; if (e.target.value) state.hasKey = true; applyState(); });
-
   $("embedUrl").addEventListener("input", (e) => { state.embedUrl = e.target.value; applyState(); });
   $("embedKey").addEventListener("input", (e) => { state.embedKeyTyped = e.target.value; if (e.target.value) state.embedHasKey = true; applyState(); });
-  $("embedModel").addEventListener("input", (e) => { state.embedModel = e.target.value; });
+  $("embedModel").addEventListener("input", (e) => { state.embedModel = e.target.value; $("embedModelHint").innerHTML = embedModelHintHTML(); });
 
   $("saveBtn").addEventListener("click", () => {
     $("actionStatus").innerHTML = '<span class="flex items-center gap-1 text-emerald-300"><i data-lucide="check-circle-2" style="width:13px;height:13px"></i>Saved.</span>';
@@ -357,7 +323,6 @@
     setTimeout(() => {
       const m = meta();
       state.embedStatus = m.embedStatus;
-      const s = EMBED_STATUS[state.embedStatus];
       $("actionStatus").innerHTML =
         '<span class="flex items-center gap-1 text-emerald-300"><i data-lucide="check-circle-2" style="width:13px;height:13px"></i>Connected to ' + m.label + ' (' + m.model + ')</span>';
       applyState();
@@ -366,8 +331,8 @@
     }, 500);
   });
 
-  // init
-  loadScenario("openai");
+  // init: render the single canonical, fully-configured OpenAI state
+  applyState();
 </script>
 </body>
 </html>
