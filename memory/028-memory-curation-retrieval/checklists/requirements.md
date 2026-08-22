@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain — **1 remains** (T3 retrieval backend: dense embeddings vs dependency-free lexical)
+- [x] No [NEEDS CLARIFICATION] markers remain (T3 backend resolved: hybrid dense-embedding + BM25, via a new provider embedding endpoint with per-field fallback to the LLM base URL/key)
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
