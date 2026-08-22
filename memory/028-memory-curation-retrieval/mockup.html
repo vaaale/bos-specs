@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Provider — Embeddings subsection · UI Contract (final state)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background: #0f1117;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  code { font-family: "Geist Mono", ui-monospace, SFMono-Regular, monospace; }
+</style>
+</head>
+<body class="min-h-screen flex items-start justify-center p-6 text-white/90">
+
+  <!-- Window chrome (Settings app, AI Provider surface) -->
+  <div class="w-[760px] max-w-[96vw] overflow-hidden rounded-2xl border border-white/10 bg-[#15171e] shadow-2xl">
+
+    <!-- Titlebar -->
+    <div class="flex select-none items-center gap-2 border-b border-white/10 bg-white/5 px-3 py-2">
+      <div class="flex gap-1.5">
+        <span class="h-3 w-3 rounded-full" style="background:#ff5f57"></span>
+        <span class="h-3 w-3 rounded-full" style="background:#febc2e"></span>
+        <span class="h-3 w-3 rounded-full" style="background:#28c840"></span>
+      </div>
+      <span class="ml-2 flex items-center gap-1.5 text-xs text-white/60">
+        <i data-lucide="settings" class="shrink-0" style="width:14px;height:14px"></i>
+        Settings <span class="text-white/30">/</span>
+        <span class="text-white/90">AI Provider</span>
+      </span>
+    </div>
+
+    <!-- Scroll body -->
+    <div class="min-h-0 overflow-auto p-4">
+
+      <!-- ===================== AI PROVIDER FORM (single canonical final state) ===================== -->
+      <div class="space-y-3">
+
+        <!-- Existing fields -->
+        <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+
+          <label class="text-xs text-white/60">Provider</label>
+          <select id="provider"
+                  class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30">
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="openai-codex">OpenAI Codex</option>
+            <option value="openai-compatible">Local (OpenAI-compatible)</option>
+            <option value="openai-responses">OpenAI Responses API</option>
+          </select>
+
+          <label class="text-xs text-white/60">Model</label>
+          <div class="flex items-center gap-1.5">
+            <input id="model"
+                   class="flex-1 rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+            <button type="button" title="Refresh model list"
+                    class="flex items-center gap-1 rounded border border-white/10 bg-black/20 px-2 py-1.5 text-xs hover:bg-white/10">
+              <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+            </button>
+          </div>
+          <span />
+          <p class="text-[11px] text-white/40">Start typing to filter, or enter a custom model name.</p>
+
+          <label class="text-xs text-white/60">Base URL</label>
+          <input id="baseUrl"
+                 class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+
+          <label class="text-xs text-white/60">API key</label>
+          <div class="flex items-center gap-2">
+            <input id="apiKey" type="password" autoComplete="new-password"
+                   class="flex-1 rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+            <span id="keyIndicator" class="shrink-0 text-[11px]"></span>
+          </div>
+
+          <label class="text-xs text-white/60">Max output tokens</label>
+          <input type="number" min="0" placeholder="provider default (leave blank)"
+                 class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+
+          <label class="text-xs text-white/60">Context window</label>
+          <input type="number" min="0" placeholder="model default (e.g. 256000)"
+                 class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+        </div>
+
+        <!-- ============ NEW: EMBEDDINGS SUBSECTION ============ -->
+        <div class="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <div class="mb-2 flex items-center gap-2">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-white/50">Embeddings</h3>
+            <span class="rounded border border-dashed border-sky-400/40 bg-sky-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">new</span>
+            <span id="embedStatus" class="ml-auto flex items-center gap-1 text-[11px]"></span>
+          </div>
+
+          <div class="space-y-2">
+            <!-- Base URL -->
+            <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+              <label class="text-xs text-white/60">Base URL</label>
+              <input id="embedUrl"
+                     class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+            </div>
+            <div class="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span />
+              <p id="embedUrlHint" class="text-[11px] text-white/40"></p>
+            </div>
+
+            <!-- API key -->
+            <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+              <label class="text-xs text-white/60">API key</label>
+              <div class="flex items-center gap-2">
+                <input id="embedKey" type="password" autoComplete="new-password"
+                       class="flex-1 rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+                <span id="embedKeyIndicator" class="shrink-0 text-[11px]"></span>
+              </div>
+            </div>
+            <div class="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span />
+              <p id="embedKeyHint" class="text-[11px] text-white/40"></p>
+            </div>
+
+            <!-- Model -->
+            <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+              <label class="flex items-center gap-1.5 text-xs text-white/60">
+                Model
+                <span class="rounded bg-white/10 px-1 text-[10px] font-normal text-white/50">required</span>
+              </label>
+              <input id="embedModel"
+                     class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+            </div>
+            <div class="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span />
+              <p id="embedModelHint" class="text-[11px] text-white/40"></p>
+            </div>
+          </div>
+        </div>
+        <!-- ============ /EMBEDDINGS ============ -->
+
+        <!-- Actions -->
+        <div class="flex items-center gap-2">
+          <button id="saveBtn"
+                  class="rounded bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20 disabled:opacity-40">Save</button>
+          <button id="testBtn"
+                  class="flex items-center gap-1 rounded bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20 disabled:opacity-40">
+            <span id="testSpin" class="hidden"><i data-lucide="loader-2" class="animate-spin" style="width:13px;height:13px"></i></span>
+            Test connection
+          </button>
+          <span id="actionStatus" class="flex items-center gap-1 text-xs"></span>
+        </div>
+
+        <p class="text-[11px] text-white/40">
+          Used by the Assistant chat, sub-agents, memory reflection, and the dev harness fallback. The
+          <span class="text-white/60">embeddings</span> endpoint powers dense (semantic) memory retrieval;
+          if the provider can't serve embeddings, retrieval degrades to keyword + recency + importance.
+        </p>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ---- Per-provider metadata (mirrors src/lib/agent/provider-meta.ts) ----
+  const PROVIDERS = {
+    "anthropic": {
+      label: "Anthropic", model: "claude-sonnet-4-6", baseUrl: "https://api.anthropic.com",
+      basePlaceholder: "https://api.anthropic.com (default)", hasKey: true, keyRequired: true,
+      embedModel: "", embedModelPlaceholder: "OpenAI-compatible model — or leave blank to disable",
+      embedModelNote: "No standard Anthropic embedding model — set an OpenAI-compatible model, or leave blank to disable embeddings (retrieval degrades to keyword + recency + importance).",
+      embedStatus: "unsupported",
+    },
+    "openai": {
+      label: "OpenAI", model: "gpt-4o", baseUrl: "https://api.openai.com/v1",
+      basePlaceholder: "https://api.openai.com/v1 (default)", hasKey: true, keyRequired: true,
+      embedModel: "text-embedding-3-small", embedStatus: "available",
+    },
+    "openai-codex": {
+      label: "OpenAI Codex", model: "gpt-5-codex", baseUrl: "https://api.openai.com/v1",
+      basePlaceholder: "https://api.openai.com/v1 (default)", hasKey: true, keyRequired: true,
+      embedModel: "text-embedding-3-small", embedStatus: "available",
+    },
+    "openai-compatible": {
+      label: "Local (OpenAI-compatible)", model: "local-model", baseUrl: "http://localhost:1234/v1",
+      basePlaceholder: "http://localhost:1234/v1", hasKey: false, keyRequired: false,
+      embedModel: "nomic-embed-text", embedStatus: "unknown",
+    },
+    "openai-responses": {
+      label: "OpenAI Responses API", model: "gpt-4o", baseUrl: "http://localhost:1234/v1",
+      basePlaceholder: "http://localhost:1234/v1 (or leave blank for api.openai.com)", hasKey: false, keyRequired: false,
+      embedModel: "text-embedding-3-small", embedStatus: "unknown",
+    },
+  };
+
+  const EMBED_STATUS = {
+    available:   { icon: "check-circle-2", cls: "text-emerald-300", label: "embeddings: available" },
+    unsupported: { icon: "alert-triangle", cls: "text-amber-300",  label: "embeddings: not supported from this endpoint" },
+    unknown:     { icon: "help-circle",    cls: "text-white/50",   label: "embeddings: status unknown — test the connection" },
+  };
+
+  // The single canonical, fully-configured final state this mockup represents:
+  // OpenAI selected, every field populated as the shipped design intends.
+  const state = {
+    provider: "openai",
+    model: "gpt-4o",
+    baseUrl: "https://api.openai.com/v1",
+    hasKey: true,
+    keyTyped: "",
+    embedUrl: "",        // blank -> falls back to the LLM provider's base URL
+    embedHasKey: false,  // blank -> falls back to the LLM provider's API key
+    embedKeyTyped: "",
+    embedModel: "text-embedding-3-small",
+    embedStatus: "available",
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const meta = () => PROVIDERS[state.provider];
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function effectiveEmbedUrl() {
+    return state.embedUrl || state.baseUrl || "";
+  }
+
+  function embedModelHintHTML() {
+    const m = meta();
+    if (state.embedModel && state.embedModel !== m.embedModel) {
+      return 'Custom model — <code class="text-white/60">' + esc(state.embedModel) + '</code> in use.';
+    }
+    return m.embedModel
+      ? 'Required — defaults to <code class="text-white/60">' + m.embedModel + '</code> for ' + m.label + '.'
+      : '<span class="text-amber-200/80">' + (m.embedModelNote || 'Required — set a model served by your endpoint.') + '</span>';
+  }
+
+  function applyState() {
+    const m = meta();
+
+    // existing fields
+    $("provider").value = state.provider;
+    $("model").value = state.model;
+    $("baseUrl").value = state.baseUrl;
+    $("baseUrl").placeholder = m.basePlaceholder;
+    $("apiKey").placeholder = state.hasKey ? "•••••••• (saved — type to replace)" : (m.keyRequired ? "Required" : "Optional for local");
+
+    // main key indicator
+    if (state.hasKey) {
+      $("keyIndicator").innerHTML = '<span class="text-emerald-300"><i data-lucide="key-round" style="width:12px;height:12px;display:inline;vertical-align:-2px"></i> key set</span>';
+    } else {
+      $("keyIndicator").innerHTML = m.keyRequired
+        ? '<span class="text-amber-300"><i data-lucide="circle-alert" style="width:12px;height:12px;display:inline;vertical-align:-2px"></i> required</span>'
+        : '<span class="text-white/40"><i data-lucide="circle-minus" style="width:12px;height:12px;display:inline;vertical-align:-2px"></i> optional</span>';
+    }
+
+    // embeddings — base url (blank = fallback to LLM base url)
+    $("embedUrl").value = state.embedUrl;
+    $("embedUrl").placeholder = "Uses: " + (effectiveEmbedUrl() || "(none set above)");
+    $("embedUrlHint").textContent = state.embedUrl
+      ? "Custom endpoint — requests go to the URL above, not the LLM base URL."
+      : "Leave blank to use the LLM provider's base URL above.";
+
+    // embeddings — api key (secret, never shown; blank = fallback to LLM key)
+    $("embedKey").value = state.embedKeyTyped;
+    $("embedKey").placeholder = state.embedHasKey || state.embedKeyTyped
+      ? "•••••••• (set — type to replace)"
+      : "Blank — uses the LLM provider's API key";
+    $("embedKeyHint").textContent = (state.embedHasKey || state.embedKeyTyped)
+      ? "A separate embedding key is in use. Stored as a secret; the value is never displayed."
+      : "Leave blank to use the LLM provider's API key above.";
+    $("embedKeyIndicator").innerHTML = (state.embedHasKey || state.embedKeyTyped)
+      ? '<span class="text-emerald-300"><i data-lucide="key-round" style="width:12px;height:12px;display:inline;vertical-align:-2px"></i> set</span>'
+      : '<span class="text-white/40"><i data-lucide="link" style="width:12px;height:12px;display:inline;vertical-align:-2px"></i> fallback</span>';
+
+    // embeddings — model (required, per-provider default)
+    $("embedModel").value = state.embedModel;
+    $("embedModel").placeholder = m.embedModelPlaceholder || m.embedModel || "embedding model";
+    $("embedModelHint").innerHTML = embedModelHintHTML();
+
+    // embeddings — status line
+    const s = EMBED_STATUS[state.embedStatus];
+    $("embedStatus").innerHTML =
+      '<i data-lucide="' + s.icon + '" style="width:13px;height:13px" class="shrink-0 ' + s.cls + '"></i>' +
+      '<span class="' + s.cls + '">' + s.label + '</span>';
+
+    lucide.createIcons();
+  }
+
+  // ---- Wire up ----
+  // The provider <select> is a real control. Changing it re-applies that provider's
+  // own defaults (model / base URL / key requirement / embedding model + status)
+  // from the per-provider metadata table — the real form's behavior. It does NOT
+  // jump between any canned "preview" scenarios.
+  $("provider").addEventListener("change", (e) => {
+    const m = PROVIDERS[e.target.value];
+    state.provider = e.target.value;
+    state.model = m.model;
+    state.baseUrl = m.baseUrl;
+    state.hasKey = m.hasKey;
+    state.keyTyped = "";
+    state.embedUrl = "";
+    state.embedHasKey = false;
+    state.embedKeyTyped = "";
+    state.embedModel = m.embedModel;
+    state.embedStatus = m.embedStatus;
+    $("actionStatus").innerHTML = "";
+    applyState();
+  });
+
+  // light interactivity on the text inputs (typing updates the hints)
+  $("baseUrl").addEventListener("input", (e) => { state.baseUrl = e.target.value; $("embedUrl").placeholder = "Uses: " + (effectiveEmbedUrl() || "(none set above)"); });
+  $("apiKey").addEventListener("input", (e) => { state.keyTyped = e.target.value; if (e.target.value) state.hasKey = true; applyState(); });
+  $("embedUrl").addEventListener("input", (e) => { state.embedUrl = e.target.value; applyState(); });
+  $("embedKey").addEventListener("input", (e) => { state.embedKeyTyped = e.target.value; if (e.target.value) state.embedHasKey = true; applyState(); });
+  $("embedModel").addEventListener("input", (e) => { state.embedModel = e.target.value; $("embedModelHint").innerHTML = embedModelHintHTML(); });
+
+  $("saveBtn").addEventListener("click", () => {
+    $("actionStatus").innerHTML = '<span class="flex items-center gap-1 text-emerald-300"><i data-lucide="check-circle-2" style="width:13px;height:13px"></i>Saved.</span>';
+    lucide.createIcons();
+  });
+
+  $("testBtn").addEventListener("click", () => {
+    $("testSpin").classList.remove("hidden");
+    $("testBtn").disabled = true;
+    setTimeout(() => {
+      const m = meta();
+      state.embedStatus = m.embedStatus;
+      $("actionStatus").innerHTML =
+        '<span class="flex items-center gap-1 text-emerald-300"><i data-lucide="check-circle-2" style="width:13px;height:13px"></i>Connected to ' + m.label + ' (' + m.model + ')</span>';
+      applyState();
+      $("testSpin").classList.add("hidden");
+      $("testBtn").disabled = false;
+    }, 500);
+  });
+
+  // init: render the single canonical, fully-configured OpenAI state
+  applyState();
+</script>
+</body>
+</html>
