@@ -329,4 +329,6 @@ The design above (per the task's instruction) does **not** edit `spec.md`. Howev
 
   > "Consolidation of a topic must not corrupt it or lose/duplicate any entry on interruption: after a forced mid-pass failure, every topic file is valid and no entry is lost or duplicated; a consistent intermediate state (entries split across source + sibling) is permitted, and the topic's flag survives so the next pass converges to a consistent state."
 
-This replaces the binary "fully unchanged or fully reorganized" with an **invariant + convergence** guarantee (no entry lost/duplicated + surviving flag ⇒ monotonic convergence), which is exactly what ADR-2 delivers. **Action for the user**: approve/reject this SC-006 wording. If approved, `spec.md`'s SC-006 should be updated to match (this is Build Studio's / the spec author's edit, not the design's).
+This replaces the binary "fully unchanged or fully reorganized" with an **invariant + convergence** guarantee (no entry lost/duplicated + surviving flag ⇒ monotonic convergence), which is exactly what ADR-2 delivers. **Status**: ✅ **APPROVED (2026-08-22)** — `spec.md`'s SC-006 has been updated to this wording. Design and spec are in sync.
+
+*Separate cleanup (out of scope here):* `src/components/agent/MemoryActions.tsx` is a stale, half-broken CopilotKit duplicate of the live topic memory surface (its `memory_save` 400s; its no-arg `memory_recall` reads nonexistent `res.user`/`res.memory`). It should be retired in a separate pass; the new `memory_replace`/`memory_remove` tool names do not collide with it.
