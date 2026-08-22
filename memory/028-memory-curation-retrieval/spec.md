@@ -111,6 +111,8 @@ When a new entry contradicts an existing one (e.g., the user's job changed), the
 - What happens when recency/importance data is missing for a legacy entry? (Must fall back gracefully to similarity + recency scoring.)
 - What happens when only the embedding base URL (and not the key) is left empty? (Per-field fallback: each empty field uses the LLM provider's value; a set field is used as-is.)
 - What happens when the configured provider's endpoint does not support embeddings? (Retrieval degrades to sparse + recency + importance; no error, and a diagnostic is available.)
+- What happens for a pure-Anthropic provider (no first-party embeddings API)? (The embedding endpoint falls back to the Anthropic base URL, which has no `/embeddings`; dense retrieval is disabled and the availability indicator reflects "not supported". The user can re-enable it by pointing the embedding base URL at an OpenAI-compatible server.)
+- What happens when the embedding model is left blank? (Treated as embeddings disabled; retrieval degrades per FR-016; the availability indicator shows disabled/not-supported rather than an error.)
 - What happens when an entry's text changes after its embedding is cached? (The embedding is recomputed so retrieval stays accurate.)
 
 ## Requirements
@@ -126,7 +128,7 @@ When a new entry contradicts an existing one (e.g., the user's job changed), the
 - **FR-007**: The consolidation pass MUST clear a topic's consolidation flag only after the topic has been successfully reorganized.
 - **FR-008**: The consolidation pass MUST leave a well-organized, non-redundant topic substantially unchanged (no gratuitous rewrites).
 - **FR-009**: The AI provider configuration MUST support an embedding endpoint consisting of a base URL, an API key, and a model name.
-- **FR-010**: When the embedding base URL and/or API key are left empty, they MUST fall back to the LLM provider's base URL / API key (per-field); the embedding model name MUST be independently configurable, with a sensible default.
+- **FR-010**: When the embedding base URL and/or API key are left empty, they MUST fall back to the LLM provider's base URL / API key (per-field); the embedding model name MUST be independently configurable, with a sensible per-provider default. The embedding model is required *in order to enable* dense retrieval; if it is left blank, embeddings are treated as **disabled** and retrieval degrades per FR-016 (so a blank model and the graceful-degradation path are the same thing, not a contradiction).
 - **FR-011**: The embedding API key MUST NOT be exposed in the provider config view (only a has-key indicator, consistent with the existing LLM key handling).
 - **FR-012**: `memory_search` MUST rank results by a fused score of dense (embedding) similarity, sparse (BM25/keyword) similarity, recency, and importance.
 - **FR-013**: The system MUST compute and cache an embedding per topic entry, recomputing only when the entry text changes, so search does not recompute embeddings on every query.
@@ -170,4 +172,6 @@ When a new entry contradicts an existing one (e.g., the user's job changed), the
 - **Graceful degradation**: if the configured provider's endpoint does not support embeddings, retrieval degrades to sparse + recency + importance without erroring (FR-016).
 - **Embeddings are cached** per entry and recomputed only when the entry text changes (FR-013).
 - The embedding endpoint is configured in the **existing AI Provider settings** (a small addition to that surface), not a new app.
+- **Per-provider embedding defaults**: OpenAI / OpenAI Codex / OpenAI Responses → `text-embedding-3-small`. Local (OpenAI-compatible) → no universal default; the user selects via the form's existing model-list refresh (a placeholder such as `nomic-embed-text` is only a UI hint, not a stored default). Anthropic → **no first-party embeddings API**, so a pure-Anthropic provider has no embeddings endpoint to fall back to; dense retrieval is unavailable for it unless the user points the embedding base URL at an OpenAI-compatible server (the per-field override makes it possible to keep the LLM on Anthropic while running embeddings on a separate/local server).
+- **Embedding availability indicator**: the settings UI indicates embedding status (available / not supported / unknown) via an explicit **Test connection** action plus provider inference (e.g. Anthropic → not supported); it does NOT auto-probe the endpoint on every save.
 - Superseded entries are retained (not deleted) so as-of queries (FR-020) remain possible; hard deletion is out of scope.
