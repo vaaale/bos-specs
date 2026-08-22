@@ -157,7 +157,7 @@ When a new entry contradicts an existing one (e.g., the user's job changed), the
 - **SC-003**: In a fixed retrieval test set, the most-relevant-and-recent entry is returned first in ≥ 90% of queries; a paraphrased query (no shared keywords) still retrieves the intended entry via the dense signal, and a keyword query retrieves keyword-only entries via the sparse signal (up from substring match, which has neither a semantic nor a recency signal).
 - **SC-004**: Given a known contradiction pair, the active entry is returned as current in 100% of default retrievals, and the superseded entry is never returned as current.
 - **SC-005**: The agent is able to complete a "tidy this topic" request using only the exposed replace/remove tools, with no need to create a `-2` shard (verified by a scripted agent trace).
-- **SC-006**: Consolidation of a topic does not corrupt it on interruption: after a forced mid-pass failure, the topic is either fully unchanged or fully reorganized (no partial state), and the flag survives for re-run.
+- **SC-006**: Consolidation of a topic must not corrupt it or lose/duplicate any entry on interruption: after a forced mid-pass failure, every topic file is valid and no entry is lost or duplicated; a consistent intermediate state (entries split across source + sibling) is permitted, and the topic's flag survives so the next pass converges to a consistent state.
 - **SC-007**: When the configured provider does not support embeddings, `memory_search` returns ranked results (sparse + recency + importance) with zero errors across the fixed retrieval test set.
 
 ## Assumptions
