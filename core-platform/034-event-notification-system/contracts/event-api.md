@@ -228,10 +228,10 @@ Replay-then-tail NDJSON (design §3.7, FR-028/NFR-009). Each line:
 | `payload-too-large` | 413 | Payload > 1MB. Use a VFS path reference. |
 | `namespace-not-owned` | 403 | `register` for a type outside the owner's root/grants. |
 | `ack-forbidden` | 403 | Caller does not own the `handlerId`. |
-| `already-settled` | 409 | Conflicting terminal ack for (event, handler). |
+| `already-settled` | 409 | Conflicting terminal ack for (event, handler) — e.g. an ack arriving for an attempt that was already permanently failed. |
 | `invalid-preference` | 400 | `preferredHandlerId` isn't a UI handler for the type. |
 | `not-found` | 404 | Unknown event/handler id. |
 
 ## Agent-tool mapping (FR-001)
 
-The assistant gets these as `serverTool`s (in-process, transport 1): `emit_event`, `query_events`, `get_event`, `ack_event` (only meaningful if a *service/agent-registered* headless handler is involved — agent tools can emit and query; they ack only handlers they own), `mark_events_read`, `set_event_preference`, `list_event_handlers`. Tool schemas mirror the request/response shapes above 1:1 so the agent-facing and app-facing contracts are provably the same.
+The assistant gets these as `serverTool`s (in-process, transport 1): `emit_event`, `query_events`, `get_event`, `ack_event` (the agent acks only handlers it owns, per FR-022 ownership), `mark_events_read`, `set_event_preference`, `list_event_handlers`. Tool schemas mirror the request/response shapes above 1:1 so the agent-facing and app-facing contracts are provably the same.
