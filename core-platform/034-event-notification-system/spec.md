@@ -109,6 +109,24 @@ The Event Viewer has a Settings/Configuration section where the user can see all
 
 ---
 
+### User Story 7 - Automatic Headless Event Processing (Priority: P2)
+
+An app registers a **headless handler** for one or more event types. Unlike UI handlers (which respond to a user click in the Event Viewer), headless handlers are invoked **automatically and asynchronously** when a matching event is emitted — no user interaction required. The handler receives the full event (type, payload, source) and processes it programmatically. For example, the Workflow Manager app registers headless handlers for several event types and triggers the appropriate workflow when a matching event is emitted.
+
+**Why this priority**: This is the programmatic side of event handling. It enables automation pipelines (workflow triggers, auto-archival, cross-app reactions) without requiring the user to be present. It's a distinct dispatch modality from UI handlers and has its own failure-isolation and concurrency requirements.
+
+**Independent Test**: Can be fully tested by registering a headless handler for a test event type (e.g., a logging handler that writes to a file), emitting an event of that type without opening the Event Viewer, and verifying the handler was invoked with the correct event data.
+
+**Acceptance Scenarios**:
+
+1. **Given** an app has registered a headless handler for event type "com.example.workflow.trigger", **When** any app emits an event of that type, **Then** the headless handler is invoked automatically (without user interaction) with the full event record.
+2. **Given** three apps have registered headless handlers for the same event type, **When** an event of that type is emitted, **Then** ALL three headless handlers are invoked (fan-out), each receiving the same event record independently.
+3. **Given** a headless handler throws an error or times out during processing, **When** the event was also handled by other headless handlers, **Then** the other handlers are unaffected; the failure is logged and does not prevent the event from being recorded or from other handlers completing.
+4. **Given** a headless handler is registered for an event type, **When** the user clicks an event of that type in the Event Viewer, **Then** the UI handler resolution flow is unaffected (headless handlers are not presented as click-time options; they are not UI components).
+5. **Given** a headless handler belongs to an app that is uninstalled, **When** the event system checks active handlers, **Then** the headless handler registration is removed and no longer invoked.
+
+---
+
 ### Edge Cases
 
 - What happens when an app emits an event but the app is subsequently uninstalled? → The event remains in the inbox, attributed to the (now-absent) app by name. Clicking it shows the generic event viewer since no handler is registered.
@@ -117,6 +135,9 @@ The Event Viewer has a Settings/Configuration section where the user can see all
 - What happens when a handler's app is currently not running / not loaded? → The system MUST launch the app (or its handler component) on demand when the user clicks the event.
 - What happens when the event payload is very large (e.g., a full email body)? → The Event Viewer list shows only a summary; the full payload is loaded lazily when the event is opened.
 - What happens when a handler registration is for an event type that uses a wildcard or pattern? → Wildcard/pattern matching is out of scope for v1; registrations MUST be for exact event type strings.
+- What happens when a headless handler takes longer than a reasonable timeout to process? → The system MUST impose a per-handler timeout (configurable, default 30s). On timeout, the handler is considered failed; the event is not re-dispatched to it, and the failure is logged.
+- What happens when a very large number of headless handlers (e.g., 50+) are registered for the same event type? → All are invoked, but the system MUST process them concurrently (not sequentially) to avoid unbounded latency. The emitter is never blocked by headless handler processing.
+- Can an app register both a UI handler and a headless handler for the same event type? → Yes. They are independent: the headless handler fires on emission, the UI handler is available for click-time routing. They do not interfere with each other.
 
 ## Requirements *(mandatory)*
 
@@ -126,7 +147,7 @@ The Event Viewer has a Settings/Configuration section where the user can see all
 - **FR-002**: The top toolbar bell icon MUST display the count of unread events. Clicking it MUST open the Event Viewer app.
 - **FR-003**: The Event Viewer MUST be a built-in BOS core app that displays all events in reverse-chronological order, showing for each: event type, source app name/icon, timestamp, and a one-line summary derived from the payload.
 - **FR-004**: The Event Viewer MUST allow the user to mark individual events as read (on click) and MUST provide a "mark all as read" action.
-- **FR-005**: BOS MUST support event handler registration: any app (built-in or marketplace) MUST be able to declare one or more mappings of event type → handler UI component in its app manifest or via a registration API.
+- **FR-005**: BOS MUST support event handler registration in two modes: **UI handlers** (event type → UI component, invoked on user click in the Event Viewer) and **headless handlers** (event type → programmatic callback, invoked automatically on event emission). Any app (built-in or marketplace) MUST be able to declare one or more handlers of either mode in its app manifest or via a registration API.
 - **FR-006**: When the user clicks an event whose type has exactly one registered handler (or a user-set default among multiple), the system MUST launch that handler's UI component with the event's full payload as input.
 - **FR-007**: When the user clicks an event whose type has multiple registered handlers and no user-set default, the system MUST present a selection dialog listing all matching handlers (app name, icon, description) with a checkbox to "Always use this app for this event type."
 - **FR-008**: When the user clicks an event whose type has no registered handler, the system MUST display a generic event detail view showing the full payload in a structured, human-readable format.
@@ -135,7 +156,10 @@ The Event Viewer has a Settings/Configuration section where the user can see all
 - **FR-011**: Events MUST persist across BOS sessions (they are not ephemeral/in-memory only).
 - **FR-012**: The Event Viewer MUST paginate or virtualize its event list to remain usable with 1000+ events.
 - **FR-013**: Handler registration MUST be validated: an app can only register handlers for event type namespaces it owns (the namespace prefix must match the app's identifier or a namespace the app has been granted).
-- **FR-014**: When an app is uninstalled, its handler registrations MUST be automatically removed from the routing table.
+- **FR-014**: When an app is uninstalled, its handler registrations (both UI and headless) MUST be automatically removed from the routing table.
+- **FR-015**: Headless handlers MUST be invoked automatically and asynchronously when a matching event is emitted. The invocation MUST NOT block the emitting app or the durable event record. All registered headless handlers for a given event type MUST be invoked (fan-out), each receiving the full event record independently.
+- **FR-016**: A headless handler failure (exception, timeout) MUST NOT affect: (a) the durable event record, (b) other headless handlers processing the same event, (c) the UI handler routing for subsequent user clicks. Failures MUST be logged with the handler's app ID, event ID, and error details.
+- **FR-017**: The Event Viewer's configuration section MUST display headless handler registrations alongside UI handler registrations, clearly labeled by mode. The user MUST be able to enable/disable individual headless handlers without uninstalling the providing app.
 
 ### Non-Functional Requirements
 
@@ -143,12 +167,14 @@ The Event Viewer has a Settings/Configuration section where the user can see all
 - **NFR-002**: The Event Viewer MUST render its initial list (first page) in under 500ms from the moment the user clicks the bell, even with 10,000+ stored events.
 - **NFR-003**: The system MUST support at least 10,000 stored events without degradation in viewer performance.
 - **NFR-004**: Handler resolution (determining which handler to launch for a clicked event) MUST complete in under 100ms.
+- **NFR-006**: The default timeout for a single headless handler invocation MUST be 30 seconds. On timeout, the handler is marked as failed and the error is logged. The timeout MUST be configurable per-app.
+- **NFR-007**: Headless handler dispatch MUST be concurrent: invoking N headless handlers for a single event MUST NOT take longer than the slowest individual handler (plus overhead), not the sum of all handler durations.
 - **NFR-005**: The event type namespace MUST support dot-separated hierarchical identifiers (e.g., "com.bos.gsuite.email.received") with a maximum length of 256 characters.
 
 ### Key Entities
 
 - **Event**: A single notification record. Attributes: unique ID, event type (namespaced string), payload (structured JSON), source app ID, source app display name, source app icon, timestamp, read/unread status, summary (derived from payload).
-- **Handler Registration**: A mapping from an event type to a handler UI component provided by a specific app. Attributes: event type, providing app ID, handler component identifier, display name, description, icon.
+- **Handler Registration**: A mapping from an event type to a handler provided by a specific app. Two modes: **UI** (handler component identifier, launch context: window/pane/dialog) and **Headless** (programmatic callback endpoint). Common attributes: event type, mode (ui | headless), providing app ID, display name, description, icon, enabled/disabled state (user-controllable for headless).
 - **Handler Preference**: A user-set default for a given event type. Attributes: event type, preferred app ID, timestamp of preference.
 - **Event Source**: The app that emitted an event. Referenced by app ID; resolves to display name and icon at render time (gracefully handles absent apps).
 
@@ -171,4 +197,6 @@ The Event Viewer has a Settings/Configuration section where the user can see all
 - Handler UI components are launched in their own app window or pane (not embedded within the Event Viewer itself), preserving the existing app window model.
 - v1 does not support event filtering by type/source in the viewer list (the user sees all events); this is a potential future extension.
 - v1 does not support event actions (e.g., "reply", "snooze", "archive") beyond marking as read; handlers provide their own actions within their own UI.
-- The configuration page (FR-009) allows changing user preferences (defaults) but does NOT allow removing the underlying handler registration (that is owned by the app itself and removed on uninstall).
+- The configuration page (FR-009) allows changing user preferences (defaults) for UI handlers and enabling/disabling headless handlers, but does NOT allow removing the underlying handler registration (that is owned by the app itself and removed on uninstall).
+- Headless handlers are dispatched in a fan-out model: ALL registered headless handlers for a matching event type are invoked. This contrasts with UI handlers where the user selects one (or a default is used). There is no "default headless handler" concept — they all run.
+- An app MAY register both a UI handler and a headless handler for the same event type; they operate independently in their respective dispatch contexts.
