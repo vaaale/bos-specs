@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Event &amp; Notification System — UI Mockup (self-contained)</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#0b0d12; --win:#15171e; --panel:#0f1117;
+  --w90:rgba(255,255,255,.90); --w80:rgba(255,255,255,.80); --w70:rgba(255,255,255,.70);
+  --w60:rgba(255,255,255,.60); --w50:rgba(255,255,255,.50); --w45:rgba(255,255,255,.45);
+  --w40:rgba(255,255,255,.40); --w35:rgba(255,255,255,.35); --w30:rgba(255,255,255,.30);
+  --w25:rgba(255,255,255,.25); --w20:rgba(255,255,255,.20); --w15:rgba(255,255,255,.15);
+  --w10:rgba(255,255,255,.10); --w5:rgba(255,255,255,.05);
+  --bk30:rgba(0,0,0,.30); --bk60:rgba(0,0,0,.60); --bd:rgba(255,255,255,.10);
+  --violet-t:#c4b5fd; --violet-bg:rgba(139,92,246,.28); --violet-bg2:rgba(139,92,246,.42); --violet-badge:rgba(139,92,246,.20);
+  --amber-t:#fde68a; --amber-bg:rgba(251,191,36,.10); --amber-bd:rgba(251,191,36,.24);
+  --sky-t:#bae6fd;  --sky-bg:rgba(56,189,248,.14);  --sky-badge:rgba(56,189,248,.20);
+  --em-t:#6ee7b7;  --em-bg:rgba(16,185,129,.16);
+  --red-t:#fca5a5; --red-bg:rgba(239,68,68,.16);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{
+  background:var(--bg); color:var(--w90);
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:13px; line-height:1.45; overflow:hidden;
+  -webkit-user-select:none; user-select:none;
+  display:flex; flex-direction:column; height:100vh;
+}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0;margin:0;}
+.ic{display:block;flex:none;}
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+.hidden{display:none !important;}
+
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.22);
+  border-top-color:rgba(255,255,255,.8);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.demo-bar{display:flex;align-items:center;gap:10px;height:30px;flex:0 0 auto;padding:0 12px;
+  border-bottom:1px solid var(--bd);background:var(--bk60);font-size:11px;color:var(--w40);}
+.demo-tag{font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--w30);}
+.demo-note{color:var(--w40);}
+.demo-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
+.demo-btn{display:inline-flex;align-items:center;gap:5px;border-radius:5px;background:var(--w10);
+  padding:4px 9px;font-size:11px;color:var(--w70);transition:background .15s,color .15s;}
+.demo-btn:hover{background:var(--w18);color:var(--w90);}
+.demo-btn.live{background:var(--em-bg);color:var(--em-t);}
+
+.stage{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;}
+.topbar{display:flex;align-items:center;height:34px;flex:0 0 auto;padding:0 16px;
+  border-bottom:1px solid var(--bd);background:var(--bk30);font-size:12px;color:var(--w80);}
+.topbar-row{display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;}
+.topbar-left{display:flex;align-items:center;gap:12px;min-width:0;}
+.tb-brand{font-weight:600;letter-spacing:-.01em;color:#fff;}
+.tb-title{color:var(--w60);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.topbar-right{display:flex;align-items:center;gap:14px;justify-self:end;}
+.tb-item{color:var(--w50);display:inline-flex;align-items:center;}
+.clock{font-variant-numeric:tabular-nums;color:var(--w40);font-size:12px;}
+.icon-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  height:26px;width:26px;border-radius:6px;color:var(--w70);transition:background .15s,color .15s;}
+.icon-btn:hover{background:var(--w10);color:#fff;}
+.bell-badge{position:absolute;right:-7px;top:-5px;min-width:16px;height:16px;padding:0 4px;
+  display:inline-flex;align-items:center;justify-content:center;border-radius:999px;
+  background:var(--w90);color:var(--panel);font-size:10px;font-weight:700;line-height:1;
+  box-shadow:0 0 0 2px var(--bg);}
+
+.desktop{flex:1 1 auto;min-height:0;position:relative;overflow:hidden;
+  background:radial-gradient(1100px 640px at 50% 18%, #171a22 0%, #0f1117 55%, #0b0d12 100%);}
+.window{position:absolute;left:50%;top:50%;transform:translate(-50%,-52%);
+  width:820px;max-width:95%;height:600px;max-height:93%;
+  display:flex;flex-direction:column;overflow:hidden;border-radius:12px;
+  border:1px solid rgba(255,255,255,.20);background:rgba(21,23,30,.96);
+  box-shadow:0 24px 60px rgba(0,0,0,.6);}
+.window.opening{animation:winfade .15s ease-out;}
+@keyframes winfade{from{opacity:0}to{opacity:1}}
+.titlebar{display:flex;align-items:center;gap:8px;height:38px;flex:0 0 auto;padding:0 12px;
+  border-bottom:1px solid var(--bd);background:var(--w5);}
+.traffic{display:flex;align-items:center;gap:8px;}
+.dot{width:12px;height:12px;border-radius:50%;}
+.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+.tb-title-center{flex:1;text-align:center;font-size:12px;font-weight:500;color:var(--w70);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
+.desk-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+.desk-hint p{font-size:12px;color:rgba(255,255,255,.28);margin:0;}
+
+.app{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;background:var(--panel);}
+.toolbar{display:flex;align-items:center;gap:4px;flex:0 0 auto;border-bottom:1px solid var(--bd);
+  background:var(--w5);padding:6px 8px;}
+.tab{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:6px 10px;font-size:12px;
+  color:var(--w70);transition:background .15s,color .15s;}
+.tab:hover{background:var(--w10);}
+.tab.active{background:var(--w15);color:#fff;}
+.toolbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.body{flex:1 1 auto;min-height:0;overflow:auto;}
+.footer{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;
+  border-top:1px solid var(--bd);background:rgba(255,255,255,.02);padding:7px 12px;font-size:12px;color:var(--w50);}
+.live{display:inline-flex;align-items:center;gap:6px;color:var(--w50);}
+.live .pulse{width:6px;height:6px;border-radius:50%;background:var(--em-t);animation:pulse 1.6s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.btn{display:inline-flex;align-items:center;gap:6px;border-radius:6px;background:var(--w10);
+  padding:6px 12px;font-size:12px;font-weight:500;color:var(--w90);transition:background .15s;}
+.btn:hover{background:var(--w18);}
+.btn:disabled{opacity:.4;cursor:default;}
+.btn:disabled:hover{background:var(--w10);}
+.btn-sm{padding:4px 9px;font-size:11px;border-radius:5px;}
+.btn-accent{background:var(--violet-bg);color:#fff;}
+.btn-accent:hover{background:var(--violet-bg2);}
+.view-enter{animation:viewin .16s ease-out;}
+@keyframes viewin{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+.switch{position:relative;display:inline-flex;align-items:center;width:30px;height:17px;flex:none;
+  border-radius:999px;background:var(--w15);transition:background .15s;cursor:pointer;padding:0;}
+.switch .knob{position:absolute;left:2px;width:13px;height:13px;border-radius:50%;background:var(--w90);transition:transform .15s;}
+.switch.on{background:rgba(255,255,255,.38);}
+.switch.on .knob{transform:translateX(13px);}
+.hist-toggle{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--w60);}
+.hist-toggle:hover{color:var(--w80);}
+.hist-toggle.on{color:#fff;}
+
+.chip{display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--w5);color:var(--w70);flex:none;}
+.chip-7{width:30px;height:30px;}
+.chip-9{width:40px;height:40px;}
+.list{display:flex;flex-direction:column;}
+.row{display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;transition:background .12s;position:relative;}
+.row + .row{border-top:1px solid rgba(255,255,255,.05);}
+.row:hover{background:var(--w5);}
+.row.read{opacity:.55;}
+.row.flash{animation:eventflash 2.2s ease-out 1;}
+@keyframes eventflash{0%{background:rgba(139,92,246,.22)}100%{background:transparent}}
+.row-src{position:relative;flex:none;}
+.unread-dot{position:absolute;right:-2px;top:-2px;width:8px;height:8px;border-radius:50%;
+  background:var(--violet-t);box-shadow:0 0 0 2px var(--panel);}
+.row-main{flex:1;min-width:0;}
+.row-line1{display:flex;align-items:baseline;gap:8px;font-size:12px;}
+.row-srcname{flex:none;font-weight:600;color:var(--w90);}
+.row-summary{color:var(--w70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;}
+.row-line2{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--w35);margin-top:3px;}
+.row-type{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.row-right{display:flex;align-items:center;gap:12px;flex:none;}
+.row-ts{width:60px;text-align:right;font-size:11px;color:var(--w40);font-variant-numeric:tabular-nums;}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;}
+.badge.pending{color:var(--w50);}
+.badge.done{color:var(--em-t);}
+
+.mbadge{display:inline-flex;align-items:center;border-radius:4px;padding:2px 6px;font-size:11px;line-height:1;}
+.mbadge.headless{background:var(--sky-badge);color:var(--sky-t);}
+.mbadge.ui{background:var(--violet-badge);color:var(--violet-t);}
+.default-badge{display:inline-flex;align-items:center;gap:4px;background:var(--w15);color:var(--w90);
+  border-radius:4px;padding:2px 6px;font-size:11px;line-height:1;}
+.fail-badge{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--amber-bd);
+  background:var(--amber-bg);color:var(--amber-t);border-radius:5px;padding:2px 6px;font-size:11px;}
+.fail-badge.zero{border:none;background:none;color:var(--w25);padding:0;}
+
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:100%;padding:24px;}
+.empty .ic{margin-bottom:12px;color:var(--w15);}
+.empty h3{font-size:13px;font-weight:500;color:var(--w60);margin:0;}
+.empty p{margin:4px 0 0;font-size:12px;color:var(--w40);max-width:260px;}
+.empty .btn{margin-top:12px;}
+
+.detail{display:flex;flex-direction:column;height:100%;}
+.detail-head{display:flex;align-items:center;gap:8px;flex:0 0 auto;border-bottom:1px solid var(--bd);
+  background:rgba(255,255,255,.03);padding:8px 12px;}
+.back{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:5px 8px;font-size:12px;
+  color:var(--w60);transition:background .15s,color .15s;}
+.back:hover{background:var(--w10);color:#fff;}
+.detail-head .label{font-size:12px;color:var(--w40);}
+.detail-body{flex:1 1 auto;min-height:0;overflow:auto;padding:18px;}
+.detail-title{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;}
+.detail-title .grow{flex:1;min-width:0;}
+.detail-title h2{font-size:15px;font-weight:600;color:#fff;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.detail-title .sub{font-size:12px;color:var(--w50);margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.detail-title .badge{align-self:center;}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;}
+.chipmeta{border:1px solid var(--bd);background:var(--w5);border-radius:6px;padding:3px 9px;
+  font-size:11px;color:var(--w70);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+.chipmeta .k{color:var(--w40);margin-right:5px;}
+.banner{display:flex;align-items:center;gap:9px;border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:16px;}
+.banner.violet{border:1px solid rgba(139,92,246,.28);background:var(--violet-bg);color:var(--violet-t);}
+.banner.amber{border:1px solid var(--amber-bd);background:var(--amber-bg);color:var(--amber-t);}
+.banner.sky{border:1px solid rgba(56,189,248,.22);background:var(--sky-bg);color:var(--sky-t);}
+.banner em{font-style:normal;font-weight:600;}
+.section-h{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--w50);margin:0 0 8px;}
+.section-h .muted{color:var(--w35);text-transform:none;letter-spacing:0;margin-left:5px;font-weight:400;}
+.panel{border:1px solid var(--bd);border-radius:8px;background:rgba(255,255,255,.02);overflow:hidden;margin-bottom:18px;}
+.panel-head{border-bottom:1px solid var(--bd);background:rgba(255,255,255,.03);padding:7px 12px;
+  font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--w40);}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:12px;padding:7px 12px;align-items:baseline;}
+.kv + .kv{border-top:1px solid rgba(255,255,255,.05);}
+.kv .k{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:var(--w50);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kv .v{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;word-break:break-word;color:var(--w80);}
+.kv .v.num{color:var(--sky-t);}
+.kv .v.bool{color:var(--amber-t);}
+.kv .v.str{color:var(--em-t);}
+.hist{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;}
+.hist + .hist{border-top:1px solid rgba(255,255,255,.05);}
+.hist-ic{flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.hist-ic.acked{background:var(--em-bg);color:var(--em-t);}
+.hist-ic.retry{background:var(--amber-bg);color:var(--amber-t);}
+.hist-ic.failed{background:var(--red-bg);color:var(--red-t);}
+.hist-main{flex:1;min-width:0;}
+.hist-line1{display:flex;align-items:center;gap:8px;font-size:12px;}
+.hist-name{font-weight:600;color:var(--w90);}
+.hist-by{color:var(--w40);font-size:11px;}
+.hist-when{margin-left:auto;flex:none;color:var(--w40);font-size:11px;font-variant-numeric:tabular-nums;}
+.hist-line2{margin-top:3px;font-size:11px;color:var(--w50);}
+.hist-result{margin-top:3px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;
+  color:var(--w45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hist-error{margin-top:3px;font-size:11px;color:var(--red-t);display:flex;align-items:center;gap:5px;}
+.hist-retry{margin-top:3px;font-size:11px;color:var(--amber-t);display:flex;align-items:center;gap:5px;}
+
+.handler-card{border:1px solid var(--bd);border-radius:10px;background:rgba(139,92,246,.05);overflow:hidden;margin-bottom:18px;}
+.handler-card .hc-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid rgba(139,92,246,.18);background:rgba(139,92,246,.08);}
+.handler-card .hc-body{padding:14px;font-size:12px;color:var(--w70);}
+
+.config-wrap{max-width:680px;margin:0 auto;padding:20px;}
+.config-wrap h3{font-size:16px;font-weight:600;color:#fff;margin:0;}
+.config-sub{margin:5px 0 20px;font-size:12px;color:var(--w50);}
+.group{margin-bottom:20px;}
+.group-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--w50);margin:0 0 9px;}
+.group-h .t{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;text-transform:none;letter-spacing:0;color:var(--w70);}
+.group-h .c{color:var(--w25);text-transform:none;letter-spacing:0;font-weight:400;margin-left:auto;font-size:11px;}
+.panel-rows{display:flex;flex-direction:column;}
+.panel-empty{padding:12px;font-size:11px;color:var(--w35);}
+.crow{display:flex;align-items:center;gap:12px;padding:10px 12px;transition:opacity .15s;}
+.crow + .crow{border-top:1px solid rgba(255,255,255,.05);}
+.crow.disabled{opacity:.45;}
+.crow-main{flex:1;min-width:0;}
+.crow-line1{display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap;}
+.crow-name{font-weight:600;color:var(--w90);}
+.crow-line2{margin-top:3px;font-size:11px;color:var(--w40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.crow-right{display:flex;align-items:center;gap:12px;flex:none;}
+
+.scrim{position:fixed;inset:0;z-index:200000;display:flex;align-items:center;justify-content:center;
+  background:var(--bk60);backdrop-filter:blur(4px);}
+.dialog{width:480px;max-width:92vw;border-radius:16px;border:1px solid var(--bd);background:var(--win);
+  padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.6);}
+.dlg-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;}
+.dlg-head h3{font-size:14px;font-weight:600;color:#fff;margin:0;}
+.dlg-type{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:var(--w40);
+  margin:0 0 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dlg-opts{display:flex;flex-direction:column;gap:7px;}
+.dlg-opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border-radius:10px;
+  border:1px solid var(--bd);padding:11px;transition:background .15s,border-color .15s;}
+.dlg-opt:hover{background:var(--w5);}
+.dlg-opt.sel{border-color:rgba(255,255,255,.32);background:var(--w10);}
+.radio{flex:none;width:15px;height:15px;border-radius:50%;border:1px solid var(--w30);
+  display:flex;align-items:center;justify-content:center;}
+.dlg-opt.sel .radio{border-color:rgba(255,255,255,.6);}
+.radio .inner{width:7px;height:7px;border-radius:50%;background:#fff;opacity:0;}
+.dlg-opt.sel .radio .inner{opacity:1;}
+.dlg-opt-main{flex:1;min-width:0;}
+.dlg-opt-line1{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--w90);}
+.dlg-opt-line2{display:block;font-size:11px;color:var(--w40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.dlg-always{margin-top:14px;display:flex;align-items:center;gap:9px;border-radius:10px;border:1px solid var(--bd);
+  background:var(--bk30);padding:11px 12px;cursor:pointer;}
+.checkbox{flex:none;width:15px;height:15px;border-radius:4px;border:1px solid var(--w30);
+  display:flex;align-items:center;justify-content:center;color:var(--win);transition:background .15s,border-color .15s;}
+.dlg-always.on .checkbox{background:#fff;border-color:#fff;}
+.dlg-always-label{font-size:12px;color:var(--w60);}
+.dlg-foot{margin-top:18px;display:flex;align-items:center;justify-content:flex-end;gap:8px;}
+</style>
+</head>
+<body>
+
+  <!-- MOCKUP DEMO CONTROLS (not part of the product) -->
+  <div class="demo-bar">
+    <span class="demo-tag">Mockup</span>
+    <span class="demo-note">Self-contained interactive demo — no network, all controls live</span>
+    <div class="demo-actions">
+      <button class="demo-btn" onclick="emitEvent()">
+        <span class="zap-ic"></span> Simulate new event
+      </button>
+      <button class="demo-btn" id="liveBtn" onclick="advancePendingNow()">
+        <span class="pulse"></span> Force pending → done
+      </button>
+      <button class="demo-btn" onclick="resetDemo()">
+        <span class="reset-ic"></span> Reset
+      </button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-row">
+        <div class="topbar-left">
+          <span class="tb-brand">BrowserOS</span>
+          <span id="tbTitle" class="tb-title">Event Viewer</span>
+        </div>
+        <div class="topbar-right">
+          <span id="clock" class="clock"></span>
+          <button class="icon-btn" onclick="openWindow()" title="Events">
+            <span id="bellIc" class="bell-ic"></span>
+            <span id="bellBadge" class="bell-badge">4</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESKTOP -->
+    <div class="desktop">
+      <div id="evWindow" class="window opening">
+        <div class="titlebar">
+          <div class="traffic">
+            <button class="dot dot-r" title="Close" onclick="closeWindow()"></button>
+            <button class="dot dot-y" title="Minimize"></button>
+            <button class="dot dot-g" title="Maximize"></button>
+          </div>
+          <span class="tb-title-center">Event Viewer</span>
+        </div>
+        <div class="app">
+          <div id="appToolbar" class="toolbar"></div>
+          <div id="appBody" class="body"></div>
+          <div id="appFooter" class="footer"></div>
+        </div>
+      </div>
+      <div id="deskHint" class="desk-hint hidden"><p>Click the bell in the toolbar to open the Event Viewer</p></div>
+    </div>
+  </div>
+
+  <!-- UI HANDLER SELECTION DIALOG -->
+  <div id="dialog" class="scrim hidden">
+    <div class="dialog">
+      <div class="dlg-head">
+        <h3>Open with…</h3>
+        <button class="icon-btn" onclick="closeDialog()">
+          <span class="x-ic"></span>
+        </button>
+      </div>
+      <p id="dlgType" class="dlg-type"></p>
+      <div id="dlgOptions" class="dlg-opts"></div>
+      <label class="dlg-always" id="dlgAlwaysWrap" onclick="toggleAlways()">
+        <span class="checkbox" id="dlgAlwaysBox"><span class="ck"></span></span>
+        <span class="dlg-always-label" id="dlgAlwaysLabel"></span>
+      </label>
+      <div class="dlg-foot">
+        <button class="btn" onclick="closeDialog()">Cancel</button>
+        <button id="dlgOpenBtn" class="btn btn-accent" onclick="confirmDialog()" disabled>Choose an app</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════
+   SELF-CONTAINED. No CDN, no external fonts, no icon library.
+   All SVG is inline. init() is wrapped in try/catch so the page can
+   never blank out from a single error.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+var ICONS = {
+  zap:      '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  rotate:   '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  bell:     '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  x:        '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  check:    '<path d="M20 6 9 17l-5-5"/>',
+  back:     '<path d="m15 18-6-6 6-6"/>',
+  mail:     '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+  workflow: '<rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><path d="M10 5.5h4a2 2 0 0 1 2 2V11"/><path d="M14 18.5h-4a2 2 0 0 1-2-2V13"/>',
+  server:   '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+  bot:      '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  gauge:    '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  sliders:  '<line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/>',
+  alert:    '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  clock:    '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  inbox:    '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  history:  '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'
+};
+function icon(name, size){
+  size = size || 16;
+  return '<svg class="ic" viewBox="0 0 24 24" width="'+size+'" height="'+size+'" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[name]||'')+'</svg>';
+}
+
+var SOURCES = {
+  gsuite:      { name:"GSuite",          icon:"mail",      color:"#4f9dff" },
+  workflow:    { name:"Workflow Manager",icon:"workflow",  color:"#b57bff" },
+  devops:      { name:"DevOps",          icon:"server",    color:"#34d399" },
+  scheduler:   { name:"Scheduler",       icon:"clock",     color:"#fbbf24" },
+  assistant:   { name:"Assistant",       icon:"bot",       color:"#f472b6" },
+  terminal:    { name:"Terminal",        icon:"server",    color:"#38bdf8" }
+};
+
+var UI_HANDLERS = {
+  "gsuite-mail":     { appId:"gsuite",        name:"GSuite Mail",        icon:"mail",     desc:"Open the full email in the GSuite reader" },
+  "gsuite-calendar": { appId:"gsuite",        name:"GSuite Calendar",    icon:"calendar", desc:"Show the event on the calendar" },
+  "workflow-run":    { appId:"workflow",      name:"Workflow Run View",  icon:"workflow", desc:"Open the workflow run timeline" },
+  "assistant-chat":  { appId:"assistant",     name:"Assistant Chat",     icon:"bot",      desc:"View the result in the Assistant" }
+};
+
+/* ── initial data ── */
+var BASE = Date.now();
+function ago(m){ return BASE - m*60000; }
+
+function initialState(){
+  return {
+    events: [
+      {
+        id:"evt_1001", type:"com.bos.gsuite.email.received", seq:4821, t:ago(3),
+        src:"gsuite", summary:"Invoice #4812 from Acme Corp", read:false, processing:"done",
+        payload:{ from:"billing@acme.com", subject:"Invoice #4812 — $1,240.00", "attachment.name":"acme-invoice-4812.pdf", "attachment.size":"318 KB", due:"2026-08-30" },
+        history:[ { app:"gsuite-sync", name:"GSuite Sync (headless)", icon:"mail", status:"acked", attempt:1, when:ago(3), result:{ stored:"mail://inbox/9921", indexed:true } } ],
+        ui:[ "gsuite-mail", "gsuite-calendar" ]
+      },
+      {
+        id:"evt_1002", type:"com.bos.workflow.run.completed", seq:2210, t:ago(24),
+        src:"workflow", summary:"Nightly data sync completed (1,204 rows)", read:false, processing:"done",
+        payload:{ run:"nightly-sync", status:"success", rows:1204, duration:"1m 42s", failures:0 },
+        history:[
+          { app:"workflow-store", name:"Workflow Store (headless)", icon:"workflow", status:"acked", attempt:1, when:ago(24), result:{ persisted:true, runId:"run_8841" } },
+          { app:"assistant-digest", name:"Assistant Digest (headless)", icon:"bot", status:"acked", attempt:1, when:ago(23), result:{ summary:"Nightly sync OK — 1,204 rows, 0 failures" } }
+        ],
+        ui:[ "workflow-run" ]
+      },
+      {
+        id:"evt_1003", type:"com.bos.devops.health.warning", seq:7731, t:ago(6),
+        src:"devops", summary:"auth-svc p95 latency 842 ms (SLA 400 ms)", read:false, processing:"pending",
+        payload:{ service:"auth-svc", metric:"p95_latency_ms", value:842, sla:400, window:"5m", region:"eu-west-1" },
+        history:[
+          { app:"devops-metrics", name:"DevOps Metrics (headless)", icon:"gauge", status:"acked", attempt:1, when:ago(6), result:{ recorded:"metrics://eu-west-1/auth-svc/p95" } },
+          { app:"devops-autoscale", name:"DevOps Autoscaler (headless)", icon:"server", status:"retry", attempt:2, when:ago(5), retryIn:12000, error:"503 from scale API" }
+        ],
+        ui:[]
+      },
+      {
+        id:"evt_1004", type:"com.bos.scheduler.job.failed", seq:3120, t:ago(51),
+        src:"scheduler", summary:"Backup job failed: vfs-snapshot", read:false, processing:"done",
+        payload:{ job:"vfs-snapshot", exitCode:1, message:"disk quota exceeded on /mnt/backup", retriesLeft:0 },
+        history:[
+          { app:"scheduler-report", name:"Scheduler Reporter (headless)", icon:"alert", status:"permanently_failed", attempt:3, when:ago(49), error:"Notification channel unavailable (3/3 attempts)" }
+        ],
+        ui:[]
+      },
+      {
+        id:"evt_1005", type:"com.bos.assistant.task.done", seq:6402, t:ago(120),
+        src:"assistant", summary:"Summary ready: Q3 revenue by region", read:true, processing:"done",
+        payload:{ task:"q3-revenue-summary", output:"Q3 revenue $4.2M — EMEA +18%, NA flat", tokens:"3,120" },
+        history:[],
+        ui:[ "assistant-chat" ]
+      },
+      {
+        id:"evt_1006", type:"com.bos.gsuite.calendar.event", seq:4810, t:ago(180),
+        src:"gsuite", summary:"New meeting: Design review (10:00)", read:true, processing:"done",
+        payload:{ title:"Design review", start:"2026-08-24T10:00:00Z", attendees:5, organizer:"j.kim@bos.io" },
+        history:[ { app:"gsuite-sync", name:"GSuite Sync (headless)", icon:"calendar", status:"acked", attempt:1, when:ago(180), result:{ calendarId:"primary" } } ],
+        ui:[ "gsuite-calendar" ]
+      },
+      {
+        id:"evt_1007", type:"com.bos.workflow.data.imported", seq:2198, t:ago(300),
+        src:"workflow", summary:"Data import: 1,204 rows → customers", read:true, processing:"done",
+        payload:{ table:"customers", rows:1204, source:"crm-export.csv", duplicates:3, elapsed:"44s" },
+        history:[
+          { app:"workflow-store", name:"Workflow Store (headless)", icon:"workflow", status:"acked", attempt:1, when:ago(300), result:{ table:"customers", rows:1204 } },
+          { app:"data-quality", name:"Data Quality (headless)", icon:"gauge", status:"acked", attempt:1, when:ago(299), result:{ dupes:3, schemaOk:true } }
+        ],
+        ui:[]
+      }
+    ],
+    /* handler registry: type -> { headless:[...], ui:[appId,...] } */
+    registry: {
+      "com.bos.gsuite.email.received": {
+        headless:[ { app:"gsuite", name:"GSuite Sync", icon:"mail", enabled:true, failures:0, timeout:30 } ],
+        ui:[ "gsuite-mail", "gsuite-calendar" ]
+      },
+      "com.bos.gsuite.calendar.event": {
+        headless:[ { app:"gsuite", name:"GSuite Sync", icon:"calendar", enabled:true, failures:0, timeout:30 } ],
+        ui:[ "gsuite-calendar" ]
+      },
+      "com.bos.workflow.run.completed": {
+        headless:[ { app:"workflow", name:"Workflow Store", icon:"workflow", enabled:true, failures:0, timeout:60 },
+                   { app:"assistant", name:"Assistant Digest", icon:"bot", enabled:true, failures:0, timeout:60 } ],
+        ui:[ "workflow-run" ]
+      },
+      "com.bos.workflow.data.imported": {
+        headless:[ { app:"workflow", name:"Workflow Store", icon:"workflow", enabled:true, failures:0, timeout:60 },
+                   { app:"devops", name:"Data Quality", icon:"gauge", enabled:false, failures:2, timeout:60 } ],
+        ui:[]
+      },
+      "com.bos.devops.health.warning": {
+        headless:[ { app:"devops", name:"DevOps Metrics", icon:"gauge", enabled:true, failures:0, timeout:30 },
+                   { app:"devops", name:"DevOps Autoscaler", icon:"server", enabled:true, failures:1, timeout:30 } ],
+        ui:[]
+      },
+      "com.bos.scheduler.job.failed": {
+        headless:[ { app:"scheduler", name:"Scheduler Reporter", icon:"alert", enabled:true, failures:3, timeout:30 } ],
+        ui:[]
+      },
+      "com.bos.assistant.task.done": {
+        headless:[],
+        ui:[ "assistant-chat" ]
+      }
+    },
+    defaults: {   /* type -> uiHandlerId (user "always use") */
+      "com.bos.gsuite.calendar.event":"gsuite-calendar",
+      "com.bos.assistant.task.done":"assistant-chat"
+    },
+    tab:"events",
+    showHistorical:false,
+    selectedEventId:null,
+    dialog:null
+  };
+}
+
+var state = initialState();
+var pendingTimer = null;
+var clockTimer = null;
+
+/* ── helpers ── */
+function relTime(ts){
+  var d = Date.now() - ts;
+  if(d < 45000) return "just now";
+  var m = Math.floor(d/60000);
+  if(m < 60) return m + "m ago";
+  var h = Math.floor(m/60);
+  if(h < 24) return h + "h ago";
+  return Math.floor(h/24) + "d ago";
+}
+function unreadCount(){
+  return state.events.filter(function(e){ return !e.read; }).length;
+}
+function bellLabel(){
+  var c = unreadCount();
+  return c > 99 ? "99+" : String(c);
+}
+function fmtVal(v){
+  if(typeof v === "number") return { cls:"num", txt:String(v) };
+  if(typeof v === "boolean") return { cls:"bool", txt:v ? "true" : "false" };
+  if(typeof v === "string") return { cls:"str", txt:v };
+  return { cls:"", txt:JSON.stringify(v) };
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function renderBell(){
+  var b = document.getElementById("bellBadge");
+  var c = unreadCount();
+  b.textContent = bellLabel();
+  b.style.display = c > 0 ? "inline-flex" : "none";
+}
+function renderClock(){
+  var el = document.getElementById("clock");
+  if(el){
+    var d = new Date();
+    var hh = String(d.getHours()).padStart(2,"0");
+    var mm = String(d.getMinutes()).padStart(2,"0");
+    el.textContent = hh + ":" + mm;
+  }
+}
+
+/* ── toolbar ── */
+function renderToolbar(){
+  var el = document.getElementById("appToolbar");
+  el.innerHTML =
+    '<button class="tab '+(state.tab==="events"?"active":"")+'" onclick="setTab(\'events\')">'+icon("inbox",14)+' Events</button>'+
+    '<button class="tab '+(state.tab==="config"?"active":"")+'" onclick="setTab(\'config\')">'+icon("sliders",14)+' Configuration</button>'+
+    '<div class="toolbar-right">'+
+      (state.tab==="events"
+        ? '<label class="hist-toggle '+(state.showHistorical?"on":"")+'" onclick="toggleHistorical()">'+
+            '<span class="switch '+(state.showHistorical?"on":"")+'"><span class="knob"></span></span> Show historical</label>'+
+            '<button class="btn btn-sm" onclick="markAllRead()">'+icon("check",13)+' Mark all as read</button>'
+        : '<span style="font-size:11px;color:var(--w35)">Manage event handlers</span>')+
+    '</div>';
+}
+
+/* ── body routing ── */
+function render(){
+  renderToolbar();
+  renderBell();
+  renderClock();
+  var body = document.getElementById("appBody");
+  var foot = document.getElementById("appFooter");
+  if(state.tab === "config"){
+    body.innerHTML = viewConfig();
+    foot.innerHTML = footConfig();
+    return;
+  }
+  if(state.selectedEventId){
+    var ev = findEvent(state.selectedEventId);
+    if(ev){ body.innerHTML = viewDetail(ev); foot.innerHTML = footDetail(ev); return; }
+  }
+  body.innerHTML = viewList();
+  foot.innerHTML = footList();
+}
+function findEvent(id){
+  for(var i=0;i<state.events.length;i++) if(state.events[i].id===id) return state.events[i];
+  return null;
+}
+
+/* ── list view ── */
+function viewList(){
+  var list = state.events.slice().sort(function(a,b){ return b.t - a.t; });
+  var filtered;
+  if(state.showHistorical){
+    filtered = list.filter(function(e){ return e.read; });
+  } else {
+    filtered = list.filter(function(e){ return !e.read; });
+  }
+  var head = '<div class="row" style="cursor:default;padding-bottom:8px;">' +
+    '<span style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--w35);">'+
+    (state.showHistorical?"Historical · read events":"Inbox · unread events") +
+    '</span>' +
+    '<span style="margin-left:auto;font-size:11px;color:var(--w30)">'+filtered.length+' shown</span></div>';
+
+  if(filtered.length === 0){
+    return '<div class="empty">'+icon(state.showHistorical?"history":"inbox",40)+
+      '<h3>'+(state.showHistorical?"No historical events yet":"You're all caught up")+'</h3>'+
+      '<p>'+(state.showHistorical?"Events you've read will appear here.":"New events from your apps and services land here.")+'</p>'+
+      (state.showHistorical?'<button class="btn btn-sm" onclick="toggleHistorical()">Back to inbox</button>':'')+'</div>';
+  }
+  var rows = filtered.map(function(e){ return rowHtml(e); }).join("");
+  return '<div class="list view-enter">'+head+rows+'</div>';
+}
+function rowHtml(e){
+  var s = SOURCES[e.src];
+  var badge = e.processing === "pending"
+    ? '<span class="badge pending"><span class="spinner"></span> processing…</span>'
+    : '<span class="badge done">'+icon("check",12)+' processed</span>';
+  return '<div class="row '+(e.read?"read":"")+'" onclick="onRowClick(event, \''+e.id+'\')">'+
+    '<span class="row-src chip chip-7" style="color:'+s.color+'">'+icon(s.icon,16)+
+      (e.read?"":'<span class="unread-dot"></span>')+'</span>'+
+    '<div class="row-main">'+
+      '<div class="row-line1"><span class="row-srcname">'+s.name+'</span><span class="row-summary">'+esc(e.summary)+'</span></div>'+
+      '<div class="row-line2"><span class="row-type">'+e.type+'</span><span>seq '+e.seq+'</span></div>'+
+    '</div>'+
+    '<div class="row-right">'+badge+'<span class="row-ts">'+relTime(e.t)+'</span></div>'+
+  '</div>';
+}
+function footList(){
+  var total = state.events.length;
+  var unread = unreadCount();
+  return '<span class="live"><span class="pulse"></span> Live · auto-refresh</span>'+
+         '<span>'+total+' events · '+unread+' unread</span>';
+}
+function footDetail(e){
+  return '<span class="live"><span class="pulse"></span> Live</span>'+
+         '<span>'+ (e.processing==="pending"?"Processing — waiting on handlers":"All handlers acknowledged") +'</span>';
+}
+function footConfig(){
+  var h = 0, u = 0;
+  for(var t in state.registry){
+    h += state.registry[t].headless.length;
+    u += state.registry[t].ui.length;
+  }
+  return '<span class="live"><span class="pulse"></span> Registry synced</span>'+
+         '<span>'+h+' headless · '+u+' UI handlers</span>';
+}
+
+/* ── row click → resolve UI handler ── */
+function onRowClick(ev, id){
+  var e = findEvent(id);
+  if(!e) return;
+  var reg = state.registry[e.type];
+  var uiHandlers = reg ? reg.ui : (e.ui || []);
+  var defaultId = state.defaults[e.type];
+  if(uiHandlers.length > 1 && !defaultId){
+    openDialog(e, uiHandlers);
+    return;
+  }
+  var resolved = defaultId || (uiHandlers.length===1 ? uiHandlers[0] : null);
+  e.read = true;
+  e._openedWith = resolved;
+  state.selectedEventId = id;
+  render();
+}
+
+/* ── detail view ── */
+function viewDetail(e){
+  var s = SOURCES[e.src];
+  var badge = e.processing === "pending"
+    ? '<span class="badge pending"><span class="spinner"></span> processing…</span>'
+    : '<span class="badge done">'+icon("check",12)+' processed</span>';
+  var title =
+    '<div class="detail-title">'+
+      '<span class="chip chip-9" style="color:'+s.color+'">'+icon(s.icon,22)+'</span>'+
+      '<div class="grow"><h2>'+esc(e.summary)+'</h2>'+
+        '<div class="sub"><span style="color:var(--w50)">'+s.name+'</span><span style="color:var(--w25)">·</span>'+badge+'</div>'+
+      '</div>'+
+    '</div>';
+
+  var chips =
+    '<div class="chips">'+
+      '<span class="chipmeta"><span class="k">type</span>'+e.type+'</span>'+
+      '<span class="chipmeta"><span class="k">seq</span>'+e.seq+'</span>'+
+      '<span class="chipmeta"><span class="k">id</span>'+e.id+'</span>'+
+      '<span class="chipmeta"><span class="k">time</span>'+relTime(e.t)+'</span>'+
+    '</div>';
+
+  var routing = "";
+  var reg = state.registry[e.type];
+  var uiHandlers = reg ? reg.ui : (e.ui || []);
+  if(uiHandlers.length > 0 && e._openedWith){
+    var h = UI_HANDLERS[e._openedWith];
+    routing = '<div class="handler-card">'+
+      '<div class="hc-head"><span style="color:var(--violet-t)">'+icon(h.icon,16)+'</span>'+
+        '<div><div style="font-weight:600;color:var(--w90)">'+h.name+'</div>'+
+        '<div style="font-size:11px;color:var(--w40)">Launched this event in the ' + SOURCES[h.appId].name + ' handler</div></div>'+
+      '</div>'+
+      '<div class="hc-body">This is a stand-in for the ' + h.name + ' UI. In the real system the ' + SOURCES[h.appId].name + ' app opens and receives the full event payload below. The generic structured view (payload + processing history) is rendered underneath for inspection.</div>'+
+    '</div>';
+  } else if(uiHandlers.length === 0){
+    routing = '<div class="banner sky">'+icon("inbox",15)+
+      '<span>No UI handler is registered for <em>'+e.type+'</em> — showing the <em>generic event view</em> (the default renderer).</span></div>';
+  }
+
+  return '<div class="detail view-enter">'+
+    '<div class="detail-head"><button class="back" onclick="closeDetail()">'+icon("back",14)+' Back to events</button>'+
+      '<span class="label">Event detail</span></div>'+
+    '<div class="detail-body">'+
+      title + chips + routing +
+      '<div class="section-h">Payload</div>'+
+      '<div class="panel">'+kvTable(e.payload)+'</div>'+
+      '<div class="section-h">Processing history <span class="muted">'+e.history.length+' handler'+(e.history.length===1?"":"s")+'</span></div>'+
+      '<div class="panel">'+historyRows(e)+'</div>'+
+    '</div>'+
+  '</div>';
+}
+function kvTable(payload){
+  var keys = Object.keys(payload);
+  if(keys.length===0) return '<div class="panel-empty">No payload</div>';
+  return keys.map(function(k){
+    var v = fmtVal(payload[k]);
+    return '<div class="kv"><div class="k">'+esc(k)+'</div><div class="v '+v.cls+'">'+esc(v.txt)+'</div></div>';
+  }).join("");
+}
+function historyRows(e){
+  if(e.history.length===0) return '<div class="panel-empty">No active headless handlers for this event type — processed immediately on emission.</div>';
+  return e.history.map(function(h){
+    var ic = h.status==="acked"?"acked":(h.status==="retry"?"retry":"failed");
+    var icIcon = h.status==="acked"?icon("check",13):(h.status==="retry"?icon("rotate",13):icon("alert",13));
+    var line2 = "";
+    if(h.status==="acked") line2 = '<div class="hist-line2">Acknowledged · attempt '+h.attempt+'</div>';
+    else if(h.status==="retry") line2 = '<div class="hist-line2">Failed attempt '+h.attempt+' of 3 · retrying with backoff</div>';
+    else line2 = '<div class="hist-line2">Permanently failed after 3 attempts · does not block completion</div>';
+    var result = h.result ? '<div class="hist-result">→ '+esc(JSON.stringify(h.result))+'</div>' : "";
+    var extra = h.status==="retry"
+      ? '<div class="hist-retry"><span class="spinner" style="width:10px;height:10px;border-width:1.5px"></span> retrying… ('+esc(h.error||"") +')</div>'
+      : (h.error ? '<div class="hist-error">'+icon("alert",12)+' '+esc(h.error)+'</div>' : "");
+    return '<div class="hist"><span class="hist-ic '+ic+'">'+icIcon+'</span>'+
+      '<div class="hist-main">'+
+        '<div class="hist-line1"><span class="hist-name">'+h.name+'</span>'+
+          '<span class="mbadge headless">headless</span>'+
+          '<span class="hist-when">'+relTime(h.when)+'</span></div>'+
+        line2 + result + extra +
+      '</div></div>';
+  }).join("");
+}
+
+/* ── config view ── */
+function viewConfig(){
+  var types = Object.keys(state.registry).sort();
+  var groups = types.map(function(t){
+    var reg = state.registry[t];
+    var hasAny = reg.headless.length>0 || reg.ui.length>0;
+    var headlessRows = reg.headless.map(function(h){
+      return '<div class="crow '+(h.enabled?"":"disabled")+'">'+
+        '<span class="chip chip-7" style="color:var(--sky-t)">'+icon(h.icon,15)+'</span>'+
+        '<div class="crow-main"><div class="crow-line1"><span class="crow-name">'+h.name+'</span>'+
+          '<span class="mbadge headless">headless</span>'+
+          (h.enabled?"":'<span class="mbadge" style="background:var(--w10);color:var(--w40)">disabled</span>')+'</div>'+
+          '<div class="crow-line2">timeout '+h.timeout+'s · '+SOURCES[h.app].name+'</div></div>'+
+        '<div class="crow-right">'+
+          (h.failures>0?'<span class="fail-badge">'+icon("alert",12)+h.failures+' fail'+(h.failures===1?"":"s")+'</span>':'<span class="fail-badge zero">0 failures</span>')+
+          '<button class="switch '+(h.enabled?"on":"")+'" onclick="toggleHeadless(\''+t+'\',\''+h.app+'\',\''+h.name+'\')"><span class="knob"></span></button>'+
+        '</div></div>';
+    }).join("");
+    var uiRows = reg.ui.map(function(uid){
+      var h = UI_HANDLERS[uid];
+      var isDef = state.defaults[t] === uid;
+      return '<div class="crow">'+
+        '<span class="chip chip-7" style="color:var(--violet-t)">'+icon(h.icon,15)+'</span>'+
+        '<div class="crow-main"><div class="crow-line1"><span class="crow-name">'+h.name+'</span>'+
+          '<span class="mbadge ui">UI</span>'+
+          (isDef?'<span class="default-badge">'+icon("check",11)+' default</span>':'')+'</div>'+
+          '<div class="crow-line2">'+esc(h.desc)+' · '+SOURCES[h.appId].name+'</div></div>'+
+        '<div class="crow-right">'+
+          (isDef
+            ? '<button class="btn btn-sm" onclick="clearDefault(\''+t+'\')">Clear</button>'
+            : '<button class="btn btn-sm" onclick="setDefault(\''+t+'\',\''+uid+'\')">Set as default</button>')+
+        '</div></div>';
+    }).join("");
+    var body =
+      '<div class="panel-head">Headless handlers · invoked automatically on emission</div>'+
+      '<div class="panel-rows">'+(headlessRows||'<div class="panel-empty">None registered</div>')+'</div>'+
+      '<div class="panel-head" style="margin-top:8px">UI handlers · launched when the user clicks an event</div>'+
+      '<div class="panel-rows">'+(uiRows||'<div class="panel-empty">None — events of this type use the generic view</div>')+'</div>';
+    return '<div class="group">'+
+      '<div class="group-h"><span>t</span><span class="t">'+t+'</span>'+
+        '<span class="c">'+reg.headless.length+' headless · '+reg.ui.length+' ui</span></div>'+
+      (hasAny?body:"")+'</div>';
+  }).join("");
+
+  return '<div class="config-wrap view-enter">'+
+    '<h3>Event handler configuration</h3>'+
+    '<p class="config-sub">Headless handlers are invoked by the core event service on emission. Disable one to stop it from processing (and from blocking) its event types. UI handler defaults control which app opens when you click an event with multiple options.</p>'+
+    groups +
+  '</div>';
+}
+
+/* ── actions ── */
+function setTab(t){ state.tab=t; state.showHistorical=false; state.selectedEventId=null; render(); }
+function toggleHistorical(){ state.showHistorical=!state.showHistorical; state.selectedEventId=null; render(); }
+function markAllRead(){ state.events.forEach(function(e){ e.read=true; }); render(); }
+function closeDetail(){ state.selectedEventId=null; render(); }
+function openWindow(){ document.getElementById("evWindow").classList.remove("hidden"); document.getElementById("deskHint").classList.add("hidden"); }
+function closeWindow(){ document.getElementById("evWindow").classList.add("hidden"); document.getElementById("deskHint").classList.remove("hidden"); }
+function toggleHeadless(t, app, name){
+  var reg = state.registry[t];
+  for(var i=0;i<reg.headless.length;i++){
+    if(reg.headless[i].app===app && reg.headless[i].name===name){ reg.headless[i].enabled=!reg.headless[i].enabled; break; }
+  }
+  render();
+}
+function setDefault(t, uid){ state.defaults[t]=uid; render(); }
+function clearDefault(t){ delete state.defaults[t]; render(); }
+
+function emitEvent(){
+  var pool = [
+    { src:"gsuite", type:"com.bos.gsuite.email.received", summary:"New email from finance@acme.com", payload:{ from:"finance@acme.com", subject:"Re: Q3 forecast" } },
+    { src:"workflow", type:"com.bos.workflow.run.completed", summary:"Ad-hoc run completed: etl-refresh", payload:{ run:"etl-refresh", status:"success", rows:512 } },
+    { src:"devops", type:"com.bos.devops.health.warning", summary:"worker-3 memory 91%", payload:{ service:"worker-3", metric:"mem_pct", value:91 } },
+    { src:"assistant", type:"com.bos.assistant.task.done", summary:"Follow-up drafted for inbox triage", payload:{ task:"inbox-triage", output:"Draft ready" } }
+  ];
+  var pick = pool[Math.floor(Math.random()*pool.length)];
+  var seqs = state.events.map(function(e){ return e.seq; });
+  var maxSeq = Math.max.apply(null, seqs.concat(1));
+  var id = "evt_" + (Date.now()%100000000);
+  var reg = state.registry[pick.type];
+  var history = [];
+  if(reg && reg.headless.length>0){
+    var active = reg.headless.filter(function(h){ return h.enabled; });
+    history = active.map(function(h){
+      return { app:h.app, name:h.name+" (headless)", icon:h.icon, status:"acked", attempt:1, when:Date.now(), result:{ handled:true } };
+    });
+  }
+  state.events.unshift({
+    id:id, type:pick.type, seq:maxSeq+1, t:Date.now(),
+    src:pick.src, summary:pick.summary, read:false, processing:"done",
+    payload:pick.payload, history:history,
+    ui: reg ? reg.ui : []
+  });
+  if(pendingTimer){ /* keep */ }
+  render();
+  flashRow(id);
+}
+function flashRow(id){
+  setTimeout(function(){
+    var rows = document.querySelectorAll(".row");
+    for(var i=0;i<rows.length;i++){
+      if(rows[i].getAttribute("onclick") && rows[i].getAttribute("onclick").indexOf(id)>-1){
+        rows[i].classList.add("flash");
+        break;
+      }
+    }
+  }, 20);
+}
+
+/* pending → done live transition */
+function schedulePending(){
+  if(pendingTimer) return;
+  pendingTimer = setTimeout(function(){ advancePending(); }, 12000);
+}
+function advancePending(){
+  if(pendingTimer){ clearTimeout(pendingTimer); pendingTimer=null; }
+  var target = null;
+  for(var i=0;i<state.events.length;i++){
+    var e = state.events[i];
+    if(e.processing==="pending"){
+      for(var j=0;j<e.history.length;j++){
+        if(e.history[j].status==="retry"){
+          e.history[j].status="acked"; e.history[j].result={ scaledTo:4, applied:true };
+          e.history[j].retryIn=null;
+        }
+      }
+      e.processing="done";
+      target=e.id;
+      break;
+    }
+  }
+  render();
+  if(target) flashRow(target);
+  var lb=document.getElementById("liveBtn"); if(lb) lb.classList.add("live");
+}
+function advancePendingNow(){ advancePending(); }
+
+/* dialog */
+function openDialog(e, uiHandlerIds){
+  state.dialog = { event:e, opts:uiHandlerIds, sel:null, always:false };
+  renderDialog();
+  document.getElementById("dialog").classList.remove("hidden");
+}
+function renderDialog(){
+  var d = state.dialog;
+  document.getElementById("dlgType").textContent = d.event.type;
+  var opts = d.opts.map(function(uid){
+    var h = UI_HANDLERS[uid];
+    var sel = d.sel===uid;
+    return '<button class="dlg-opt '+(sel?"sel":"")+'" onclick="pickOpt(\''+uid+'\')">'+
+      '<span class="radio"><span class="inner"></span></span>'+
+      '<span class="chip chip-7" style="color:'+SOURCES[h.appId].color+'">'+icon(h.icon,15)+'</span>'+
+      '<div class="dlg-opt-main"><span class="dlg-opt-line1">'+h.name+'</span>'+
+      '<span class="dlg-opt-line2">'+esc(h.desc)+' · '+SOURCES[h.appId].name+'</span></div></button>';
+  }).join("");
+  document.getElementById("dlgOptions").innerHTML = opts;
+  document.getElementById("dlgAlwaysWrap").classList.toggle("on", d.always);
+  document.getElementById("dlgAlwaysBox").classList.toggle("on", d.always);
+  document.getElementById("dlgAlwaysBox").innerHTML = d.always ? icon("check",11) : "";
+  document.getElementById("dlgAlwaysLabel").textContent = d.sel
+    ? "Always open "+UI_HANDLERS[d.sel].name+" for this event type"
+    : "Always open with this app for this event type";
+  document.getElementById("dlgOpenBtn").disabled = !d.sel;
+}
+function pickOpt(uid){ state.dialog.sel=uid; renderDialog(); }
+function toggleAlways(){ if(!state.dialog.sel) return; state.dialog.always=!state.dialog.always; renderDialog(); }
+function confirmDialog(){
+  var d = state.dialog;
+  if(!d.sel) return;
+  if(d.always) state.defaults[d.event.type]=d.sel;
+  d.event.read=true;
+  d.event._openedWith=d.sel;
+  state.selectedEventId=d.event.id;
+  closeDialog();
+  render();
+}
+function closeDialog(){ state.dialog=null; document.getElementById("dialog").classList.add("hidden"); }
+
+function resetDemo(){
+  if(pendingTimer){ clearTimeout(pendingTimer); pendingTimer=null; }
+  state = initialState();
+  var lb=document.getElementById("liveBtn"); if(lb) lb.classList.remove("live");
+  render();
+  schedulePending();
+}
+
+/* ── init ── */
+function init(){
+  try{
+    document.getElementById("bellIc").innerHTML = icon("bell",16);
+    document.getElementById("liveBtn").innerHTML = '<span class="pulse"></span> Force pending → done';
+    render();
+    schedulePending();
+    clockTimer = setInterval(renderClock, 1000);
+  }catch(err){
+    document.body.innerHTML = '<div style="padding:40px;color:#fca5a5;font-family:monospace">Mockup init error: '+esc(err&&err.message||err)+'</div>';
+  }
+}
+if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", init);
+else init();
+</script>
+</body>
+</html>
