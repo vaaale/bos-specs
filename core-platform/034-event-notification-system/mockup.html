@@ -1,897 +1,957 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Event &amp; Notification System — UI Mockup</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/lucide@latest"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<title>Event &amp; Notification System — UI Mockup (self-contained)</title>
 <style>
-  :root { color-scheme: dark; }
-  html, body {
-    font-family: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
-    background: #0b0d12;
-    height: 100%;
-  }
-  .font-mono { font-family: "Geist Mono", ui-monospace, SFMono-Regular, monospace; }
-  svg.lucide { stroke-width: 1.75; }
-  /* new-event arrival highlight (FR-028 / real-time) */
-  @keyframes eventflash { 0% { background-color: rgba(255,255,255,0.14); } 100% { background-color: transparent; } }
-  .event-flash { animation: eventflash 2.2s ease-out 1; }
-  @keyframes viewin { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
-  .view-enter { animation: viewin 0.16s ease-out; }
-  @keyframes winin { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: scale(1); } }
-  .win-open { animation: winin 0.15s ease-out; }
-  .win-closing { transition: opacity 0.12s ease-in, transform 0.12s ease-in; opacity: 0; transform: scale(0.985); }
-  *::-webkit-scrollbar { width: 8px; height: 8px; }
-  *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
-  *::-webkit-scrollbar-track { background: transparent; }
+:root{
+  color-scheme:dark;
+  --bg:#0b0d12; --win:#15171e; --panel:#0f1117;
+  --w90:rgba(255,255,255,.90); --w80:rgba(255,255,255,.80); --w70:rgba(255,255,255,.70);
+  --w60:rgba(255,255,255,.60); --w50:rgba(255,255,255,.50); --w45:rgba(255,255,255,.45);
+  --w40:rgba(255,255,255,.40); --w35:rgba(255,255,255,.35); --w30:rgba(255,255,255,.30);
+  --w25:rgba(255,255,255,.25); --w20:rgba(255,255,255,.20); --w15:rgba(255,255,255,.15);
+  --w10:rgba(255,255,255,.10); --w5:rgba(255,255,255,.05);
+  --bk30:rgba(0,0,0,.30); --bk60:rgba(0,0,0,.60); --bd:rgba(255,255,255,.10);
+  --violet-t:#c4b5fd; --violet-bg:rgba(139,92,246,.28); --violet-bg2:rgba(139,92,246,.42); --violet-badge:rgba(139,92,246,.20);
+  --amber-t:#fde68a; --amber-bg:rgba(251,191,36,.10); --amber-bd:rgba(251,191,36,.24);
+  --sky-t:#bae6fd;  --sky-bg:rgba(56,189,248,.14);  --sky-badge:rgba(56,189,248,.20);
+  --em-t:#6ee7b7;  --em-bg:rgba(16,185,129,.16);
+  --red-t:#fca5a5; --red-bg:rgba(239,68,68,.16);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{
+  background:var(--bg); color:var(--w90);
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:13px; line-height:1.45; overflow:hidden;
+  -webkit-user-select:none; user-select:none;
+  display:flex; flex-direction:column; height:100vh;
+}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0;margin:0;}
+.ic{display:block;flex:none;}
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+.hidden{display:none !important;}
+
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.22);
+  border-top-color:rgba(255,255,255,.8);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.demo-bar{display:flex;align-items:center;gap:10px;height:30px;flex:0 0 auto;padding:0 12px;
+  border-bottom:1px solid var(--bd);background:var(--bk60);font-size:11px;color:var(--w40);}
+.demo-tag{font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--w30);}
+.demo-note{color:var(--w40);}
+.demo-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
+.demo-btn{display:inline-flex;align-items:center;gap:5px;border-radius:5px;background:var(--w10);
+  padding:4px 9px;font-size:11px;color:var(--w70);transition:background .15s,color .15s;}
+.demo-btn:hover{background:var(--w18);color:var(--w90);}
+.demo-btn.live{background:var(--em-bg);color:var(--em-t);}
+
+.stage{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;}
+.topbar{display:flex;align-items:center;height:34px;flex:0 0 auto;padding:0 16px;
+  border-bottom:1px solid var(--bd);background:var(--bk30);font-size:12px;color:var(--w80);}
+.topbar-row{display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;}
+.topbar-left{display:flex;align-items:center;gap:12px;min-width:0;}
+.tb-brand{font-weight:600;letter-spacing:-.01em;color:#fff;}
+.tb-title{color:var(--w60);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.topbar-right{display:flex;align-items:center;gap:14px;justify-self:end;}
+.tb-item{color:var(--w50);display:inline-flex;align-items:center;}
+.clock{font-variant-numeric:tabular-nums;color:var(--w40);font-size:12px;}
+.icon-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  height:26px;width:26px;border-radius:6px;color:var(--w70);transition:background .15s,color .15s;}
+.icon-btn:hover{background:var(--w10);color:#fff;}
+.bell-badge{position:absolute;right:-7px;top:-5px;min-width:16px;height:16px;padding:0 4px;
+  display:inline-flex;align-items:center;justify-content:center;border-radius:999px;
+  background:var(--w90);color:var(--panel);font-size:10px;font-weight:700;line-height:1;
+  box-shadow:0 0 0 2px var(--bg);}
+
+.desktop{flex:1 1 auto;min-height:0;position:relative;overflow:hidden;
+  background:radial-gradient(1100px 640px at 50% 18%, #171a22 0%, #0f1117 55%, #0b0d12 100%);}
+.window{position:absolute;left:50%;top:50%;transform:translate(-50%,-52%);
+  width:820px;max-width:95%;height:600px;max-height:93%;
+  display:flex;flex-direction:column;overflow:hidden;border-radius:12px;
+  border:1px solid rgba(255,255,255,.20);background:rgba(21,23,30,.96);
+  box-shadow:0 24px 60px rgba(0,0,0,.6);}
+.window.opening{animation:winfade .15s ease-out;}
+@keyframes winfade{from{opacity:0}to{opacity:1}}
+.titlebar{display:flex;align-items:center;gap:8px;height:38px;flex:0 0 auto;padding:0 12px;
+  border-bottom:1px solid var(--bd);background:var(--w5);}
+.traffic{display:flex;align-items:center;gap:8px;}
+.dot{width:12px;height:12px;border-radius:50%;}
+.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+.tb-title-center{flex:1;text-align:center;font-size:12px;font-weight:500;color:var(--w70);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
+.desk-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+.desk-hint p{font-size:12px;color:rgba(255,255,255,.28);margin:0;}
+
+.app{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;background:var(--panel);}
+.toolbar{display:flex;align-items:center;gap:4px;flex:0 0 auto;border-bottom:1px solid var(--bd);
+  background:var(--w5);padding:6px 8px;}
+.tab{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:6px 10px;font-size:12px;
+  color:var(--w70);transition:background .15s,color .15s;}
+.tab:hover{background:var(--w10);}
+.tab.active{background:var(--w15);color:#fff;}
+.toolbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.body{flex:1 1 auto;min-height:0;overflow:auto;}
+.footer{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;
+  border-top:1px solid var(--bd);background:rgba(255,255,255,.02);padding:7px 12px;font-size:12px;color:var(--w50);}
+.live{display:inline-flex;align-items:center;gap:6px;color:var(--w50);}
+.live .pulse{width:6px;height:6px;border-radius:50%;background:var(--em-t);animation:pulse 1.6s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.btn{display:inline-flex;align-items:center;gap:6px;border-radius:6px;background:var(--w10);
+  padding:6px 12px;font-size:12px;font-weight:500;color:var(--w90);transition:background .15s;}
+.btn:hover{background:var(--w18);}
+.btn:disabled{opacity:.4;cursor:default;}
+.btn:disabled:hover{background:var(--w10);}
+.btn-sm{padding:4px 9px;font-size:11px;border-radius:5px;}
+.btn-accent{background:var(--violet-bg);color:#fff;}
+.btn-accent:hover{background:var(--violet-bg2);}
+.view-enter{animation:viewin .16s ease-out;}
+@keyframes viewin{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+.switch{position:relative;display:inline-flex;align-items:center;width:30px;height:17px;flex:none;
+  border-radius:999px;background:var(--w15);transition:background .15s;cursor:pointer;padding:0;}
+.switch .knob{position:absolute;left:2px;width:13px;height:13px;border-radius:50%;background:var(--w90);transition:transform .15s;}
+.switch.on{background:rgba(255,255,255,.38);}
+.switch.on .knob{transform:translateX(13px);}
+.hist-toggle{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--w60);}
+.hist-toggle:hover{color:var(--w80);}
+.hist-toggle.on{color:#fff;}
+
+.chip{display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--w5);color:var(--w70);flex:none;}
+.chip-7{width:30px;height:30px;}
+.chip-9{width:40px;height:40px;}
+.list{display:flex;flex-direction:column;}
+.row{display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;transition:background .12s;position:relative;}
+.row + .row{border-top:1px solid rgba(255,255,255,.05);}
+.row:hover{background:var(--w5);}
+.row.read{opacity:.55;}
+.row.flash{animation:eventflash 2.2s ease-out 1;}
+@keyframes eventflash{0%{background:rgba(139,92,246,.22)}100%{background:transparent}}
+.row-src{position:relative;flex:none;}
+.unread-dot{position:absolute;right:-2px;top:-2px;width:8px;height:8px;border-radius:50%;
+  background:var(--violet-t);box-shadow:0 0 0 2px var(--panel);}
+.row-main{flex:1;min-width:0;}
+.row-line1{display:flex;align-items:baseline;gap:8px;font-size:12px;}
+.row-srcname{flex:none;font-weight:600;color:var(--w90);}
+.row-summary{color:var(--w70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;}
+.row-line2{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--w35);margin-top:3px;}
+.row-type{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.row-right{display:flex;align-items:center;gap:12px;flex:none;}
+.row-ts{width:60px;text-align:right;font-size:11px;color:var(--w40);font-variant-numeric:tabular-nums;}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;}
+.badge.pending{color:var(--w50);}
+.badge.done{color:var(--em-t);}
+
+.mbadge{display:inline-flex;align-items:center;border-radius:4px;padding:2px 6px;font-size:11px;line-height:1;}
+.mbadge.headless{background:var(--sky-badge);color:var(--sky-t);}
+.mbadge.ui{background:var(--violet-badge);color:var(--violet-t);}
+.default-badge{display:inline-flex;align-items:center;gap:4px;background:var(--w15);color:var(--w90);
+  border-radius:4px;padding:2px 6px;font-size:11px;line-height:1;}
+.fail-badge{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--amber-bd);
+  background:var(--amber-bg);color:var(--amber-t);border-radius:5px;padding:2px 6px;font-size:11px;}
+.fail-badge.zero{border:none;background:none;color:var(--w25);padding:0;}
+
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:100%;padding:24px;}
+.empty .ic{margin-bottom:12px;color:var(--w15);}
+.empty h3{font-size:13px;font-weight:500;color:var(--w60);margin:0;}
+.empty p{margin:4px 0 0;font-size:12px;color:var(--w40);max-width:260px;}
+.empty .btn{margin-top:12px;}
+
+.detail{display:flex;flex-direction:column;height:100%;}
+.detail-head{display:flex;align-items:center;gap:8px;flex:0 0 auto;border-bottom:1px solid var(--bd);
+  background:rgba(255,255,255,.03);padding:8px 12px;}
+.back{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:5px 8px;font-size:12px;
+  color:var(--w60);transition:background .15s,color .15s;}
+.back:hover{background:var(--w10);color:#fff;}
+.detail-head .label{font-size:12px;color:var(--w40);}
+.detail-body{flex:1 1 auto;min-height:0;overflow:auto;padding:18px;}
+.detail-title{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;}
+.detail-title .grow{flex:1;min-width:0;}
+.detail-title h2{font-size:15px;font-weight:600;color:#fff;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.detail-title .sub{font-size:12px;color:var(--w50);margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.detail-title .badge{align-self:center;}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;}
+.chipmeta{border:1px solid var(--bd);background:var(--w5);border-radius:6px;padding:3px 9px;
+  font-size:11px;color:var(--w70);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+.chipmeta .k{color:var(--w40);margin-right:5px;}
+.banner{display:flex;align-items:center;gap:9px;border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:16px;}
+.banner.violet{border:1px solid rgba(139,92,246,.28);background:var(--violet-bg);color:var(--violet-t);}
+.banner.amber{border:1px solid var(--amber-bd);background:var(--amber-bg);color:var(--amber-t);}
+.banner.sky{border:1px solid rgba(56,189,248,.22);background:var(--sky-bg);color:var(--sky-t);}
+.banner em{font-style:normal;font-weight:600;}
+.section-h{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--w50);margin:0 0 8px;}
+.section-h .muted{color:var(--w35);text-transform:none;letter-spacing:0;margin-left:5px;font-weight:400;}
+.panel{border:1px solid var(--bd);border-radius:8px;background:rgba(255,255,255,.02);overflow:hidden;margin-bottom:18px;}
+.panel-head{border-bottom:1px solid var(--bd);background:rgba(255,255,255,.03);padding:7px 12px;
+  font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--w40);}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:12px;padding:7px 12px;align-items:baseline;}
+.kv + .kv{border-top:1px solid rgba(255,255,255,.05);}
+.kv .k{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:var(--w50);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kv .v{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;word-break:break-word;color:var(--w80);}
+.kv .v.num{color:var(--sky-t);}
+.kv .v.bool{color:var(--amber-t);}
+.kv .v.str{color:var(--em-t);}
+.hist{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;}
+.hist + .hist{border-top:1px solid rgba(255,255,255,.05);}
+.hist-ic{flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.hist-ic.acked{background:var(--em-bg);color:var(--em-t);}
+.hist-ic.retry{background:var(--amber-bg);color:var(--amber-t);}
+.hist-ic.failed{background:var(--red-bg);color:var(--red-t);}
+.hist-main{flex:1;min-width:0;}
+.hist-line1{display:flex;align-items:center;gap:8px;font-size:12px;}
+.hist-name{font-weight:600;color:var(--w90);}
+.hist-by{color:var(--w40);font-size:11px;}
+.hist-when{margin-left:auto;flex:none;color:var(--w40);font-size:11px;font-variant-numeric:tabular-nums;}
+.hist-line2{margin-top:3px;font-size:11px;color:var(--w50);}
+.hist-result{margin-top:3px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;
+  color:var(--w45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hist-error{margin-top:3px;font-size:11px;color:var(--red-t);display:flex;align-items:center;gap:5px;}
+.hist-retry{margin-top:3px;font-size:11px;color:var(--amber-t);display:flex;align-items:center;gap:5px;}
+
+.handler-card{border:1px solid var(--bd);border-radius:10px;background:rgba(139,92,246,.05);overflow:hidden;margin-bottom:18px;}
+.handler-card .hc-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid rgba(139,92,246,.18);background:rgba(139,92,246,.08);}
+.handler-card .hc-body{padding:14px;font-size:12px;color:var(--w70);}
+
+.config-wrap{max-width:680px;margin:0 auto;padding:20px;}
+.config-wrap h3{font-size:16px;font-weight:600;color:#fff;margin:0;}
+.config-sub{margin:5px 0 20px;font-size:12px;color:var(--w50);}
+.group{margin-bottom:20px;}
+.group-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--w50);margin:0 0 9px;}
+.group-h .t{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;text-transform:none;letter-spacing:0;color:var(--w70);}
+.group-h .c{color:var(--w25);text-transform:none;letter-spacing:0;font-weight:400;margin-left:auto;font-size:11px;}
+.panel-rows{display:flex;flex-direction:column;}
+.panel-empty{padding:12px;font-size:11px;color:var(--w35);}
+.crow{display:flex;align-items:center;gap:12px;padding:10px 12px;transition:opacity .15s;}
+.crow + .crow{border-top:1px solid rgba(255,255,255,.05);}
+.crow.disabled{opacity:.45;}
+.crow-main{flex:1;min-width:0;}
+.crow-line1{display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap;}
+.crow-name{font-weight:600;color:var(--w90);}
+.crow-line2{margin-top:3px;font-size:11px;color:var(--w40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.crow-right{display:flex;align-items:center;gap:12px;flex:none;}
+
+.scrim{position:fixed;inset:0;z-index:200000;display:flex;align-items:center;justify-content:center;
+  background:var(--bk60);backdrop-filter:blur(4px);}
+.dialog{width:480px;max-width:92vw;border-radius:16px;border:1px solid var(--bd);background:var(--win);
+  padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.6);}
+.dlg-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;}
+.dlg-head h3{font-size:14px;font-weight:600;color:#fff;margin:0;}
+.dlg-type{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:var(--w40);
+  margin:0 0 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dlg-opts{display:flex;flex-direction:column;gap:7px;}
+.dlg-opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border-radius:10px;
+  border:1px solid var(--bd);padding:11px;transition:background .15s,border-color .15s;}
+.dlg-opt:hover{background:var(--w5);}
+.dlg-opt.sel{border-color:rgba(255,255,255,.32);background:var(--w10);}
+.radio{flex:none;width:15px;height:15px;border-radius:50%;border:1px solid var(--w30);
+  display:flex;align-items:center;justify-content:center;}
+.dlg-opt.sel .radio{border-color:rgba(255,255,255,.6);}
+.radio .inner{width:7px;height:7px;border-radius:50%;background:#fff;opacity:0;}
+.dlg-opt.sel .radio .inner{opacity:1;}
+.dlg-opt-main{flex:1;min-width:0;}
+.dlg-opt-line1{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--w90);}
+.dlg-opt-line2{display:block;font-size:11px;color:var(--w40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.dlg-always{margin-top:14px;display:flex;align-items:center;gap:9px;border-radius:10px;border:1px solid var(--bd);
+  background:var(--bk30);padding:11px 12px;cursor:pointer;}
+.checkbox{flex:none;width:15px;height:15px;border-radius:4px;border:1px solid var(--w30);
+  display:flex;align-items:center;justify-content:center;color:var(--win);transition:background .15s,border-color .15s;}
+.dlg-always.on .checkbox{background:#fff;border-color:#fff;}
+.dlg-always-label{font-size:12px;color:var(--w60);}
+.dlg-foot{margin-top:18px;display:flex;align-items:center;justify-content:flex-end;gap:8px;}
 </style>
 </head>
-<body class="overflow-hidden text-white/90 select-none">
+<body>
 
-  <!-- ═══════════ MOCKUP DEMO CONTROLS (not part of the product) ═══════════ -->
-  <div class="flex h-7 shrink-0 items-center gap-3 border-b border-white/10 bg-black/60 px-3 text-[11px] text-white/40">
-    <span class="font-semibold uppercase tracking-wider text-white/30">Mockup</span>
-    <span>Interactive demo — controls below simulate live behaviour</span>
-    <div class="ml-auto flex items-center gap-1.5">
-      <button onclick="emitEvent()" class="flex items-center gap-1 rounded bg-white/10 px-2 py-0.5 transition-colors hover:bg-white/20">
-        <i data-lucide="zap" class="h-3 w-3"></i> Simulate new event
+  <!-- MOCKUP DEMO CONTROLS (not part of the product) -->
+  <div class="demo-bar">
+    <span class="demo-tag">Mockup</span>
+    <span class="demo-note">Self-contained interactive demo — no network, all controls live</span>
+    <div class="demo-actions">
+      <button class="demo-btn" onclick="emitEvent()">
+        <span class="zap-ic"></span> Simulate new event
       </button>
-      <button id="volBtn" onclick="toggleVolume()" class="flex items-center gap-1 rounded bg-white/10 px-2 py-0.5 transition-colors hover:bg-white/20">
-        <i data-lucide="gauge" class="h-3 w-3"></i> <span id="volLabel">Bell badge: live count</span>
+      <button class="demo-btn" id="liveBtn" onclick="advancePendingNow()">
+        <span class="pulse"></span> Force pending → done
       </button>
-      <button onclick="resetDemo()" class="flex items-center gap-1 rounded bg-white/10 px-2 py-0.5 transition-colors hover:bg-white/20">
-        <i data-lucide="rotate-ccw" class="h-3 w-3"></i> Reset
+      <button class="demo-btn" onclick="resetDemo()">
+        <span class="reset-ic"></span> Reset
       </button>
     </div>
   </div>
 
-  <div class="relative flex h-[calc(100vh-28px)] flex-col">
-
-    <!-- ═══════════ TOPBAR (mirrors src/components/desktop/Topbar.tsx) ═══════════ -->
-    <div class="relative z-[100000] grid h-8 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-white/10 bg-black/30 px-4 text-xs text-white/80 backdrop-blur-xl">
-      <div class="flex min-w-0 items-center gap-3">
-        <span class="font-semibold tracking-tight text-white">BrowserOS</span>
-        <span id="tbTitle" class="truncate text-white/60">Event Viewer</span>
-      </div>
-      <div class="justify-self-center text-white/30"><i data-lucide="branch" class="h-3.5 w-3.5" /></div>
-      <div class="flex items-center gap-3 justify-self-end">
-        <span class="text-white/50"><i data-lucide="cable" class="h-3.5 w-3.5" /></span>
-        <span id="clock" class="text-white/50">—</span>
-
-        <!-- ── THE BELL (FR-009) — badge = unread count, caps at 99+ ── -->
-        <button onclick="openWindow()" title="Events"
-                class="relative inline-flex h-6 w-6 items-center justify-center rounded text-white/70 transition-colors hover:bg-white/10 hover:text-white">
-          <i data-lucide="bell" class="h-4 w-4"></i>
-          <span id="bellBadge"
-                class="absolute -right-1.5 -top-1 inline-flex min-w-[15px] items-center justify-center rounded-full bg-white/90 px-1 text-[10px] font-semibold leading-[15px] text-[#0f1117]">4</span>
-        </button>
+  <div class="stage">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-row">
+        <div class="topbar-left">
+          <span class="tb-brand">BrowserOS</span>
+          <span id="tbTitle" class="tb-title">Event Viewer</span>
+        </div>
+        <div class="topbar-right">
+          <span id="clock" class="clock"></span>
+          <button class="icon-btn" onclick="openWindow()" title="Events">
+            <span id="bellIc" class="bell-ic"></span>
+            <span id="bellBadge" class="bell-badge">4</span>
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- ═══════════ DESKTOP ═══════════ -->
-    <div class="relative min-h-0 flex-1 overflow-hidden"
-         style="background: radial-gradient(1100px 640px at 50% 18%, #171a22 0%, #0f1117 55%, #0b0d12 100%);">
-
-      <!-- Event Viewer window -->
-      <div id="evWindow"
-           class="win-open absolute left-1/2 top-1/2 flex h-[560px] w-[780px] max-w-[94%] -translate-x-1/2 -translate-y-[54%] flex-col overflow-hidden rounded-xl border border-white/20 bg-[#15171e]/95 shadow-2xl backdrop-blur-md">
-
-        <!-- Title bar (mirrors src/components/desktop/Window.tsx) -->
-        <div class="flex h-9 shrink-0 items-center gap-2 border-b border-white/10 bg-white/5 px-3 select-none">
-          <div class="flex items-center gap-2">
-            <button onclick="closeWindow()" title="Close" class="h-3 w-3 rounded-full bg-[#ff5f57] transition-opacity hover:opacity-80" />
-            <button title="Minimize" class="h-3 w-3 rounded-full bg-[#febc2e] transition-opacity hover:opacity-80" />
-            <button title="Maximize" class="h-3 w-3 rounded-full bg-[#28c840] transition-opacity hover:opacity-80" />
+    <!-- DESKTOP -->
+    <div class="desktop">
+      <div id="evWindow" class="window opening">
+        <div class="titlebar">
+          <div class="traffic">
+            <button class="dot dot-r" title="Close" onclick="closeWindow()"></button>
+            <button class="dot dot-y" title="Minimize"></button>
+            <button class="dot dot-g" title="Maximize"></button>
           </div>
-          <span class="pointer-events-none flex-1 truncate text-center text-xs font-medium text-white/70">Event Viewer</span>
-          <div class="flex w-12 justify-end">
-            <button title="Keep this window on top" class="rounded p-1 text-white/25 transition-colors hover:bg-white/10 hover:text-white/60">
-              <i data-lucide="pin-off" class="h-3 w-3" />
-            </button>
-          </div>
+          <span class="tb-title-center">Event Viewer</span>
         </div>
-
-        <!-- App shell -->
-        <div class="flex min-h-0 flex-1 flex-col bg-[#0f1117]">
-          <div id="appToolbar" class="flex shrink-0 items-center gap-1 border-b border-white/10 bg-white/5 px-2 py-1.5"></div>
-          <div id="appBody" class="min-h-0 flex-1 overflow-auto"></div>
-          <div id="appFooter" class="flex shrink-0 items-center justify-between border-t border-white/10 bg-white/[0.02] px-3 py-1.5 text-xs"></div>
+        <div class="app">
+          <div id="appToolbar" class="toolbar"></div>
+          <div id="appBody" class="body"></div>
+          <div id="appFooter" class="footer"></div>
         </div>
       </div>
-
-      <!-- Empty-desktop hint (when window closed) -->
-      <div id="deskHint" class="pointer-events-none absolute inset-0 hidden items-center justify-center">
-        <p class="text-xs text-white/25">Click the bell in the toolbar to open the Event Viewer</p>
-      </div>
+      <div id="deskHint" class="desk-hint hidden"><p>Click the bell in the toolbar to open the Event Viewer</p></div>
     </div>
   </div>
 
-  <!-- ═══════════ UI HANDLER SELECTION DIALOG (FR-016) ═══════════ -->
-  <div id="dialog" class="fixed inset-0 z-[200000] hidden items-center justify-center bg-black/60 backdrop-blur-sm">
-    <div class="w-[460px] max-w-[92vw] rounded-2xl border border-white/10 bg-[#15171e] p-5 shadow-2xl">
-      <div class="mb-1 flex items-start justify-between">
-        <h3 class="text-sm font-semibold text-white">Open with…</h3>
-        <button onclick="closeDialog()" class="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white">
-          <i data-lucide="x" class="h-3.5 w-3.5" />
+  <!-- UI HANDLER SELECTION DIALOG -->
+  <div id="dialog" class="scrim hidden">
+    <div class="dialog">
+      <div class="dlg-head">
+        <h3>Open with…</h3>
+        <button class="icon-btn" onclick="closeDialog()">
+          <span class="x-ic"></span>
         </button>
       </div>
-      <p id="dlgType" class="mb-3 truncate font-mono text-xs text-white/40"></p>
-      <div id="dlgOptions" class="space-y-1.5"></div>
-      <label id="dlgAlwaysWrap" class="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-        <span id="dlgAlwaysBox" class="flex h-3.5 w-3.5 items-center justify-center rounded border border-white/30"></span>
-        <span id="dlgAlwaysLabel" class="text-xs text-white/60"></span>
+      <p id="dlgType" class="dlg-type"></p>
+      <div id="dlgOptions" class="dlg-opts"></div>
+      <label class="dlg-always" id="dlgAlwaysWrap" onclick="toggleAlways()">
+        <span class="checkbox" id="dlgAlwaysBox"><span class="ck"></span></span>
+        <span class="dlg-always-label" id="dlgAlwaysLabel"></span>
       </label>
-      <div class="mt-4 flex items-center justify-end gap-2">
-        <button onclick="closeDialog()" class="rounded bg-white/10 px-3 py-1.5 text-xs transition-colors hover:bg-white/20">Cancel</button>
-        <button id="dlgOpenBtn" onclick="confirmDialog()"
-                class="rounded bg-violet-500/30 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-violet-500/40 disabled:opacity-40" disabled>Choose an app</button>
+      <div class="dlg-foot">
+        <button class="btn" onclick="closeDialog()">Cancel</button>
+        <button id="dlgOpenBtn" class="btn btn-accent" onclick="confirmDialog()" disabled>Choose an app</button>
       </div>
     </div>
   </div>
 
 <script>
-/* ══════════════════════════════ DATA ══════════════════════════════ */
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════
+   SELF-CONTAINED. No CDN, no external fonts, no icon library.
+   All SVG is inline. init() is wrapped in try/catch so the page can
+   never blank out from a single error.
+   ═══════════════════════════════════════════════════════════════════════ */
 
-const APPS = {
-  gsuite:    { name: "GSuite",           icon: "mail" },
-  workflow:  { name: "Workflow Manager", icon: "workflow" },
-  devops:    { name: "DevOps Service",   icon: "activity" },
-  scheduler: { name: "Scheduler",        icon: "calendar-clock" },
-  assistant: { name: "Assistant",        icon: "bot" },
+var ICONS = {
+  zap:      '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  rotate:   '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  bell:     '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  x:        '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  check:    '<path d="M20 6 9 17l-5-5"/>',
+  back:     '<path d="m15 18-6-6 6-6"/>',
+  mail:     '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+  workflow: '<rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><path d="M10 5.5h4a2 2 0 0 1 2 2V11"/><path d="M14 18.5h-4a2 2 0 0 1-2-2V13"/>',
+  server:   '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+  bot:      '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  gauge:    '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  sliders:  '<line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/>',
+  alert:    '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  clock:    '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  inbox:    '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  history:  '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'
+};
+function icon(name, size){
+  size = size || 16;
+  return '<svg class="ic" viewBox="0 0 24 24" width="'+size+'" height="'+size+'" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[name]||'')+'</svg>';
+}
+
+var SOURCES = {
+  gsuite:      { name:"GSuite",          icon:"mail",      color:"#4f9dff" },
+  workflow:    { name:"Workflow Manager",icon:"workflow",  color:"#b57bff" },
+  devops:      { name:"DevOps",          icon:"server",    color:"#34d399" },
+  scheduler:   { name:"Scheduler",       icon:"clock",     color:"#fbbf24" },
+  assistant:   { name:"Assistant",       icon:"bot",       color:"#f472b6" },
+  terminal:    { name:"Terminal",        icon:"server",    color:"#38bdf8" }
 };
 
-// Registered handlers per event type (drives dialog, config, and click routing)
-const REGISTRY = {
-  "com.bos.gsuite.email.received": {
-    headless: [
-      { id: "h-archive", app: "gsuite", name: "Auto-archive", failures: 0, enabled: true,
-        desc: "Files received mail into the inbox folder." },
-    ],
-    ui: [
-      { id: "u-email", app: "gsuite", name: "Email detail view", desc: "Full body, headers, and attachments." },
-      { id: "u-sum",   app: "assistant", name: "Assistant summary", desc: "Summarize the mail and draft a reply." },
-    ],
-  },
-  "com.bos.workflow.completed": {
-    headless: [
-      { id: "h-tracker", app: "workflow", name: "Run tracker", failures: 2, enabled: true,
-        desc: "Records run metrics to the ops dashboard." },
-    ],
-    ui: [
-      { id: "u-run", app: "workflow", name: "Run view", desc: "Step timeline, logs, and artifacts." },
-    ],
-  },
-  "com.bos.devops.health.degraded": {
-    headless: [
-      { id: "h-eval",   app: "devops", name: "Health evaluator", failures: 0, enabled: true,
-        desc: "Scores severity and routes the alert." },
-      { id: "h-digest", app: "assistant", name: "Alert digest", failures: 1, enabled: true,
-        desc: "Batches alerts into a single digest message." },
-    ],
-    ui: [],
-  },
-  "com.bos.scheduler.task.failed": {
-    headless: [
-      { id: "h-retry", app: "scheduler", name: "Task retry", failures: 0, enabled: true,
-        desc: "Queues a retry with exponential backoff." },
-      { id: "h-ff",    app: "workflow", name: "Failure workflow", failures: 0, enabled: true,
-        desc: "Triggers the incident-response workflow." },
-    ],
-    ui: [
-      { id: "u-task", app: "scheduler", name: "Task detail", desc: "Job definition and recent runs." },
-    ],
-  },
-  "com.bos.assistant.turn.completed": {
-    headless: [],
-    ui: [
-      { id: "u-turn", app: "assistant", name: "Run view", desc: "Tool calls and transcript." },
-    ],
-  },
+var UI_HANDLERS = {
+  "gsuite-mail":     { appId:"gsuite",        name:"GSuite Mail",        icon:"mail",     desc:"Open the full email in the GSuite reader" },
+  "gsuite-calendar": { appId:"gsuite",        name:"GSuite Calendar",    icon:"calendar", desc:"Show the event on the calendar" },
+  "workflow-run":    { appId:"workflow",      name:"Workflow Run View",  icon:"workflow", desc:"Open the workflow run timeline" },
+  "assistant-chat":  { appId:"assistant",     name:"Assistant Chat",     icon:"bot",      desc:"View the result in the Assistant" }
 };
 
-// User-set default UI handler per type (starts empty → multi-handler types prompt)
-const defaults = {};
+/* ── initial data ── */
+var BASE = Date.now();
+function ago(m){ return BASE - m*60000; }
 
-function hist(ack, app, name, attempt, when, result) {
-  return { status: ack ? "acked" : "retry", app, name, attempt, when, result: result || null,
-           error: ack ? null : "timeout after 30 s" };
-}
-
-const INITIAL_EVENTS = [
-  {
-    id: "e1", type: "com.bos.gsuite.email.received", seq: 4821, ts: "12 s ago", tsFull: "2026-08-23 18:26:14 UTC",
-    source: "gsuite", read: false, processing: "processed",
-    summary: "Invoice #4812 from Northwind Traders — $14,300 due Aug 30",
-    payload: [
-      ["from", "sarah@northwind-traders.com"], ["to", "accounts@browseros.dev"],
-      ["subject", "Invoice #4812 — August services"], ["threadId", "m_9f3k2"],
-      ["hasAttachments", true], ["attachmentCount", 1],
-      ["vfsRef", "/data/events/e1/attachments/"],
+function initialState(){
+  return {
+    events: [
+      {
+        id:"evt_1001", type:"com.bos.gsuite.email.received", seq:4821, t:ago(3),
+        src:"gsuite", summary:"Invoice #4812 from Acme Corp", read:false, processing:"done",
+        payload:{ from:"billing@acme.com", subject:"Invoice #4812 — $1,240.00", "attachment.name":"acme-invoice-4812.pdf", "attachment.size":"318 KB", due:"2026-08-30" },
+        history:[ { app:"gsuite-sync", name:"GSuite Sync (headless)", icon:"mail", status:"acked", attempt:1, when:ago(3), result:{ stored:"mail://inbox/9921", indexed:true } } ],
+        ui:[ "gsuite-mail", "gsuite-calendar" ]
+      },
+      {
+        id:"evt_1002", type:"com.bos.workflow.run.completed", seq:2210, t:ago(24),
+        src:"workflow", summary:"Nightly data sync completed (1,204 rows)", read:false, processing:"done",
+        payload:{ run:"nightly-sync", status:"success", rows:1204, duration:"1m 42s", failures:0 },
+        history:[
+          { app:"workflow-store", name:"Workflow Store (headless)", icon:"workflow", status:"acked", attempt:1, when:ago(24), result:{ persisted:true, runId:"run_8841" } },
+          { app:"assistant-digest", name:"Assistant Digest (headless)", icon:"bot", status:"acked", attempt:1, when:ago(23), result:{ summary:"Nightly sync OK — 1,204 rows, 0 failures" } }
+        ],
+        ui:[ "workflow-run" ]
+      },
+      {
+        id:"evt_1003", type:"com.bos.devops.health.warning", seq:7731, t:ago(6),
+        src:"devops", summary:"auth-svc p95 latency 842 ms (SLA 400 ms)", read:false, processing:"pending",
+        payload:{ service:"auth-svc", metric:"p95_latency_ms", value:842, sla:400, window:"5m", region:"eu-west-1" },
+        history:[
+          { app:"devops-metrics", name:"DevOps Metrics (headless)", icon:"gauge", status:"acked", attempt:1, when:ago(6), result:{ recorded:"metrics://eu-west-1/auth-svc/p95" } },
+          { app:"devops-autoscale", name:"DevOps Autoscaler (headless)", icon:"server", status:"retry", attempt:2, when:ago(5), retryIn:12000, error:"503 from scale API" }
+        ],
+        ui:[]
+      },
+      {
+        id:"evt_1004", type:"com.bos.scheduler.job.failed", seq:3120, t:ago(51),
+        src:"scheduler", summary:"Backup job failed: vfs-snapshot", read:false, processing:"done",
+        payload:{ job:"vfs-snapshot", exitCode:1, message:"disk quota exceeded on /mnt/backup", retriesLeft:0 },
+        history:[
+          { app:"scheduler-report", name:"Scheduler Reporter (headless)", icon:"alert", status:"permanently_failed", attempt:3, when:ago(49), error:"Notification channel unavailable (3/3 attempts)" }
+        ],
+        ui:[]
+      },
+      {
+        id:"evt_1005", type:"com.bos.assistant.task.done", seq:6402, t:ago(120),
+        src:"assistant", summary:"Summary ready: Q3 revenue by region", read:true, processing:"done",
+        payload:{ task:"q3-revenue-summary", output:"Q3 revenue $4.2M — EMEA +18%, NA flat", tokens:"3,120" },
+        history:[],
+        ui:[ "assistant-chat" ]
+      },
+      {
+        id:"evt_1006", type:"com.bos.gsuite.calendar.event", seq:4810, t:ago(180),
+        src:"gsuite", summary:"New meeting: Design review (10:00)", read:true, processing:"done",
+        payload:{ title:"Design review", start:"2026-08-24T10:00:00Z", attendees:5, organizer:"j.kim@bos.io" },
+        history:[ { app:"gsuite-sync", name:"GSuite Sync (headless)", icon:"calendar", status:"acked", attempt:1, when:ago(180), result:{ calendarId:"primary" } } ],
+        ui:[ "gsuite-calendar" ]
+      },
+      {
+        id:"evt_1007", type:"com.bos.workflow.data.imported", seq:2198, t:ago(300),
+        src:"workflow", summary:"Data import: 1,204 rows → customers", read:true, processing:"done",
+        payload:{ table:"customers", rows:1204, source:"crm-export.csv", duplicates:3, elapsed:"44s" },
+        history:[
+          { app:"workflow-store", name:"Workflow Store (headless)", icon:"workflow", status:"acked", attempt:1, when:ago(300), result:{ table:"customers", rows:1204 } },
+          { app:"data-quality", name:"Data Quality (headless)", icon:"gauge", status:"acked", attempt:1, when:ago(299), result:{ dupes:3, schemaOk:true } }
+        ],
+        ui:[]
+      }
     ],
-    history: [hist(true, "gsuite", "Auto-archive", 1, "12 s ago", '{"folder":"Inbox"}')],
-  },
-  {
-    id: "e2", type: "com.bos.workflow.completed", seq: 104, ts: "2 m ago", tsFull: "2026-08-23 18:24:03 UTC",
-    source: "workflow", read: false, processing: "processed",
-    summary: "Workflow “Nightly sync” finished — 47/47 steps OK",
-    payload: [
-      ["workflowId", "wf-7714"], ["name", "Nightly sync"],
-      ["steps", { total: 47, ok: 47, failed: 0 }], ["durationS", 412],
-      ["artifacts", ["/data/workflows/wf-7714/report.json", "/data/workflows/wf-7714/metrics.csv"]],
-    ],
-    history: [hist(true, "workflow", "Run tracker", 1, "2 m ago", '{"status":"ok","durationS":412}')],
-  },
-  {
-    id: "e3", type: "com.bos.devops.health.degraded", seq: 77, ts: "14 m ago", tsFull: "2026-08-23 18:12:41 UTC",
-    source: "devops", read: false, processing: "pending",
-    summary: "auth-svc p95 latency 842 ms (threshold 500 ms)",
-    payload: [
-      ["service", "auth-svc"], ["metric", "p95_latency_ms"],
-      ["value", 842], ["threshold", 500], ["window", "5 m"], ["instance", "auth-svc-7d9f4"],
-    ],
-    history: [
-      hist(true, "devops", "Health evaluator", 1, "14 m ago", '{"severity":"warning"}'),
-      hist(false, "assistant", "Alert digest", 2, "14 m ago"),
-    ],
-  },
-  {
-    id: "e4", type: "com.bos.scheduler.task.failed", seq: 31, ts: "38 m ago", tsFull: "2026-08-23 17:48:22 UTC",
-    source: "scheduler", read: false, processing: "processed",
-    summary: "Scheduled task “Backup export” failed — disk quota exceeded",
-    payload: [
-      ["taskId", "job-backup-export"], ["name", "Backup export"],
-      ["schedule", "0 2 * * *"], ["error", "ENOSPC: disk quota exceeded"],
-      ["vfsPath", "/data/backups/export-2026-08-23.zip"],
-    ],
-    history: [
-      hist(true, "scheduler", "Task retry", 1, "38 m ago", '{"retryQueued":false,"reason":"quota"}'),
-      hist(true, "workflow", "Failure workflow", 1, "37 m ago", '{"workflowId":"wf-8821","status":"triggered"}'),
-    ],
-  },
-  {
-    id: "h1", type: "com.bos.gsuite.email.received", seq: 4819, ts: "2 h ago", tsFull: "2026-08-23 16:26:00 UTC",
-    source: "gsuite", read: true, processing: "processed",
-    summary: "Calendar invite: Design review — Thu 10:00",
-    payload: [["from", "chen@browseros.dev"], ["subject", "Design review — Thu 10:00"],
-              ["calendar", "team-events"], ["attendees", 6]],
-    history: [hist(true, "gsuite", "Auto-archive", 1, "2 h ago", '{"folder":"Inbox"}')],
-  },
-  {
-    id: "h2", type: "com.bos.assistant.turn.completed", seq: 512, ts: "5 h ago", tsFull: "2026-08-23 13:26:00 UTC",
-    source: "assistant", read: true, processing: "processed",
-    summary: "Assistant run finished — 12 tool calls, 41 s",
-    payload: [["turnId", "t_2a91"], ["toolCalls", 12], ["durationS", 41],
-              ["tokens", { input: 18422, output: 2310 }]],
-    history: [],
-  },
-  {
-    id: "h3", type: "com.bos.devops.health.degraded", seq: 74, ts: "9 h ago", tsFull: "2026-08-23 09:26:00 UTC",
-    source: "devops", read: true, processing: "processed",
-    summary: "search-svc error rate 2.4 % (threshold 1 %)",
-    payload: [["service", "search-svc"], ["metric", "error_rate_pct"], ["value", 2.4], ["threshold", 1]],
-    history: [
-      hist(true, "devops", "Health evaluator", 1, "9 h ago", '{"severity":"warning"}'),
-      hist(true, "assistant", "Alert digest", 1, "9 h ago", '{"digestId":"d_77","queued":true}'),
-    ],
-  },
-];
-
-const SAMPLES = [
-  {
-    type: "com.bos.workflow.completed", source: "workflow",
-    summary: "Workflow “Ingest pipeline” finished — 12/12 steps OK",
-    payload: [["workflowId", "wf-9902"], ["name", "Ingest pipeline"], ["steps", { total: 12, ok: 12, failed: 0 }], ["durationS", 96]],
-    history: [hist(true, "workflow", "Run tracker", 1, "just now", '{"status":"ok","durationS":96}')],
-  },
-  {
-    type: "com.bos.assistant.turn.completed", source: "assistant",
-    summary: "Assistant run finished — 4 tool calls, 9 s",
-    payload: [["turnId", "t_2b04"], ["toolCalls", 4], ["durationS", 9], ["tokens", { input: 6120, output: 742 }]],
-    history: [],
-  },
-  {
-    type: "com.bos.devops.health.degraded", source: "devops",
-    summary: "browser-svc p95 latency 611 ms (threshold 500 ms)",
-    payload: [["service", "browser-svc"], ["metric", "p95_latency_ms"], ["value", 611], ["threshold", 500], ["window", "5 m"]],
-    history: [
-      hist(true, "devops", "Health evaluator", 1, "just now", '{"severity":"warning"}'),
-      hist(false, "assistant", "Alert digest", 1, "just now"),
-    ],
-  },
-];
-
-/* ══════════════════════════ STATE ══════════════════════════ */
-
-let events = JSON.parse(JSON.stringify(INITIAL_EVENTS));
-let tab = "events";            // "events" | "config"
-let showHistorical = false;
-let selectedId = null;
-let winOpen = true;
-let highVolume = false;
-let flashId = null;
-let seqCounter = 4821;
-let sampleIdx = 0;
-
-const $ = (id) => document.getElementById(id);
-
-/* ══════════════════════════ HELPERS ══════════════════════════ */
-
-function icons() { lucide.createIcons(); }
-
-function unreadCount() { return events.filter((e) => !e.read).length; }
-function pendingCount() { return events.filter((e) => e.processing === "pending").length; }
-
-function renderBell() {
-  const n = unreadCount();
-  const badge = $("bellBadge");
-  badge.textContent = highVolume ? "99+" : (n > 99 ? "99+" : n);
-  badge.style.display = (n > 0 || highVolume) ? "" : "none";
-}
-
-function updateClock() {
-  $("clock").textContent = new Date().toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
-}
-
-function fmtVal(v) {
-  if (typeof v === "boolean") return v;
-  if (typeof v === "number") return v;
-  if (v && typeof v === "object") return v;
-  return v;
-}
-function valClass(v) {
-  if (typeof v === "boolean") return "text-amber-200";
-  if (typeof v === "number") return "text-sky-200";
-  return "text-white/80";
-}
-function valText(v) {
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
-function modeBadge(mode) {
-  return mode === "headless"
-    ? '<span class="inline-flex items-center rounded bg-sky-500/20 px-1.5 py-0.5 text-xs leading-none text-sky-200">Headless</span>'
-    : '<span class="inline-flex items-center rounded bg-violet-500/20 px-1.5 py-0.5 text-xs leading-none text-violet-200">UI</span>';
-}
-
-function statusBadge(processing) {
-  return processing === "pending"
-    ? '<span title="Processing — waiting on handler acknowledgments" class="inline-flex items-center gap-1 text-xs text-white/50">'
-      + '<i data-lucide="loader-circle" class="h-3 w-3 animate-spin"></i> processing…</span>'
-    : '<span title="Processed — all handlers acknowledged" class="text-emerald-300/80"><i data-lucide="check" class="h-3.5 w-3.5"></i></span>';
-}
-
-function appChip(appId, size) {
-  const a = APPS[appId];
-  return `<span class="flex ${size} shrink-0 items-center justify-center rounded-lg bg-white/5 text-white/70">
-    <i data-lucide="${a.icon}" class="h-1/2 w-1/2"></i></span>`;
-}
-
-/* ══════════════════════════ TOOLBAR ══════════════════════════ */
-
-function renderToolbar() {
-  const tabBtn = (id, label, icon) => `
-    <button onclick="setTab('${id}')"
-      class="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition-colors ${
-        tab === id ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"}">
-      <i data-lucide="${icon}" class="h-3.5 w-3.5"></i> ${label}
-    </button>`;
-
-  let right = "";
-  if (tab === "events" && !selectedId) {
-    const on = showHistorical;
-    right = `
-      <div class="ml-auto flex items-center gap-1.5">
-        <button onclick="toggleHistorical()"
-          class="flex items-center gap-2 rounded px-2 py-1 text-xs transition-colors hover:bg-white/10 ${on ? "text-white" : "text-white/60"}">
-          <span class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${on ? "bg-white/35" : "bg-white/15"}">
-            <span class="absolute left-0.5 h-3 w-3 rounded-full bg-white/90 transition-transform ${on ? "translate-x-3" : ""}"></span>
-          </span>
-          Show historical events
-        </button>
-        <button onclick="markAllRead()" title="Mark all as read"
-          class="flex items-center gap-1.5 rounded bg-white/10 px-3 py-1.5 text-xs transition-colors hover:bg-white/20">
-          <i data-lucide="check-check" class="h-3.5 w-3.5"></i> Mark all as read
-        </button>
-      </div>`;
-  }
-  $("appToolbar").innerHTML = `
-    ${tabBtn("events", "Events", "bell")}
-    ${tabBtn("config", "Configuration", "settings")}
-    ${right}`;
-  icons();
-}
-
-function renderFooter() {
-  const p = pendingCount();
-  $("appFooter").innerHTML = `
-    <span class="text-white/50">${events.length} events${p ? ` · ${p} processing` : ""}</span>
-    <span class="flex items-center gap-1.5 text-white/50">
-      <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span> Live
-    </span>`;
-}
-
-/* ══════════════════════════ LIST VIEW ══════════════════════════ */
-
-function eventRow(e) {
-  const a = APPS[e.source];
-  return `
-  <div onclick="openEvent('${e.id}')"
-       class="flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-white/5 ${
-         e.read ? "opacity-55" : ""} ${flashId === e.id ? "event-flash" : ""}">
-    <span class="relative">
-      ${appChip(e.source, "h-7 w-7")}
-      ${!e.read ? '<span class="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-white/90 ring-2 ring-[#0f1117]"></span>' : ""}
-    </span>
-    <div class="min-w-0 flex-1">
-      <div class="flex items-baseline gap-2">
-        <span class="shrink-0 text-xs font-medium text-white/90">${a.name}</span>
-        <span class="truncate text-xs text-white/60">${e.summary}</span>
-      </div>
-      <div class="mt-0.5 flex items-center gap-1.5 text-xs text-white/35">
-        <span class="truncate font-mono">${e.type}</span>
-        <span class="shrink-0">·</span>
-        <span class="shrink-0">seq ${e.seq}</span>
-      </div>
-    </div>
-    <div class="flex shrink-0 items-center gap-3">
-      ${statusBadge(e.processing)}
-      <span class="w-14 text-right text-xs text-white/40">${e.ts}</span>
-    </div>
-  </div>`;
-}
-
-function emptyState() {
-  if (showHistorical) {
-    return `
-    <div class="flex h-full flex-col items-center justify-center text-center view-enter">
-      <i data-lucide="history" class="mb-3 h-10 w-10 text-white/15"></i>
-      <h3 class="text-sm font-medium text-white/60">No historical events</h3>
-      <p class="mt-1 text-xs text-white/40">Events you open move here.</p>
-    </div>`;
-  }
-  return `
-  <div class="flex h-full flex-col items-center justify-center text-center view-enter">
-    <i data-lucide="bell-off" class="mb-3 h-10 w-10 text-white/15"></i>
-    <h3 class="text-sm font-medium text-white/60">All caught up</h3>
-    <p class="mt-1 max-w-[240px] text-xs text-white/40">New events from apps and services will appear here in real time.</p>
-    <button onclick="toggleHistorical()" class="mt-3 rounded bg-white/10 px-3 py-1.5 text-xs transition-colors hover:bg-white/20">
-      Show historical events
-    </button>
-  </div>`;
-}
-
-function renderList() {
-  const list = events.filter((e) => (showHistorical ? e.read : !e.read));
-  $("appBody").innerHTML = list.length
-    ? `<div class="divide-y divide-white/[0.05] view-enter">${list.map(eventRow).join("")}</div>`
-    : emptyState();
-  icons();
-}
-
-/* ══════════════════════════ DETAIL VIEW (generic, FR-017) ══════════════════════════ */
-
-function histRow(e) {
-  let icon, statusLine;
-  if (e.status === "acked") {
-    icon = '<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300"><i data-lucide="check" class="h-3 w-3"></i></span>';
-    statusLine = "acknowledged";
-  } else if (e.status === "retry") {
-    icon = '<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-amber-200"><i data-lucide="clock" class="h-3 w-3"></i></span>';
-    statusLine = `failed · retrying (attempt ${e.attempt} of 4, next in ~5 s)`;
-  } else {
-    icon = '<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/60"><i data-lucide="loader-circle" class="h-3 w-3 animate-spin"></i></span>';
-    statusLine = "processing…";
-  }
-  return `
-  <div class="flex items-start gap-2.5 px-3 py-2">
-    ${icon}
-    <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-white/90">${e.name}</span>
-        <span class="text-xs text-white/40">by ${APPS[e.app].name}</span>
-        <span class="ml-auto shrink-0 text-xs text-white/40">${e.when}</span>
-      </div>
-      <div class="mt-0.5 text-xs text-white/50">Attempt ${e.attempt} · ${statusLine}</div>
-      ${e.result ? `<div class="mt-0.5 truncate font-mono text-xs text-white/45">→ ${e.result}</div>` : ""}
-    </div>
-  </div>`;
-}
-
-function renderDetail() {
-  const e = events.find((x) => x.id === selectedId);
-  if (!e) { tab = "events"; selectedId = null; renderAll(); return; }
-  const reg = REGISTRY[e.type] || { ui: [], headless: [] };
-  const pending = e.processing === "pending";
-  const acked = e.history.filter((h) => h.status === "acked").length;
-  const total = reg.headless.length;
-
-  const payloadRows = e.payload.map(([k, v]) => `
-    <div class="grid grid-cols-[150px_1fr] items-baseline gap-3 px-3 py-1.5">
-      <span class="truncate font-mono text-xs text-white/50">${k}</span>
-      <span class="break-all font-mono text-xs ${valClass(v)}">${valText(v)}</span>
-    </div>`).join("");
-
-  const historyPanel = e.history.length
-    ? `<div class="divide-y divide-white/[0.05]">${e.history.map(histRow).join("")}</div>`
-    : `<div class="px-3 py-3 text-xs text-white/40">No headless handlers are registered for this event type — it was processed immediately on emission.</div>`;
-
-  $("appBody").innerHTML = `
-  <div class="flex h-full flex-col">
-    <div class="flex shrink-0 items-center gap-2 border-b border-white/10 bg-white/[0.03] px-3 py-2">
-      <button onclick="backToList()" class="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white">
-        <i data-lucide="arrow-left" class="h-3.5 w-3.5"></i> Back to events
-      </button>
-      <span class="text-xs text-white/40">Event detail</span>
-    </div>
-
-    <div class="min-h-0 flex-1 overflow-auto p-4 view-enter">
-      <div class="mb-4 flex items-start gap-3">
-        ${appChip(e.source, "h-9 w-9")}
-        <div class="min-w-0 flex-1">
-          <h2 class="truncate text-sm font-medium text-white">${e.summary}</h2>
-          <div class="mt-0.5 text-xs text-white/50">${APPS[e.source].name} · ${e.ts}</div>
-        </div>
-        ${statusBadge(e.processing)}
-      </div>
-
-      <div class="mb-4 flex flex-wrap items-center gap-1.5">
-        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">${e.type}</span>
-        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">seq ${e.seq}</span>
-        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">${e.id}</span>
-        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">${e.tsFull}</span>
-      </div>
-
-      ${pending
-        ? `<div class="mb-4 flex shrink-0 items-center gap-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
-             <i data-lucide="alert-triangle" class="h-3.5 w-3.5 shrink-0"></i>
-             Processing — ${acked} of ${total} handlers acknowledged${total ? "" : ""}.
-           </div>`
-        : (reg.ui.length === 0
-          ? `<div class="mb-4 flex shrink-0 items-center gap-2 rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
-               <i data-lucide="info" class="h-3.5 w-3.5 shrink-0"></i>
-               No UI handlers are registered for this event type — showing the generic event view.
-             </div>`
-          : "")}
-
-      <div class="mb-4">
-        <h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-white/50">Payload</h3>
-        <div class="divide-y divide-white/[0.05] rounded-lg border border-white/10 bg-white/[0.02]">${payloadRows}</div>
-      </div>
-
-      <div>
-        <h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-white/50">
-          Processing history
-          ${total ? `<span class="ml-1 normal-case tracking-normal text-white/35">(${total} headless handler${total > 1 ? "s" : ""})</span>` : ""}
-        </h3>
-        <div class="rounded-lg border border-white/10 bg-white/[0.02]">${historyPanel}</div>
-      </div>
-    </div>
-  </div>`;
-  icons();
-}
-
-/* ══════════════════════════ CONFIG VIEW (FR-018) ══════════════════════════ */
-
-function toggle(h, on) {
-  return `
-  <button onclick="event.stopPropagation(); toggleHandler('${h.app}', '${h.id}')"
-    class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${on ? "bg-white/35" : "bg-white/15"}">
-    <span class="absolute left-0.5 h-3 w-3 rounded-full bg-white/90 transition-transform ${on ? "translate-x-3" : ""}"></span>
-  </button>`;
-}
-
-function configPanel(label, rows, emptyNote) {
-  return `
-  <div class="mb-2 overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
-    <div class="border-b border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white/40">${label}</div>
-    ${rows.length
-      ? `<div class="divide-y divide-white/[0.05]">${rows.join("")}</div>`
-      : `<div class="px-3 py-2.5 text-xs text-white/35">${emptyNote}</div>`}
-  </div>`;
-}
-
-function headlessRow(h) {
-  const a = APPS[h.app];
-  const fail = h.failures > 0
-    ? `<span title="${h.failures} recent failure(s) — see event processing history"
-         class="inline-flex items-center gap-1 rounded border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-xs text-amber-100">
-         <i data-lucide="alert-triangle" class="h-3 w-3"></i> ${h.failures}
-       </span>`
-    : `<span class="text-xs text-white/30" title="No recent failures">0 failures</span>`;
-  return `
-  <div class="flex items-center gap-3 px-3 py-2 ${h.enabled ? "" : "opacity-50"}">
-    ${appChip(h.app, "h-6 w-6")}
-    <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-white/90">${h.name}</span>
-        ${modeBadge("headless")}
-      </div>
-      <div class="mt-0.5 truncate text-xs text-white/40">by ${a.name} · ${h.desc}</div>
-    </div>
-    <div class="flex shrink-0 items-center gap-2.5">
-      ${fail}
-      ${toggle(h, h.enabled)}
-    </div>
-  </div>`;
-}
-
-function uiRow(h, type) {
-  const a = APPS[h.app];
-  const isDefault = defaults[type] === h.id;
-  return `
-  <div class="flex items-center gap-3 px-3 py-2">
-    ${appChip(h.app, "h-6 w-6")}
-    <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-white/90">${h.name}</span>
-        ${modeBadge("ui")}
-        ${isDefault ? '<span class="inline-flex items-center gap-1 rounded bg-white/15 px-1.5 py-0.5 text-xs leading-none text-white/90"><i data-lucide="check" class="h-3 w-3"></i> Default</span>' : ""}
-      </div>
-      <div class="mt-0.5 truncate text-xs text-white/40">by ${a.name} · ${h.desc}</div>
-    </div>
-    <div class="flex shrink-0 items-center gap-1.5">
-      ${isDefault
-        ? `<button onclick="event.stopPropagation(); clearDefault('${type}')"
-            class="rounded bg-white/10 px-2 py-1 text-xs transition-colors hover:bg-white/20" title="Clear default — prompt again next time">
-            Clear</button>`
-        : `<button onclick="event.stopPropagation(); setDefault('${type}', '${h.id}')"
-            class="rounded bg-white/10 px-2 py-1 text-xs transition-colors hover:bg-white/20">
-            Set as default</button>`}
-    </div>
-  </div>`;
-}
-
-function renderConfig() {
-  const groups = Object.keys(REGISTRY).map((type) => {
-    const reg = REGISTRY[type];
-    const rows = [
-      configPanel("Headless handlers",
-        reg.headless.map((h) => headlessRow(h)),
-        "No headless handlers registered — events of this type are processed immediately on emission."),
-      configPanel("UI handlers",
-        reg.ui.map((h) => uiRow(h, type)),
-        "No UI handlers registered — events of this type open in the generic event view."),
-    ].join("");
-    return `
-    <div class="mb-4">
-      <h3 class="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/50">
-        <span class="font-mono normal-case tracking-normal">${type}</span>
-        <span class="text-white/25">·</span>
-        <span class="text-white/35 normal-case tracking-normal">${reg.headless.length + reg.ui.length} handler${reg.headless.length + reg.ui.length !== 1 ? "s" : ""}</span>
-      </h3>
-      ${rows}
-    </div>`;
-  }).join("");
-
-  $("appBody").innerHTML = `
-  <div class="mx-auto max-w-[640px] p-4 view-enter">
-    <h3 class="text-base font-semibold text-white">Configuration</h3>
-    <p class="mt-1 text-xs text-white/50">
-      Handlers registered by apps and services. Headless handlers process events automatically on emission;
-      UI handlers open when you click an event.
-    </p>
-    <div class="mt-4">${groups}</div>
-  </div>`;
-  icons();
-}
-
-/* ══════════════════════════ SELECTION DIALOG (FR-016) ══════════════════════════ */
-
-let dlg = { eventId: null, selected: null, always: false };
-
-function openDialog(eventId) {
-  const e = events.find((x) => x.id === eventId);
-  const reg = REGISTRY[e.type];
-  dlg = { eventId, selected: reg.ui[0].id, always: false };
-  $("dlgType").textContent = e.type;
-  renderDialogOptions();
-  $("dialog").classList.remove("hidden");
-  $("dialog").classList.add("flex");
-  icons();
-}
-
-function renderDialogOptions() {
-  const e = events.find((x) => x.id === dlg.eventId);
-  const reg = REGISTRY[e.type];
-  $("dlgOptions").innerHTML = reg.ui.map((h) => {
-    const a = APPS[h.app];
-    const sel = dlg.selected === h.id;
-    return `
-    <button onclick="selectDialog('${h.id}')"
-      class="flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-colors ${
-        sel ? "border-white/30 bg-white/10" : "border-white/10 hover:bg-white/5"}">
-      <span class="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${sel ? "border-white/60" : "border-white/30"}">
-        ${sel ? '<span class="h-1.5 w-1.5 rounded-full bg-white"></span>' : ""}
-      </span>
-      ${appChip(h.app, "h-7 w-7")}
-      <span class="min-w-0 flex-1">
-        <span class="block text-xs font-medium text-white/90">${a.name} — ${h.name}</span>
-        <span class="block truncate text-xs text-white/40">${h.desc}</span>
-      </span>
-    </button>`;
-  }).join("");
-  updateAlways();
-}
-
-function selectDialog(id) {
-  dlg.selected = id;
-  renderDialogOptions();
-  icons();
-}
-
-function updateAlways() {
-  const e = events.find((x) => x.id === dlg.eventId);
-  $("dlgAlwaysBox").innerHTML = dlg.always
-    ? '<i data-lucide="check" class="h-3 w-3 text-[#0f1117]"></i>'
-    : "";
-  $("dlgAlwaysBox").className = "flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors " +
-    (dlg.always ? "border-white bg-white" : "border-white/30");
-  $("dlgAlwaysLabel").textContent = `Always open ${e.type} with this app`;
-  const btn = $("dlgOpenBtn");
-  btn.disabled = !dlg.selected;
-  const h = (REGISTRY[e.type].ui).find((x) => x.id === dlg.selected);
-  btn.textContent = h ? `Open in ${APPS[h.app].name}` : "Choose an app";
-}
-
-$("dlgAlwaysWrap").addEventListener("click", () => {
-  dlg.always = !dlg.always;
-  updateAlways();
-  icons();
-});
-
-function closeDialog() {
-  $("dialog").classList.add("hidden");
-  $("dialog").classList.remove("flex");
-  dlg = { eventId: null, selected: null, always: false };
-}
-
-function confirmDialog() {
-  const e = events.find((x) => x.id === dlg.eventId);
-  if (dlg.always) defaults[e.type] = dlg.selected;   // "always use" preference (FR-016 / FR-027)
-  closeDialog();
-  markRead(e.id);
-  selectedId = e.id;
-  renderAll();
-}
-
-document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && !$("dialog").classList.contains("hidden")) closeDialog();
-});
-
-/* ══════════════════════════ ACTIONS ══════════════════════════ */
-
-function setTab(t) { tab = t; selectedId = null; renderAll(); }
-
-function toggleHistorical() { showHistorical = !showHistorical; selectedId = null; renderAll(); }
-
-function markAllRead() {
-  events.forEach((e) => { e.read = true; });
-  renderAll();
-}
-
-function markRead(id) { events.find((e) => e.id === id).read = true; }
-
-function openEvent(id) {
-  const e = events.find((x) => x.id === id);
-  const reg = REGISTRY[e.type];
-  const ui = reg ? reg.ui : [];
-  if (ui.length > 1 && !defaults[e.type]) { openDialog(id); return; }  // prompt only when ambiguous & no default
-  markRead(id);
-  selectedId = id;
-  renderAll();
-}
-
-function backToList() { selectedId = null; renderAll(); }
-
-function toggleHandler(appId, handlerId) {
-  for (const type of Object.keys(REGISTRY)) {
-    const h = REGISTRY[type].headless.find((x) => x.id === handlerId);
-    if (h) { h.enabled = !h.enabled; renderAll(); return; }
-  }
-}
-
-function setDefault(type, handlerId) { defaults[type] = handlerId; renderAll(); }
-function clearDefault(type) { delete defaults[type]; renderAll(); }
-
-/* ══════════════════════════ WINDOW + DEMO ══════════════════════════ */
-
-function openWindow() {
-  winOpen = true;
-  const w = $("evWindow");
-  w.style.display = "";
-  w.classList.remove("win-closing");
-  w.classList.add("win-open");
-  $("deskHint").classList.add("hidden");
-  $("deskHint").classList.remove("flex");
-  $("tbTitle").textContent = "Event Viewer";
-}
-
-function closeWindow() {
-  winOpen = false;
-  const w = $("evWindow");
-  w.classList.remove("win-open");
-  w.classList.add("win-closing");
-  setTimeout(() => {
-    w.style.display = "none";
-    w.classList.remove("win-closing");
-  }, 130);
-  $("deskHint").classList.remove("hidden");
-  $("deskHint").classList.add("flex");
-  $("tbTitle").textContent = "Desktop";
-}
-
-function emitEvent() {
-  if (!winOpen) openWindow();
-  const s = SAMPLES[sampleIdx % SAMPLES.length];
-  sampleIdx++;
-  seqCounter++;
-  const newEvent = {
-    id: "evt-" + Date.now(),
-    type: s.type, seq: seqCounter + 40, ts: "just now",
-    tsFull: new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC",
-    source: s.source, read: false,
-    processing: s.history.some((h) => h.status === "retry") ? "pending" : "processed",
-    summary: s.summary,
-    payload: JSON.parse(JSON.stringify(s.payload)),
-    history: JSON.parse(JSON.stringify(s.history)),
+    /* handler registry: type -> { headless:[...], ui:[appId,...] } */
+    registry: {
+      "com.bos.gsuite.email.received": {
+        headless:[ { app:"gsuite", name:"GSuite Sync", icon:"mail", enabled:true, failures:0, timeout:30 } ],
+        ui:[ "gsuite-mail", "gsuite-calendar" ]
+      },
+      "com.bos.gsuite.calendar.event": {
+        headless:[ { app:"gsuite", name:"GSuite Sync", icon:"calendar", enabled:true, failures:0, timeout:30 } ],
+        ui:[ "gsuite-calendar" ]
+      },
+      "com.bos.workflow.run.completed": {
+        headless:[ { app:"workflow", name:"Workflow Store", icon:"workflow", enabled:true, failures:0, timeout:60 },
+                   { app:"assistant", name:"Assistant Digest", icon:"bot", enabled:true, failures:0, timeout:60 } ],
+        ui:[ "workflow-run" ]
+      },
+      "com.bos.workflow.data.imported": {
+        headless:[ { app:"workflow", name:"Workflow Store", icon:"workflow", enabled:true, failures:0, timeout:60 },
+                   { app:"devops", name:"Data Quality", icon:"gauge", enabled:false, failures:2, timeout:60 } ],
+        ui:[]
+      },
+      "com.bos.devops.health.warning": {
+        headless:[ { app:"devops", name:"DevOps Metrics", icon:"gauge", enabled:true, failures:0, timeout:30 },
+                   { app:"devops", name:"DevOps Autoscaler", icon:"server", enabled:true, failures:1, timeout:30 } ],
+        ui:[]
+      },
+      "com.bos.scheduler.job.failed": {
+        headless:[ { app:"scheduler", name:"Scheduler Reporter", icon:"alert", enabled:true, failures:3, timeout:30 } ],
+        ui:[]
+      },
+      "com.bos.assistant.task.done": {
+        headless:[],
+        ui:[ "assistant-chat" ]
+      }
+    },
+    defaults: {   /* type -> uiHandlerId (user "always use") */
+      "com.bos.gsuite.calendar.event":"gsuite-calendar",
+      "com.bos.assistant.task.done":"assistant-chat"
+    },
+    tab:"events",
+    showHistorical:false,
+    selectedEventId:null,
+    dialog:null
   };
-  events.unshift(newEvent);
-  flashId = newEvent.id;
-  tab = "events"; selectedId = null;
-  setTimeout(() => { flashId = null; }, 2300);
-  renderAll();
 }
 
-function toggleVolume() {
-  highVolume = !highVolume;
-  $("volLabel").textContent = highVolume ? "Bell badge: 99+ (capped)" : "Bell badge: live count";
-  renderBell();
-}
+var state = initialState();
+var pendingTimer = null;
+var clockTimer = null;
 
-function resetDemo() {
-  events = JSON.parse(JSON.stringify(INITIAL_EVENTS));
-  for (const k of Object.keys(defaults)) delete defaults[k];
-  tab = "events"; showHistorical = false; selectedId = null;
-  highVolume = false; flashId = null; sampleIdx = 0;
-  if ($("dialog").classList.contains("hidden") === false) closeDialog();
-  $("volLabel").textContent = "Bell badge: live count";
-  if (!winOpen) openWindow();
-  renderAll();
+/* ── helpers ── */
+function relTime(ts){
+  var d = Date.now() - ts;
+  if(d < 45000) return "just now";
+  var m = Math.floor(d/60000);
+  if(m < 60) return m + "m ago";
+  var h = Math.floor(m/60);
+  if(h < 24) return h + "h ago";
+  return Math.floor(h/24) + "d ago";
 }
+function unreadCount(){
+  return state.events.filter(function(e){ return !e.read; }).length;
+}
+function bellLabel(){
+  var c = unreadCount();
+  return c > 99 ? "99+" : String(c);
+}
+function fmtVal(v){
+  if(typeof v === "number") return { cls:"num", txt:String(v) };
+  if(typeof v === "boolean") return { cls:"bool", txt:v ? "true" : "false" };
+  if(typeof v === "string") return { cls:"str", txt:v };
+  return { cls:"", txt:JSON.stringify(v) };
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
-// Real-time demo: the pending health event's second handler acks after a delay
-// (FR-028 / NFR-009 — badge + history update live, no refresh).
-setTimeout(() => {
-  const e3 = events.find((e) => e.id === "e3");
-  if (e3 && e3.processing === "pending") {
-    e3.processing = "processed";
-    const retry = e3.history.find((h) => h.status === "retry");
-    if (retry) { retry.status = "acked"; retry.result = '{"digestId":"d_81","queued":true}'; retry.when = "just now"; }
-    renderAll();
+function renderBell(){
+  var b = document.getElementById("bellBadge");
+  var c = unreadCount();
+  b.textContent = bellLabel();
+  b.style.display = c > 0 ? "inline-flex" : "none";
+}
+function renderClock(){
+  var el = document.getElementById("clock");
+  if(el){
+    var d = new Date();
+    var hh = String(d.getHours()).padStart(2,"0");
+    var mm = String(d.getMinutes()).padStart(2,"0");
+    el.textContent = hh + ":" + mm;
   }
-}, 12000);
-
-/* ══════════════════════════ RENDER ROOT ══════════════════════════ */
-
-function renderAll() {
-  renderBell();
-  renderToolbar();
-  if (tab === "config") renderConfig();
-  else if (selectedId) renderDetail();
-  else renderList();
-  renderFooter();
 }
 
-updateClock();
-setInterval(updateClock, 15000);
-renderAll();
-icons();
+/* ── toolbar ── */
+function renderToolbar(){
+  var el = document.getElementById("appToolbar");
+  el.innerHTML =
+    '<button class="tab '+(state.tab==="events"?"active":"")+'" onclick="setTab(\'events\')">'+icon("inbox",14)+' Events</button>'+
+    '<button class="tab '+(state.tab==="config"?"active":"")+'" onclick="setTab(\'config\')">'+icon("sliders",14)+' Configuration</button>'+
+    '<div class="toolbar-right">'+
+      (state.tab==="events"
+        ? '<label class="hist-toggle '+(state.showHistorical?"on":"")+'" onclick="toggleHistorical()">'+
+            '<span class="switch '+(state.showHistorical?"on":"")+'"><span class="knob"></span></span> Show historical</label>'+
+            '<button class="btn btn-sm" onclick="markAllRead()">'+icon("check",13)+' Mark all as read</button>'
+        : '<span style="font-size:11px;color:var(--w35)">Manage event handlers</span>')+
+    '</div>';
+}
+
+/* ── body routing ── */
+function render(){
+  renderToolbar();
+  renderBell();
+  renderClock();
+  var body = document.getElementById("appBody");
+  var foot = document.getElementById("appFooter");
+  if(state.tab === "config"){
+    body.innerHTML = viewConfig();
+    foot.innerHTML = footConfig();
+    return;
+  }
+  if(state.selectedEventId){
+    var ev = findEvent(state.selectedEventId);
+    if(ev){ body.innerHTML = viewDetail(ev); foot.innerHTML = footDetail(ev); return; }
+  }
+  body.innerHTML = viewList();
+  foot.innerHTML = footList();
+}
+function findEvent(id){
+  for(var i=0;i<state.events.length;i++) if(state.events[i].id===id) return state.events[i];
+  return null;
+}
+
+/* ── list view ── */
+function viewList(){
+  var list = state.events.slice().sort(function(a,b){ return b.t - a.t; });
+  var filtered;
+  if(state.showHistorical){
+    filtered = list.filter(function(e){ return e.read; });
+  } else {
+    filtered = list.filter(function(e){ return !e.read; });
+  }
+  var head = '<div class="row" style="cursor:default;padding-bottom:8px;">' +
+    '<span style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--w35);">'+
+    (state.showHistorical?"Historical · read events":"Inbox · unread events") +
+    '</span>' +
+    '<span style="margin-left:auto;font-size:11px;color:var(--w30)">'+filtered.length+' shown</span></div>';
+
+  if(filtered.length === 0){
+    return '<div class="empty">'+icon(state.showHistorical?"history":"inbox",40)+
+      '<h3>'+(state.showHistorical?"No historical events yet":"You're all caught up")+'</h3>'+
+      '<p>'+(state.showHistorical?"Events you've read will appear here.":"New events from your apps and services land here.")+'</p>'+
+      (state.showHistorical?'<button class="btn btn-sm" onclick="toggleHistorical()">Back to inbox</button>':'')+'</div>';
+  }
+  var rows = filtered.map(function(e){ return rowHtml(e); }).join("");
+  return '<div class="list view-enter">'+head+rows+'</div>';
+}
+function rowHtml(e){
+  var s = SOURCES[e.src];
+  var badge = e.processing === "pending"
+    ? '<span class="badge pending"><span class="spinner"></span> processing…</span>'
+    : '<span class="badge done">'+icon("check",12)+' processed</span>';
+  return '<div class="row '+(e.read?"read":"")+'" onclick="onRowClick(event, \''+e.id+'\')">'+
+    '<span class="row-src chip chip-7" style="color:'+s.color+'">'+icon(s.icon,16)+
+      (e.read?"":'<span class="unread-dot"></span>')+'</span>'+
+    '<div class="row-main">'+
+      '<div class="row-line1"><span class="row-srcname">'+s.name+'</span><span class="row-summary">'+esc(e.summary)+'</span></div>'+
+      '<div class="row-line2"><span class="row-type">'+e.type+'</span><span>seq '+e.seq+'</span></div>'+
+    '</div>'+
+    '<div class="row-right">'+badge+'<span class="row-ts">'+relTime(e.t)+'</span></div>'+
+  '</div>';
+}
+function footList(){
+  var total = state.events.length;
+  var unread = unreadCount();
+  return '<span class="live"><span class="pulse"></span> Live · auto-refresh</span>'+
+         '<span>'+total+' events · '+unread+' unread</span>';
+}
+function footDetail(e){
+  return '<span class="live"><span class="pulse"></span> Live</span>'+
+         '<span>'+ (e.processing==="pending"?"Processing — waiting on handlers":"All handlers acknowledged") +'</span>';
+}
+function footConfig(){
+  var h = 0, u = 0;
+  for(var t in state.registry){
+    h += state.registry[t].headless.length;
+    u += state.registry[t].ui.length;
+  }
+  return '<span class="live"><span class="pulse"></span> Registry synced</span>'+
+         '<span>'+h+' headless · '+u+' UI handlers</span>';
+}
+
+/* ── row click → resolve UI handler ── */
+function onRowClick(ev, id){
+  var e = findEvent(id);
+  if(!e) return;
+  var reg = state.registry[e.type];
+  var uiHandlers = reg ? reg.ui : (e.ui || []);
+  var defaultId = state.defaults[e.type];
+  if(uiHandlers.length > 1 && !defaultId){
+    openDialog(e, uiHandlers);
+    return;
+  }
+  var resolved = defaultId || (uiHandlers.length===1 ? uiHandlers[0] : null);
+  e.read = true;
+  e._openedWith = resolved;
+  state.selectedEventId = id;
+  render();
+}
+
+/* ── detail view ── */
+function viewDetail(e){
+  var s = SOURCES[e.src];
+  var badge = e.processing === "pending"
+    ? '<span class="badge pending"><span class="spinner"></span> processing…</span>'
+    : '<span class="badge done">'+icon("check",12)+' processed</span>';
+  var title =
+    '<div class="detail-title">'+
+      '<span class="chip chip-9" style="color:'+s.color+'">'+icon(s.icon,22)+'</span>'+
+      '<div class="grow"><h2>'+esc(e.summary)+'</h2>'+
+        '<div class="sub"><span style="color:var(--w50)">'+s.name+'</span><span style="color:var(--w25)">·</span>'+badge+'</div>'+
+      '</div>'+
+    '</div>';
+
+  var chips =
+    '<div class="chips">'+
+      '<span class="chipmeta"><span class="k">type</span>'+e.type+'</span>'+
+      '<span class="chipmeta"><span class="k">seq</span>'+e.seq+'</span>'+
+      '<span class="chipmeta"><span class="k">id</span>'+e.id+'</span>'+
+      '<span class="chipmeta"><span class="k">time</span>'+relTime(e.t)+'</span>'+
+    '</div>';
+
+  var routing = "";
+  var reg = state.registry[e.type];
+  var uiHandlers = reg ? reg.ui : (e.ui || []);
+  if(uiHandlers.length > 0 && e._openedWith){
+    var h = UI_HANDLERS[e._openedWith];
+    routing = '<div class="handler-card">'+
+      '<div class="hc-head"><span style="color:var(--violet-t)">'+icon(h.icon,16)+'</span>'+
+        '<div><div style="font-weight:600;color:var(--w90)">'+h.name+'</div>'+
+        '<div style="font-size:11px;color:var(--w40)">Launched this event in the ' + SOURCES[h.appId].name + ' handler</div></div>'+
+      '</div>'+
+      '<div class="hc-body">This is a stand-in for the ' + h.name + ' UI. In the real system the ' + SOURCES[h.appId].name + ' app opens and receives the full event payload below. The generic structured view (payload + processing history) is rendered underneath for inspection.</div>'+
+    '</div>';
+  } else if(uiHandlers.length === 0){
+    routing = '<div class="banner sky">'+icon("inbox",15)+
+      '<span>No UI handler is registered for <em>'+e.type+'</em> — showing the <em>generic event view</em> (the default renderer).</span></div>';
+  }
+
+  return '<div class="detail view-enter">'+
+    '<div class="detail-head"><button class="back" onclick="closeDetail()">'+icon("back",14)+' Back to events</button>'+
+      '<span class="label">Event detail</span></div>'+
+    '<div class="detail-body">'+
+      title + chips + routing +
+      '<div class="section-h">Payload</div>'+
+      '<div class="panel">'+kvTable(e.payload)+'</div>'+
+      '<div class="section-h">Processing history <span class="muted">'+e.history.length+' handler'+(e.history.length===1?"":"s")+'</span></div>'+
+      '<div class="panel">'+historyRows(e)+'</div>'+
+    '</div>'+
+  '</div>';
+}
+function kvTable(payload){
+  var keys = Object.keys(payload);
+  if(keys.length===0) return '<div class="panel-empty">No payload</div>';
+  return keys.map(function(k){
+    var v = fmtVal(payload[k]);
+    return '<div class="kv"><div class="k">'+esc(k)+'</div><div class="v '+v.cls+'">'+esc(v.txt)+'</div></div>';
+  }).join("");
+}
+function historyRows(e){
+  if(e.history.length===0) return '<div class="panel-empty">No active headless handlers for this event type — processed immediately on emission.</div>';
+  return e.history.map(function(h){
+    var ic = h.status==="acked"?"acked":(h.status==="retry"?"retry":"failed");
+    var icIcon = h.status==="acked"?icon("check",13):(h.status==="retry"?icon("rotate",13):icon("alert",13));
+    var line2 = "";
+    if(h.status==="acked") line2 = '<div class="hist-line2">Acknowledged · attempt '+h.attempt+'</div>';
+    else if(h.status==="retry") line2 = '<div class="hist-line2">Failed attempt '+h.attempt+' of 3 · retrying with backoff</div>';
+    else line2 = '<div class="hist-line2">Permanently failed after 3 attempts · does not block completion</div>';
+    var result = h.result ? '<div class="hist-result">→ '+esc(JSON.stringify(h.result))+'</div>' : "";
+    var extra = h.status==="retry"
+      ? '<div class="hist-retry"><span class="spinner" style="width:10px;height:10px;border-width:1.5px"></span> retrying… ('+esc(h.error||"") +')</div>'
+      : (h.error ? '<div class="hist-error">'+icon("alert",12)+' '+esc(h.error)+'</div>' : "");
+    return '<div class="hist"><span class="hist-ic '+ic+'">'+icIcon+'</span>'+
+      '<div class="hist-main">'+
+        '<div class="hist-line1"><span class="hist-name">'+h.name+'</span>'+
+          '<span class="mbadge headless">headless</span>'+
+          '<span class="hist-when">'+relTime(h.when)+'</span></div>'+
+        line2 + result + extra +
+      '</div></div>';
+  }).join("");
+}
+
+/* ── config view ── */
+function viewConfig(){
+  var types = Object.keys(state.registry).sort();
+  var groups = types.map(function(t){
+    var reg = state.registry[t];
+    var hasAny = reg.headless.length>0 || reg.ui.length>0;
+    var headlessRows = reg.headless.map(function(h){
+      return '<div class="crow '+(h.enabled?"":"disabled")+'">'+
+        '<span class="chip chip-7" style="color:var(--sky-t)">'+icon(h.icon,15)+'</span>'+
+        '<div class="crow-main"><div class="crow-line1"><span class="crow-name">'+h.name+'</span>'+
+          '<span class="mbadge headless">headless</span>'+
+          (h.enabled?"":'<span class="mbadge" style="background:var(--w10);color:var(--w40)">disabled</span>')+'</div>'+
+          '<div class="crow-line2">timeout '+h.timeout+'s · '+SOURCES[h.app].name+'</div></div>'+
+        '<div class="crow-right">'+
+          (h.failures>0?'<span class="fail-badge">'+icon("alert",12)+h.failures+' fail'+(h.failures===1?"":"s")+'</span>':'<span class="fail-badge zero">0 failures</span>')+
+          '<button class="switch '+(h.enabled?"on":"")+'" onclick="toggleHeadless(\''+t+'\',\''+h.app+'\',\''+h.name+'\')"><span class="knob"></span></button>'+
+        '</div></div>';
+    }).join("");
+    var uiRows = reg.ui.map(function(uid){
+      var h = UI_HANDLERS[uid];
+      var isDef = state.defaults[t] === uid;
+      return '<div class="crow">'+
+        '<span class="chip chip-7" style="color:var(--violet-t)">'+icon(h.icon,15)+'</span>'+
+        '<div class="crow-main"><div class="crow-line1"><span class="crow-name">'+h.name+'</span>'+
+          '<span class="mbadge ui">UI</span>'+
+          (isDef?'<span class="default-badge">'+icon("check",11)+' default</span>':'')+'</div>'+
+          '<div class="crow-line2">'+esc(h.desc)+' · '+SOURCES[h.appId].name+'</div></div>'+
+        '<div class="crow-right">'+
+          (isDef
+            ? '<button class="btn btn-sm" onclick="clearDefault(\''+t+'\')">Clear</button>'
+            : '<button class="btn btn-sm" onclick="setDefault(\''+t+'\',\''+uid+'\')">Set as default</button>')+
+        '</div></div>';
+    }).join("");
+    var body =
+      '<div class="panel-head">Headless handlers · invoked automatically on emission</div>'+
+      '<div class="panel-rows">'+(headlessRows||'<div class="panel-empty">None registered</div>')+'</div>'+
+      '<div class="panel-head" style="margin-top:8px">UI handlers · launched when the user clicks an event</div>'+
+      '<div class="panel-rows">'+(uiRows||'<div class="panel-empty">None — events of this type use the generic view</div>')+'</div>';
+    return '<div class="group">'+
+      '<div class="group-h"><span>t</span><span class="t">'+t+'</span>'+
+        '<span class="c">'+reg.headless.length+' headless · '+reg.ui.length+' ui</span></div>'+
+      (hasAny?body:"")+'</div>';
+  }).join("");
+
+  return '<div class="config-wrap view-enter">'+
+    '<h3>Event handler configuration</h3>'+
+    '<p class="config-sub">Headless handlers are invoked by the core event service on emission. Disable one to stop it from processing (and from blocking) its event types. UI handler defaults control which app opens when you click an event with multiple options.</p>'+
+    groups +
+  '</div>';
+}
+
+/* ── actions ── */
+function setTab(t){ state.tab=t; state.showHistorical=false; state.selectedEventId=null; render(); }
+function toggleHistorical(){ state.showHistorical=!state.showHistorical; state.selectedEventId=null; render(); }
+function markAllRead(){ state.events.forEach(function(e){ e.read=true; }); render(); }
+function closeDetail(){ state.selectedEventId=null; render(); }
+function openWindow(){ document.getElementById("evWindow").classList.remove("hidden"); document.getElementById("deskHint").classList.add("hidden"); }
+function closeWindow(){ document.getElementById("evWindow").classList.add("hidden"); document.getElementById("deskHint").classList.remove("hidden"); }
+function toggleHeadless(t, app, name){
+  var reg = state.registry[t];
+  for(var i=0;i<reg.headless.length;i++){
+    if(reg.headless[i].app===app && reg.headless[i].name===name){ reg.headless[i].enabled=!reg.headless[i].enabled; break; }
+  }
+  render();
+}
+function setDefault(t, uid){ state.defaults[t]=uid; render(); }
+function clearDefault(t){ delete state.defaults[t]; render(); }
+
+function emitEvent(){
+  var pool = [
+    { src:"gsuite", type:"com.bos.gsuite.email.received", summary:"New email from finance@acme.com", payload:{ from:"finance@acme.com", subject:"Re: Q3 forecast" } },
+    { src:"workflow", type:"com.bos.workflow.run.completed", summary:"Ad-hoc run completed: etl-refresh", payload:{ run:"etl-refresh", status:"success", rows:512 } },
+    { src:"devops", type:"com.bos.devops.health.warning", summary:"worker-3 memory 91%", payload:{ service:"worker-3", metric:"mem_pct", value:91 } },
+    { src:"assistant", type:"com.bos.assistant.task.done", summary:"Follow-up drafted for inbox triage", payload:{ task:"inbox-triage", output:"Draft ready" } }
+  ];
+  var pick = pool[Math.floor(Math.random()*pool.length)];
+  var seqs = state.events.map(function(e){ return e.seq; });
+  var maxSeq = Math.max.apply(null, seqs.concat(1));
+  var id = "evt_" + (Date.now()%100000000);
+  var reg = state.registry[pick.type];
+  var history = [];
+  if(reg && reg.headless.length>0){
+    var active = reg.headless.filter(function(h){ return h.enabled; });
+    history = active.map(function(h){
+      return { app:h.app, name:h.name+" (headless)", icon:h.icon, status:"acked", attempt:1, when:Date.now(), result:{ handled:true } };
+    });
+  }
+  state.events.unshift({
+    id:id, type:pick.type, seq:maxSeq+1, t:Date.now(),
+    src:pick.src, summary:pick.summary, read:false, processing:"done",
+    payload:pick.payload, history:history,
+    ui: reg ? reg.ui : []
+  });
+  if(pendingTimer){ /* keep */ }
+  render();
+  flashRow(id);
+}
+function flashRow(id){
+  setTimeout(function(){
+    var rows = document.querySelectorAll(".row");
+    for(var i=0;i<rows.length;i++){
+      if(rows[i].getAttribute("onclick") && rows[i].getAttribute("onclick").indexOf(id)>-1){
+        rows[i].classList.add("flash");
+        break;
+      }
+    }
+  }, 20);
+}
+
+/* pending → done live transition */
+function schedulePending(){
+  if(pendingTimer) return;
+  pendingTimer = setTimeout(function(){ advancePending(); }, 12000);
+}
+function advancePending(){
+  if(pendingTimer){ clearTimeout(pendingTimer); pendingTimer=null; }
+  var target = null;
+  for(var i=0;i<state.events.length;i++){
+    var e = state.events[i];
+    if(e.processing==="pending"){
+      for(var j=0;j<e.history.length;j++){
+        if(e.history[j].status==="retry"){
+          e.history[j].status="acked"; e.history[j].result={ scaledTo:4, applied:true };
+          e.history[j].retryIn=null;
+        }
+      }
+      e.processing="done";
+      target=e.id;
+      break;
+    }
+  }
+  render();
+  if(target) flashRow(target);
+  var lb=document.getElementById("liveBtn"); if(lb) lb.classList.add("live");
+}
+function advancePendingNow(){ advancePending(); }
+
+/* dialog */
+function openDialog(e, uiHandlerIds){
+  state.dialog = { event:e, opts:uiHandlerIds, sel:null, always:false };
+  renderDialog();
+  document.getElementById("dialog").classList.remove("hidden");
+}
+function renderDialog(){
+  var d = state.dialog;
+  document.getElementById("dlgType").textContent = d.event.type;
+  var opts = d.opts.map(function(uid){
+    var h = UI_HANDLERS[uid];
+    var sel = d.sel===uid;
+    return '<button class="dlg-opt '+(sel?"sel":"")+'" onclick="pickOpt(\''+uid+'\')">'+
+      '<span class="radio"><span class="inner"></span></span>'+
+      '<span class="chip chip-7" style="color:'+SOURCES[h.appId].color+'">'+icon(h.icon,15)+'</span>'+
+      '<div class="dlg-opt-main"><span class="dlg-opt-line1">'+h.name+'</span>'+
+      '<span class="dlg-opt-line2">'+esc(h.desc)+' · '+SOURCES[h.appId].name+'</span></div></button>';
+  }).join("");
+  document.getElementById("dlgOptions").innerHTML = opts;
+  document.getElementById("dlgAlwaysWrap").classList.toggle("on", d.always);
+  document.getElementById("dlgAlwaysBox").classList.toggle("on", d.always);
+  document.getElementById("dlgAlwaysBox").innerHTML = d.always ? icon("check",11) : "";
+  document.getElementById("dlgAlwaysLabel").textContent = d.sel
+    ? "Always open "+UI_HANDLERS[d.sel].name+" for this event type"
+    : "Always open with this app for this event type";
+  document.getElementById("dlgOpenBtn").disabled = !d.sel;
+}
+function pickOpt(uid){ state.dialog.sel=uid; renderDialog(); }
+function toggleAlways(){ if(!state.dialog.sel) return; state.dialog.always=!state.dialog.always; renderDialog(); }
+function confirmDialog(){
+  var d = state.dialog;
+  if(!d.sel) return;
+  if(d.always) state.defaults[d.event.type]=d.sel;
+  d.event.read=true;
+  d.event._openedWith=d.sel;
+  state.selectedEventId=d.event.id;
+  closeDialog();
+  render();
+}
+function closeDialog(){ state.dialog=null; document.getElementById("dialog").classList.add("hidden"); }
+
+function resetDemo(){
+  if(pendingTimer){ clearTimeout(pendingTimer); pendingTimer=null; }
+  state = initialState();
+  var lb=document.getElementById("liveBtn"); if(lb) lb.classList.remove("live");
+  render();
+  schedulePending();
+}
+
+/* ── init ── */
+function init(){
+  try{
+    document.getElementById("bellIc").innerHTML = icon("bell",16);
+    document.getElementById("liveBtn").innerHTML = '<span class="pulse"></span> Force pending → done';
+    render();
+    schedulePending();
+    clockTimer = setInterval(renderClock, 1000);
+  }catch(err){
+    document.body.innerHTML = '<div style="padding:40px;color:#fca5a5;font-family:monospace">Mockup init error: '+esc(err&&err.message||err)+'</div>';
+  }
+}
+if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", init);
+else init();
 </script>
 </body>
 </html>
