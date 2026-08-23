@@ -2,8 +2,8 @@
 
 **Status**: FAILED
 
-- Passed: 7
-- Failed: 2
+- Passed: 8
+- Failed: 1
 - Flaky: 0
 - Skipped: 0
 
