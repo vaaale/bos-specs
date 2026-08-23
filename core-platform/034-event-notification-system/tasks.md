@@ -209,14 +209,13 @@
 
 ## Implementation Strategy
 
-### MVP first (US1 + US2, the P1 pair)
-1. Setup (P1) → Foundational kernel (P2) — green unit tests.
-2. US1 (viewer + bell) → US2 (emission surfaces + agent tools).
-3. **STOP and validate**: a real service/assistant emits; the user sees it in the bell + viewer and can triage it.
+**Full-scope delivery — all user stories, one pass.**
 
-### Incremental delivery
-4. US3 → headless automation + migration (validate: service handler processes + completes an event).
-5. US4 → US5 → US6 → US7 (UI handler declaration → click-to-launch → ambiguity → config).
+1. Setup (P1) → Foundational kernel (P2) — green unit tests.
+2. US1 + US2 (P1 pair) — viewer, bell, emission surfaces, agent tools.
+3. US3 (P2) — headless automation, worker-IPC dispatch, migration.
+4. US4 + US5 + US6 (P2/P3) — UI handler declaration, click-to-launch, ambiguity resolution.
+5. US7 (P4) — configuration.
 6. Polish (P10): docs, perf proof, GSuite handler, full self-cleaning suite, Constitution re-check.
 
-Each increment is independently testable and demoable; none breaks a prior story.
+No stopping between stories. All 55 tasks are delivered in sequence (respecting dependencies), with checkpoints for validation at each phase boundary but no delivery gates. The feature is not complete until Phase 10 (T054–T055) passes.
