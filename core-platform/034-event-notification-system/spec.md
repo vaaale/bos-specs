@@ -161,6 +161,7 @@ An app registers a **headless handler** for one or more event types. Unlike UI h
 - **FR-015**: Headless handlers MUST be invoked automatically and asynchronously when a matching event is emitted. The invocation MUST NOT block the emitting app or the durable event record. All registered headless handlers for a given event type MUST be invoked (fan-out), each receiving the full event record independently.
 - **FR-016**: A headless handler failure (exception, timeout) MUST NOT affect: (a) the durable event record, (b) other headless handlers processing the same event, (c) the UI handler routing for subsequent user clicks. Failures MUST be logged with the handler's app ID, event ID, and error details.
 - **FR-017**: The Event Viewer's configuration section MUST display headless handler registrations alongside UI handler registrations, clearly labeled by mode. The user MUST be able to enable/disable individual headless handlers without uninstalling the providing app.
+- **FR-018**: The feature MUST ship with two documentation artifacts: (a) **Developer documentation** covering the event emission API, handler registration (UI and headless), event type namespace conventions, payload structure, and integration examples sufficient for a marketplace app developer to integrate without reading BOS source code; and (b) **User documentation** covering how to view events, configure handler defaults, enable/disable headless handlers, and interpret the generic event detail view. Both MUST be published in the BOS documentation hub.
 
 ### Non-Functional Requirements
 
