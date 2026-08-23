@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Event &amp; Notification System — UI Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    font-family: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background: #0b0d12;
+    height: 100%;
+  }
+  .font-mono { font-family: "Geist Mono", ui-monospace, SFMono-Regular, monospace; }
+  svg.lucide { stroke-width: 1.75; }
+  /* new-event arrival highlight (FR-028 / real-time) */
+  @keyframes eventflash { 0% { background-color: rgba(255,255,255,0.14); } 100% { background-color: transparent; } }
+  .event-flash { animation: eventflash 2.2s ease-out 1; }
+  @keyframes viewin { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  .view-enter { animation: viewin 0.16s ease-out; }
+  @keyframes winin { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: scale(1); } }
+  .win-open { animation: winin 0.15s ease-out; }
+  .win-closing { transition: opacity 0.12s ease-in, transform 0.12s ease-in; opacity: 0; transform: scale(0.985); }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body class="overflow-hidden text-white/90 select-none">
+
+  <!-- ═══════════ MOCKUP DEMO CONTROLS (not part of the product) ═══════════ -->
+  <div class="flex h-7 shrink-0 items-center gap-3 border-b border-white/10 bg-black/60 px-3 text-[11px] text-white/40">
+    <span class="font-semibold uppercase tracking-wider text-white/30">Mockup</span>
+    <span>Interactive demo — controls below simulate live behaviour</span>
+    <div class="ml-auto flex items-center gap-1.5">
+      <button onclick="emitEvent()" class="flex items-center gap-1 rounded bg-white/10 px-2 py-0.5 transition-colors hover:bg-white/20">
+        <i data-lucide="zap" class="h-3 w-3"></i> Simulate new event
+      </button>
+      <button id="volBtn" onclick="toggleVolume()" class="flex items-center gap-1 rounded bg-white/10 px-2 py-0.5 transition-colors hover:bg-white/20">
+        <i data-lucide="gauge" class="h-3 w-3"></i> <span id="volLabel">Bell badge: live count</span>
+      </button>
+      <button onclick="resetDemo()" class="flex items-center gap-1 rounded bg-white/10 px-2 py-0.5 transition-colors hover:bg-white/20">
+        <i data-lucide="rotate-ccw" class="h-3 w-3"></i> Reset
+      </button>
+    </div>
+  </div>
+
+  <div class="relative flex h-[calc(100vh-28px)] flex-col">
+
+    <!-- ═══════════ TOPBAR (mirrors src/components/desktop/Topbar.tsx) ═══════════ -->
+    <div class="relative z-[100000] grid h-8 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-white/10 bg-black/30 px-4 text-xs text-white/80 backdrop-blur-xl">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="font-semibold tracking-tight text-white">BrowserOS</span>
+        <span id="tbTitle" class="truncate text-white/60">Event Viewer</span>
+      </div>
+      <div class="justify-self-center text-white/30"><i data-lucide="branch" class="h-3.5 w-3.5" /></div>
+      <div class="flex items-center gap-3 justify-self-end">
+        <span class="text-white/50"><i data-lucide="cable" class="h-3.5 w-3.5" /></span>
+        <span id="clock" class="text-white/50">—</span>
+
+        <!-- ── THE BELL (FR-009) — badge = unread count, caps at 99+ ── -->
+        <button onclick="openWindow()" title="Events"
+                class="relative inline-flex h-6 w-6 items-center justify-center rounded text-white/70 transition-colors hover:bg-white/10 hover:text-white">
+          <i data-lucide="bell" class="h-4 w-4"></i>
+          <span id="bellBadge"
+                class="absolute -right-1.5 -top-1 inline-flex min-w-[15px] items-center justify-center rounded-full bg-white/90 px-1 text-[10px] font-semibold leading-[15px] text-[#0f1117]">4</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══════════ DESKTOP ═══════════ -->
+    <div class="relative min-h-0 flex-1 overflow-hidden"
+         style="background: radial-gradient(1100px 640px at 50% 18%, #171a22 0%, #0f1117 55%, #0b0d12 100%);">
+
+      <!-- Event Viewer window -->
+      <div id="evWindow"
+           class="win-open absolute left-1/2 top-1/2 flex h-[560px] w-[780px] max-w-[94%] -translate-x-1/2 -translate-y-[54%] flex-col overflow-hidden rounded-xl border border-white/20 bg-[#15171e]/95 shadow-2xl backdrop-blur-md">
+
+        <!-- Title bar (mirrors src/components/desktop/Window.tsx) -->
+        <div class="flex h-9 shrink-0 items-center gap-2 border-b border-white/10 bg-white/5 px-3 select-none">
+          <div class="flex items-center gap-2">
+            <button onclick="closeWindow()" title="Close" class="h-3 w-3 rounded-full bg-[#ff5f57] transition-opacity hover:opacity-80" />
+            <button title="Minimize" class="h-3 w-3 rounded-full bg-[#febc2e] transition-opacity hover:opacity-80" />
+            <button title="Maximize" class="h-3 w-3 rounded-full bg-[#28c840] transition-opacity hover:opacity-80" />
+          </div>
+          <span class="pointer-events-none flex-1 truncate text-center text-xs font-medium text-white/70">Event Viewer</span>
+          <div class="flex w-12 justify-end">
+            <button title="Keep this window on top" class="rounded p-1 text-white/25 transition-colors hover:bg-white/10 hover:text-white/60">
+              <i data-lucide="pin-off" class="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+
+        <!-- App shell -->
+        <div class="flex min-h-0 flex-1 flex-col bg-[#0f1117]">
+          <div id="appToolbar" class="flex shrink-0 items-center gap-1 border-b border-white/10 bg-white/5 px-2 py-1.5"></div>
+          <div id="appBody" class="min-h-0 flex-1 overflow-auto"></div>
+          <div id="appFooter" class="flex shrink-0 items-center justify-between border-t border-white/10 bg-white/[0.02] px-3 py-1.5 text-xs"></div>
+        </div>
+      </div>
+
+      <!-- Empty-desktop hint (when window closed) -->
+      <div id="deskHint" class="pointer-events-none absolute inset-0 hidden items-center justify-center">
+        <p class="text-xs text-white/25">Click the bell in the toolbar to open the Event Viewer</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ UI HANDLER SELECTION DIALOG (FR-016) ═══════════ -->
+  <div id="dialog" class="fixed inset-0 z-[200000] hidden items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div class="w-[460px] max-w-[92vw] rounded-2xl border border-white/10 bg-[#15171e] p-5 shadow-2xl">
+      <div class="mb-1 flex items-start justify-between">
+        <h3 class="text-sm font-semibold text-white">Open with…</h3>
+        <button onclick="closeDialog()" class="rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white">
+          <i data-lucide="x" class="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <p id="dlgType" class="mb-3 truncate font-mono text-xs text-white/40"></p>
+      <div id="dlgOptions" class="space-y-1.5"></div>
+      <label id="dlgAlwaysWrap" class="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+        <span id="dlgAlwaysBox" class="flex h-3.5 w-3.5 items-center justify-center rounded border border-white/30"></span>
+        <span id="dlgAlwaysLabel" class="text-xs text-white/60"></span>
+      </label>
+      <div class="mt-4 flex items-center justify-end gap-2">
+        <button onclick="closeDialog()" class="rounded bg-white/10 px-3 py-1.5 text-xs transition-colors hover:bg-white/20">Cancel</button>
+        <button id="dlgOpenBtn" onclick="confirmDialog()"
+                class="rounded bg-violet-500/30 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-violet-500/40 disabled:opacity-40" disabled>Choose an app</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ══════════════════════════════ DATA ══════════════════════════════ */
+
+const APPS = {
+  gsuite:    { name: "GSuite",           icon: "mail" },
+  workflow:  { name: "Workflow Manager", icon: "workflow" },
+  devops:    { name: "DevOps Service",   icon: "activity" },
+  scheduler: { name: "Scheduler",        icon: "calendar-clock" },
+  assistant: { name: "Assistant",        icon: "bot" },
+};
+
+// Registered handlers per event type (drives dialog, config, and click routing)
+const REGISTRY = {
+  "com.bos.gsuite.email.received": {
+    headless: [
+      { id: "h-archive", app: "gsuite", name: "Auto-archive", failures: 0, enabled: true,
+        desc: "Files received mail into the inbox folder." },
+    ],
+    ui: [
+      { id: "u-email", app: "gsuite", name: "Email detail view", desc: "Full body, headers, and attachments." },
+      { id: "u-sum",   app: "assistant", name: "Assistant summary", desc: "Summarize the mail and draft a reply." },
+    ],
+  },
+  "com.bos.workflow.completed": {
+    headless: [
+      { id: "h-tracker", app: "workflow", name: "Run tracker", failures: 2, enabled: true,
+        desc: "Records run metrics to the ops dashboard." },
+    ],
+    ui: [
+      { id: "u-run", app: "workflow", name: "Run view", desc: "Step timeline, logs, and artifacts." },
+    ],
+  },
+  "com.bos.devops.health.degraded": {
+    headless: [
+      { id: "h-eval",   app: "devops", name: "Health evaluator", failures: 0, enabled: true,
+        desc: "Scores severity and routes the alert." },
+      { id: "h-digest", app: "assistant", name: "Alert digest", failures: 1, enabled: true,
+        desc: "Batches alerts into a single digest message." },
+    ],
+    ui: [],
+  },
+  "com.bos.scheduler.task.failed": {
+    headless: [
+      { id: "h-retry", app: "scheduler", name: "Task retry", failures: 0, enabled: true,
+        desc: "Queues a retry with exponential backoff." },
+      { id: "h-ff",    app: "workflow", name: "Failure workflow", failures: 0, enabled: true,
+        desc: "Triggers the incident-response workflow." },
+    ],
+    ui: [
+      { id: "u-task", app: "scheduler", name: "Task detail", desc: "Job definition and recent runs." },
+    ],
+  },
+  "com.bos.assistant.turn.completed": {
+    headless: [],
+    ui: [
+      { id: "u-turn", app: "assistant", name: "Run view", desc: "Tool calls and transcript." },
+    ],
+  },
+};
+
+// User-set default UI handler per type (starts empty → multi-handler types prompt)
+const defaults = {};
+
+function hist(ack, app, name, attempt, when, result) {
+  return { status: ack ? "acked" : "retry", app, name, attempt, when, result: result || null,
+           error: ack ? null : "timeout after 30 s" };
+}
+
+const INITIAL_EVENTS = [
+  {
+    id: "e1", type: "com.bos.gsuite.email.received", seq: 4821, ts: "12 s ago",
+    source: "gsuite", read: false, processing: "processed",
+    summary: "Invoice #4812 from Northwind Traders — $14,300 due Aug 30",
+    payload: [
+      ["from", "sarah@northwind-traders.com"], ["to", "accounts@browseros.dev"],
+      ["subject", "Invoice #4812 — August services"], ["threadId", "m_9f3k2"],
+      ["hasAttachments", true], ["attachmentCount", 1],
+      ["vfsRef", "/data/events/e1/attachments/"],
+    ],
+    history: [hist(true, "gsuite", "Auto-archive", 1, "12 s ago", '{"folder":"Inbox"}')],
+  },
+  {
+    id: "e2", type: "com.bos.workflow.completed", seq: 104, ts: "2 m ago",
+    source: "workflow", read: false, processing: "processed",
+    summary: "Workflow “Nightly sync” finished — 47/47 steps OK",
+    payload: [
+      ["workflowId", "wf-7714"], ["name", "Nightly sync"],
+      ["steps", { total: 47, ok: 47, failed: 0 }], ["durationS", 412],
+      ["artifacts", ["/data/workflows/wf-7714/report.json", "/data/workflows/wf-7714/metrics.csv"]],
+    ],
+    history: [hist(true, "workflow", "Run tracker", 1, "2 m ago", '{"status":"ok","durationS":412}')],
+  },
+  {
+    id: "e3", type: "com.bos.devops.health.degraded", seq: 77, ts: "14 m ago",
+    source: "devops", read: false, processing: "pending",
+    summary: "auth-svc p95 latency 842 ms (threshold 500 ms)",
+    payload: [
+      ["service", "auth-svc"], ["metric", "p95_latency_ms"],
+      ["value", 842], ["threshold", 500], ["window", "5 m"], ["instance", "auth-svc-7d9f4"],
+    ],
+    history: [
+      hist(true, "devops", "Health evaluator", 1, "14 m ago", '{"severity":"warning"}'),
+      hist(false, "assistant", "Alert digest", 2, "14 m ago"),
+    ],
+  },
+  {
+    id: "e4", type: "com.bos.scheduler.task.failed", seq: 31, ts: "38 m ago",
+    source: "scheduler", read: false, processing: "processed",
+    summary: "Scheduled task “Backup export” failed — disk quota exceeded",
+    payload: [
+      ["taskId", "job-backup-export"], ["name", "Backup export"],
+      ["schedule", "0 2 * * *"], ["error", "ENOSPC: disk quota exceeded"],
+      ["vfsPath", "/data/backups/export-2026-08-23.zip"],
+    ],
+    history: [
+      hist(true, "scheduler", "Task retry", 1, "38 m ago", '{"retryQueued":false,"reason":"quota"}'),
+      hist(true, "workflow", "Failure workflow", 1, "37 m ago", '{"workflowId":"wf-8821","status":"triggered"}'),
+    ],
+  },
+  {
+    id: "h1", type: "com.bos.gsuite.email.received", seq: 4819, ts: "2 h ago",
+    source: "gsuite", read: true, processing: "processed",
+    summary: "Calendar invite: Design review — Thu 10:00",
+    payload: [["from", "chen@browseros.dev"], ["subject", "Design review — Thu 10:00"],
+              ["calendar", "team-events"], ["attendees", 6]],
+    history: [hist(true, "gsuite", "Auto-archive", 1, "2 h ago", '{"folder":"Inbox"}')],
+  },
+  {
+    id: "h2", type: "com.bos.assistant.turn.completed", seq: 512, ts: "5 h ago",
+    source: "assistant", read: true, processing: "processed",
+    summary: "Assistant run finished — 12 tool calls, 41 s",
+    payload: [["turnId", "t_2a91"], ["toolCalls", 12], ["durationS", 41],
+              ["tokens", { input: 18422, output: 2310 }]],
+    history: [],
+  },
+  {
+    id: "h3", type: "com.bos.devops.health.degraded", seq: 74, ts: "9 h ago",
+    source: "devops", read: true, processing: "processed",
+    summary: "search-svc error rate 2.4 % (threshold 1 %)",
+    payload: [["service", "search-svc"], ["metric", "error_rate_pct"], ["value", 2.4], ["threshold", 1]],
+    history: [
+      hist(true, "devops", "Health evaluator", 1, "9 h ago", '{"severity":"warning"}'),
+      hist(true, "assistant", "Alert digest", 1, "9 h ago", '{"digestId":"d_77","queued":true}'),
+    ],
+  },
+];
+
+const SAMPLES = [
+  {
+    type: "com.bos.workflow.completed", source: "workflow",
+    summary: "Workflow “Ingest pipeline” finished — 12/12 steps OK",
+    payload: [["workflowId", "wf-9902"], ["name", "Ingest pipeline"], ["steps", { total: 12, ok: 12, failed: 0 }], ["durationS", 96]],
+    history: [hist(true, "workflow", "Run tracker", 1, "just now", '{"status":"ok","durationS":96}')],
+  },
+  {
+    type: "com.bos.assistant.turn.completed", source: "assistant",
+    summary: "Assistant run finished — 4 tool calls, 9 s",
+    payload: [["turnId", "t_2b04"], ["toolCalls", 4], ["durationS", 9], ["tokens", { input: 6120, output: 742 }]],
+    history: [],
+  },
+  {
+    type: "com.bos.devops.health.degraded", source: "devops",
+    summary: "browser-svc p95 latency 611 ms (threshold 500 ms)",
+    payload: [["service", "browser-svc"], ["metric", "p95_latency_ms"], ["value", 611], ["threshold", 500], ["window", "5 m"]],
+    history: [
+      hist(true, "devops", "Health evaluator", 1, "just now", '{"severity":"warning"}'),
+      hist(false, "assistant", "Alert digest", 1, "just now"),
+    ],
+  },
+];
+
+/* ══════════════════════════ STATE ══════════════════════════ */
+
+let events = JSON.parse(JSON.stringify(INITIAL_EVENTS));
+let tab = "events";            // "events" | "config"
+let showHistorical = false;
+let selectedId = null;
+let winOpen = true;
+let highVolume = false;
+let flashId = null;
+let seqCounter = 4821;
+let sampleIdx = 0;
+
+const $ = (id) => document.getElementById(id);
+
+/* ══════════════════════════ HELPERS ══════════════════════════ */
+
+function icons() { lucide.createIcons(); }
+
+function unreadCount() { return events.filter((e) => !e.read).length; }
+function pendingCount() { return events.filter((e) => e.processing === "pending").length; }
+
+function renderBell() {
+  const n = unreadCount();
+  const badge = $("bellBadge");
+  badge.textContent = highVolume ? "99+" : (n > 99 ? "99+" : n);
+  badge.style.display = (n > 0 || highVolume) ? "" : "none";
+}
+
+function updateClock() {
+  $("clock").textContent = new Date().toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtVal(v) {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v;
+  if (v && typeof v === "object") return v;
+  return v;
+}
+function valClass(v) {
+  if (typeof v === "boolean") return "text-amber-200";
+  if (typeof v === "number") return "text-sky-200";
+  return "text-white/80";
+}
+function valText(v) {
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function modeBadge(mode) {
+  return mode === "headless"
+    ? '<span class="inline-flex items-center rounded bg-sky-500/20 px-1.5 py-0.5 text-xs leading-none text-sky-200">Headless</span>'
+    : '<span class="inline-flex items-center rounded bg-violet-500/20 px-1.5 py-0.5 text-xs leading-none text-violet-200">UI</span>';
+}
+
+function statusBadge(processing) {
+  return processing === "pending"
+    ? '<span title="Processing — waiting on handler acknowledgments" class="inline-flex items-center gap-1 text-xs text-white/50">'
+      + '<i data-lucide="loader-circle" class="h-3 w-3 animate-spin"></i> processing…</span>'
+    : '<span title="Processed — all handlers acknowledged" class="text-emerald-300/80"><i data-lucide="check" class="h-3.5 w-3.5"></i></span>';
+}
+
+function appChip(appId, size) {
+  const a = APPS[appId];
+  return `<span class="flex ${size} shrink-0 items-center justify-center rounded-lg bg-white/5 text-white/70">
+    <i data-lucide="${a.icon}" class="h-1/2 w-1/2"></i></span>`;
+}
+
+/* ══════════════════════════ TOOLBAR ══════════════════════════ */
+
+function renderToolbar() {
+  const tabBtn = (id, label, icon) => `
+    <button onclick="setTab('${id}')"
+      class="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition-colors ${
+        tab === id ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"}">
+      <i data-lucide="${icon}" class="h-3.5 w-3.5"></i> ${label}
+    </button>`;
+
+  let right = "";
+  if (tab === "events" && !selectedId) {
+    const on = showHistorical;
+    right = `
+      <div class="ml-auto flex items-center gap-1.5">
+        <button onclick="toggleHistorical()"
+          class="flex items-center gap-2 rounded px-2 py-1 text-xs transition-colors hover:bg-white/10 ${on ? "text-white" : "text-white/60"}">
+          <span class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${on ? "bg-white/35" : "bg-white/15"}">
+            <span class="absolute left-0.5 h-3 w-3 rounded-full bg-white/90 transition-transform ${on ? "translate-x-3" : ""}"></span>
+          </span>
+          Show historical events
+        </button>
+        <button onclick="markAllRead()" title="Mark all as read"
+          class="flex items-center gap-1.5 rounded bg-white/10 px-3 py-1.5 text-xs transition-colors hover:bg-white/20">
+          <i data-lucide="check-check" class="h-3.5 w-3.5"></i> Mark all as read
+        </button>
+      </div>`;
+  }
+  $("appToolbar").innerHTML = `
+    ${tabBtn("events", "Events", "bell")}
+    ${tabBtn("config", "Configuration", "settings")}
+    ${right}`;
+  icons();
+}
+
+function renderFooter() {
+  const p = pendingCount();
+  $("appFooter").innerHTML = `
+    <span class="text-white/50">${events.length} events${p ? ` · ${p} processing` : ""}</span>
+    <span class="flex items-center gap-1.5 text-white/50">
+      <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span> Live
+    </span>`;
+}
+
+/* ══════════════════════════ LIST VIEW ══════════════════════════ */
+
+function eventRow(e) {
+  const a = APPS[e.source];
+  return `
+  <div onclick="openEvent('${e.id}')"
+       class="flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-white/5 ${
+         e.read ? "opacity-55" : ""} ${flashId === e.id ? "event-flash" : ""}">
+    <span class="relative">
+      ${appChip(e.source, "h-7 w-7")}
+      ${!e.read ? '<span class="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-white/90 ring-2 ring-[#0f1117]"></span>' : ""}
+    </span>
+    <div class="min-w-0 flex-1">
+      <div class="flex items-baseline gap-2">
+        <span class="shrink-0 text-xs font-medium text-white/90">${a.name}</span>
+        <span class="truncate text-xs text-white/60">${e.summary}</span>
+      </div>
+      <div class="mt-0.5 flex items-center gap-1.5 text-xs text-white/35">
+        <span class="truncate font-mono">${e.type}</span>
+        <span class="shrink-0">·</span>
+        <span class="shrink-0">seq ${e.seq}</span>
+      </div>
+    </div>
+    <div class="flex shrink-0 items-center gap-3">
+      ${statusBadge(e.processing)}
+      <span class="w-14 text-right text-xs text-white/40">${e.ts}</span>
+    </div>
+  </div>`;
+}
+
+function emptyState() {
+  if (showHistorical) {
+    return `
+    <div class="flex h-full flex-col items-center justify-center text-center view-enter">
+      <i data-lucide="history" class="mb-3 h-10 w-10 text-white/15"></i>
+      <h3 class="text-sm font-medium text-white/60">No historical events</h3>
+      <p class="mt-1 text-xs text-white/40">Events you open move here.</p>
+    </div>`;
+  }
+  return `
+  <div class="flex h-full flex-col items-center justify-center text-center view-enter">
+    <i data-lucide="bell-off" class="mb-3 h-10 w-10 text-white/15"></i>
+    <h3 class="text-sm font-medium text-white/60">All caught up</h3>
+    <p class="mt-1 max-w-[240px] text-xs text-white/40">New events from apps and services will appear here in real time.</p>
+    <button onclick="toggleHistorical()" class="mt-3 rounded bg-white/10 px-3 py-1.5 text-xs transition-colors hover:bg-white/20">
+      Show historical events
+    </button>
+  </div>`;
+}
+
+function renderList() {
+  const list = events.filter((e) => (showHistorical ? e.read : !e.read));
+  $("appBody").innerHTML = list.length
+    ? `<div class="divide-y divide-white/[0.05] view-enter">${list.map(eventRow).join("")}</div>`
+    : emptyState();
+  icons();
+}
+
+/* ══════════════════════════ DETAIL VIEW (generic, FR-017) ══════════════════════════ */
+
+function histRow(e) {
+  let icon, statusLine;
+  if (e.status === "acked") {
+    icon = '<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300"><i data-lucide="check" class="h-3 w-3"></i></span>';
+    statusLine = "acknowledged";
+  } else if (e.status === "retry") {
+    icon = '<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-amber-200"><i data-lucide="clock" class="h-3 w-3"></i></span>';
+    statusLine = `failed · retrying (attempt ${e.attempt} of 4, next in ~5 s)`;
+  } else {
+    icon = '<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/60"><i data-lucide="loader-circle" class="h-3 w-3 animate-spin"></i></span>';
+    statusLine = "processing…";
+  }
+  return `
+  <div class="flex items-start gap-2.5 px-3 py-2">
+    ${icon}
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-medium text-white/90">${e.name}</span>
+        <span class="text-xs text-white/40">by ${APPS[e.app].name}</span>
+        <span class="ml-auto shrink-0 text-xs text-white/40">${e.when}</span>
+      </div>
+      <div class="mt-0.5 text-xs text-white/50">Attempt ${e.attempt} · ${statusLine}</div>
+      ${e.result ? `<div class="mt-0.5 truncate font-mono text-xs text-white/45">→ ${e.result}</div>` : ""}
+    </div>
+  </div>`;
+}
+
+function renderDetail() {
+  const e = events.find((x) => x.id === selectedId);
+  if (!e) { tab = "events"; selectedId = null; renderAll(); return; }
+  const reg = REGISTRY[e.type] || { ui: [], headless: [] };
+  const pending = e.processing === "pending";
+  const acked = e.history.filter((h) => h.status === "acked").length;
+  const total = reg.headless.length;
+
+  const payloadRows = e.payload.map(([k, v]) => `
+    <div class="grid grid-cols-[150px_1fr] items-baseline gap-3 px-3 py-1.5">
+      <span class="truncate font-mono text-xs text-white/50">${k}</span>
+      <span class="break-all font-mono text-xs ${valClass(v)}">${valText(v)}</span>
+    </div>`).join("");
+
+  const historyPanel = e.history.length
+    ? `<div class="divide-y divide-white/[0.05]">${e.history.map(histRow).join("")}</div>`
+    : `<div class="px-3 py-3 text-xs text-white/40">No headless handlers are registered for this event type — it was processed immediately on emission.</div>`;
+
+  $("appBody").innerHTML = `
+  <div class="flex h-full flex-col">
+    <div class="flex shrink-0 items-center gap-2 border-b border-white/10 bg-white/[0.03] px-3 py-2">
+      <button onclick="backToList()" class="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white">
+        <i data-lucide="arrow-left" class="h-3.5 w-3.5"></i> Back to events
+      </button>
+      <span class="text-xs text-white/40">Event detail</span>
+    </div>
+
+    <div class="min-h-0 flex-1 overflow-auto p-4 view-enter">
+      <div class="mb-4 flex items-start gap-3">
+        ${appChip(e.source, "h-9 w-9")}
+        <div class="min-w-0 flex-1">
+          <h2 class="truncate text-sm font-medium text-white">${e.summary}</h2>
+          <div class="mt-0.5 text-xs text-white/50">${APPS[e.source].name} · ${e.ts}</div>
+        </div>
+        ${statusBadge(e.processing)}
+      </div>
+
+      <div class="mb-4 flex flex-wrap items-center gap-1.5">
+        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">${e.type}</span>
+        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">seq ${e.seq}</span>
+        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">${e.id}</span>
+        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">2026-08-23 18:${String(26 - (seqCounter - e.seq)).padStart(2, "0")}:04 UTC</span>
+      </div>
+
+      ${pending
+        ? `<div class="mb-4 flex shrink-0 items-center gap-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+             <i data-lucide="alert-triangle" class="h-3.5 w-3.5 shrink-0"></i>
+             Processing — ${acked} of ${total} handlers acknowledged${total ? "" : ""}.
+           </div>`
+        : (reg.ui.length === 0
+          ? `<div class="mb-4 flex shrink-0 items-center gap-2 rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+               <i data-lucide="info" class="h-3.5 w-3.5 shrink-0"></i>
+               No UI handlers are registered for this event type — showing the generic event view.
+             </div>`
+          : "")}
+
+      <div class="mb-4">
+        <h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-white/50">Payload</h3>
+        <div class="divide-y divide-white/[0.05] rounded-lg border border-white/10 bg-white/[0.02]">${payloadRows}</div>
+      </div>
+
+      <div>
+        <h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-white/50">
+          Processing history
+          ${total ? `<span class="ml-1 normal-case tracking-normal text-white/35">(${total} headless handler${total > 1 ? "s" : ""})</span>` : ""}
+        </h3>
+        <div class="rounded-lg border border-white/10 bg-white/[0.02]">${historyPanel}</div>
+      </div>
+    </div>
+  </div>`;
+  icons();
+}
+
+/* ══════════════════════════ CONFIG VIEW (FR-018) ══════════════════════════ */
+
+function toggle(h, on) {
+  return `
+  <button onclick="event.stopPropagation(); toggleHandler('${h.app}', '${h.id}')"
+    class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${on ? "bg-white/35" : "bg-white/15"}">
+    <span class="absolute left-0.5 h-3 w-3 rounded-full bg-white/90 transition-transform ${on ? "translate-x-3" : ""}"></span>
+  </button>`;
+}
+
+function configPanel(label, rows, emptyNote) {
+  return `
+  <div class="mb-2 overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+    <div class="border-b border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white/40">${label}</div>
+    ${rows.length
+      ? `<div class="divide-y divide-white/[0.05]">${rows.join("")}</div>`
+      : `<div class="px-3 py-2.5 text-xs text-white/35">${emptyNote}</div>`}
+  </div>`;
+}
+
+function headlessRow(h) {
+  const a = APPS[h.app];
+  const fail = h.failures > 0
+    ? `<span title="${h.failures} recent failure(s) — see event processing history"
+         class="inline-flex items-center gap-1 rounded border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-xs text-amber-100">
+         <i data-lucide="alert-triangle" class="h-3 w-3"></i> ${h.failures}
+       </span>`
+    : `<span class="text-xs text-white/30" title="No recent failures">0 failures</span>`;
+  return `
+  <div class="flex items-center gap-3 px-3 py-2 ${h.enabled ? "" : "opacity-50"}">
+    ${appChip(h.app, "h-6 w-6")}
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-medium text-white/90">${h.name}</span>
+        ${modeBadge("headless")}
+      </div>
+      <div class="mt-0.5 truncate text-xs text-white/40">by ${a.name} · ${h.desc}</div>
+    </div>
+    <div class="flex shrink-0 items-center gap-2.5">
+      ${fail}
+      ${toggle(h, h.enabled)}
+    </div>
+  </div>`;
+}
+
+function uiRow(h, type) {
+  const a = APPS[h.app];
+  const isDefault = defaults[type] === h.id;
+  return `
+  <div class="flex items-center gap-3 px-3 py-2">
+    ${appChip(h.app, "h-6 w-6")}
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-medium text-white/90">${h.name}</span>
+        ${modeBadge("ui")}
+        ${isDefault ? '<span class="inline-flex items-center gap-1 rounded bg-white/15 px-1.5 py-0.5 text-xs leading-none text-white/90"><i data-lucide="check" class="h-3 w-3"></i> Default</span>' : ""}
+      </div>
+      <div class="mt-0.5 truncate text-xs text-white/40">by ${a.name} · ${h.desc}</div>
+    </div>
+    <div class="flex shrink-0 items-center gap-1.5">
+      ${isDefault
+        ? `<button onclick="event.stopPropagation(); clearDefault('${type}')"
+            class="rounded bg-white/10 px-2 py-1 text-xs transition-colors hover:bg-white/20" title="Clear default — prompt again next time">
+            Clear</button>`
+        : `<button onclick="event.stopPropagation(); setDefault('${type}', '${h.id}')"
+            class="rounded bg-white/10 px-2 py-1 text-xs transition-colors hover:bg-white/20">
+            Set as default</button>`}
+    </div>
+  </div>`;
+}
+
+function renderConfig() {
+  const groups = Object.keys(REGISTRY).map((type) => {
+    const reg = REGISTRY[type];
+    const rows = [
+      configPanel("Headless handlers",
+        reg.headless.map((h) => headlessRow(h)),
+        "No headless handlers registered — events of this type are processed immediately on emission."),
+      configPanel("UI handlers",
+        reg.ui.map((h) => uiRow(h, type)),
+        "No UI handlers registered — events of this type open in the generic event view."),
+    ].join("");
+    return `
+    <div class="mb-4">
+      <h3 class="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/50">
+        <span class="font-mono normal-case tracking-normal">${type}</span>
+        <span class="text-white/25">·</span>
+        <span class="text-white/35 normal-case tracking-normal">${reg.headless.length + reg.ui.length} handler${reg.headless.length + reg.ui.length !== 1 ? "s" : ""}</span>
+      </h3>
+      ${rows}
+    </div>`;
+  }).join("");
+
+  $("appBody").innerHTML = `
+  <div class="mx-auto max-w-[640px] p-4 view-enter">
+    <h3 class="text-base font-semibold text-white">Configuration</h3>
+    <p class="mt-1 text-xs text-white/50">
+      Handlers registered by apps and services. Headless handlers process events automatically on emission;
+      UI handlers open when you click an event.
+    </p>
+    <div class="mt-4">${groups}</div>
+  </div>`;
+  icons();
+}
+
+/* ══════════════════════════ SELECTION DIALOG (FR-016) ══════════════════════════ */
+
+let dlg = { eventId: null, selected: null, always: false };
+
+function openDialog(eventId) {
+  const e = events.find((x) => x.id === eventId);
+  const reg = REGISTRY[e.type];
+  dlg = { eventId, selected: reg.ui[0].id, always: false };
+  $("dlgType").textContent = e.type;
+  renderDialogOptions();
+  $("dialog").classList.remove("hidden");
+  $("dialog").classList.add("flex");
+  icons();
+}
+
+function renderDialogOptions() {
+  const e = events.find((x) => x.id === dlg.eventId);
+  const reg = REGISTRY[e.type];
+  $("dlgOptions").innerHTML = reg.ui.map((h) => {
+    const a = APPS[h.app];
+    const sel = dlg.selected === h.id;
+    return `
+    <button onclick="selectDialog('${h.id}')"
+      class="flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-colors ${
+        sel ? "border-white/30 bg-white/10" : "border-white/10 hover:bg-white/5"}">
+      <span class="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${sel ? "border-white/60" : "border-white/30"}">
+        ${sel ? '<span class="h-1.5 w-1.5 rounded-full bg-white"></span>' : ""}
+      </span>
+      ${appChip(h.app, "h-7 w-7")}
+      <span class="min-w-0 flex-1">
+        <span class="block text-xs font-medium text-white/90">${a.name} — ${h.name}</span>
+        <span class="block truncate text-xs text-white/40">${h.desc}</span>
+      </span>
+    </button>`;
+  }).join("");
+  updateAlways();
+}
+
+function selectDialog(id) {
+  dlg.selected = id;
+  renderDialogOptions();
+  icons();
+}
+
+function updateAlways() {
+  const e = events.find((x) => x.id === dlg.eventId);
+  $("dlgAlwaysBox").innerHTML = dlg.always
+    ? '<i data-lucide="check" class="h-3 w-3 text-[#0f1117]"></i>'
+    : "";
+  $("dlgAlwaysBox").className = "flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors " +
+    (dlg.always ? "border-white bg-white" : "border-white/30");
+  $("dlgAlwaysLabel").textContent = `Always open ${e.type} with this app`;
+  const btn = $("dlgOpenBtn");
+  btn.disabled = !dlg.selected;
+  const h = (REGISTRY[e.type].ui).find((x) => x.id === dlg.selected);
+  btn.textContent = h ? `Open in ${APPS[h.app].name}` : "Choose an app";
+}
+
+$("dlgAlwaysWrap").addEventListener("click", () => {
+  dlg.always = !dlg.always;
+  updateAlways();
+  icons();
+});
+
+function closeDialog() {
+  $("dialog").classList.add("hidden");
+  $("dialog").classList.remove("flex");
+  dlg = { eventId: null, selected: null, always: false };
+}
+
+function confirmDialog() {
+  const e = events.find((x) => x.id === dlg.eventId);
+  if (dlg.always) defaults[e.type] = dlg.selected;   // "always use" preference (FR-016 / FR-027)
+  closeDialog();
+  markRead(e.id);
+  selectedId = e.id;
+  renderAll();
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !$("dialog").classList.contains("hidden")) closeDialog();
+});
+
+/* ══════════════════════════ ACTIONS ══════════════════════════ */
+
+function setTab(t) { tab = t; selectedId = null; renderAll(); }
+
+function toggleHistorical() { showHistorical = !showHistorical; selectedId = null; renderAll(); }
+
+function markAllRead() {
+  events.forEach((e) => { e.read = true; });
+  renderAll();
+}
+
+function markRead(id) { events.find((e) => e.id === id).read = true; }
+
+function openEvent(id) {
+  const e = events.find((x) => x.id === id);
+  const reg = REGISTRY[e.type];
+  const ui = reg ? reg.ui : [];
+  if (ui.length > 1 && !defaults[e.type]) { openDialog(id); return; }  // prompt only when ambiguous & no default
+  markRead(id);
+  selectedId = id;
+  renderAll();
+}
+
+function backToList() { selectedId = null; renderAll(); }
+
+function toggleHandler(appId, handlerId) {
+  for (const type of Object.keys(REGISTRY)) {
+    const h = REGISTRY[type].headless.find((x) => x.id === handlerId);
+    if (h) { h.enabled = !h.enabled; renderAll(); return; }
+  }
+}
+
+function setDefault(type, handlerId) { defaults[type] = handlerId; renderAll(); }
+function clearDefault(type) { delete defaults[type]; renderAll(); }
+
+/* ══════════════════════════ WINDOW + DEMO ══════════════════════════ */
+
+function openWindow() {
+  winOpen = true;
+  const w = $("evWindow");
+  w.style.display = "";
+  w.classList.remove("win-closing");
+  w.classList.add("win-open");
+  $("deskHint").classList.add("hidden");
+  $("deskHint").classList.remove("flex");
+  $("tbTitle").textContent = "Event Viewer";
+}
+
+function closeWindow() {
+  winOpen = false;
+  const w = $("evWindow");
+  w.classList.remove("win-open");
+  w.classList.add("win-closing");
+  setTimeout(() => {
+    w.style.display = "none";
+    w.classList.remove("win-closing");
+  }, 130);
+  $("deskHint").classList.remove("hidden");
+  $("deskHint").classList.add("flex");
+  $("tbTitle").textContent = "Desktop";
+}
+
+function emitEvent() {
+  if (!winOpen) openWindow();
+  const s = SAMPLES[sampleIdx % SAMPLES.length];
+  sampleIdx++;
+  seqCounter++;
+  const newEvent = {
+    id: "evt-" + Date.now(),
+    type: s.type, seq: seqCounter + 40, ts: "just now",
+    source: s.source, read: false,
+    processing: s.history.some((h) => h.status === "retry") ? "pending" : "processed",
+    summary: s.summary,
+    payload: JSON.parse(JSON.stringify(s.payload)),
+    history: JSON.parse(JSON.stringify(s.history)),
+  };
+  events.unshift(newEvent);
+  flashId = newEvent.id;
+  tab = "events"; selectedId = null;
+  setTimeout(() => { flashId = null; }, 2300);
+  renderAll();
+}
+
+function toggleVolume() {
+  highVolume = !highVolume;
+  $("volLabel").textContent = highVolume ? "Bell badge: 99+ (capped)" : "Bell badge: live count";
+  renderBell();
+}
+
+function resetDemo() {
+  events = JSON.parse(JSON.stringify(INITIAL_EVENTS));
+  for (const k of Object.keys(defaults)) delete defaults[k];
+  tab = "events"; showHistorical = false; selectedId = null;
+  highVolume = false; flashId = null; sampleIdx = 0;
+  if ($("dialog").classList.contains("hidden") === false) closeDialog();
+  $("volLabel").textContent = "Bell badge: live count";
+  if (!winOpen) openWindow();
+  renderAll();
+}
+
+// Real-time demo: the pending health event's second handler acks after a delay
+// (FR-028 / NFR-009 — badge + history update live, no refresh).
+setTimeout(() => {
+  const e3 = events.find((e) => e.id === "e3");
+  if (e3 && e3.processing === "pending") {
+    e3.processing = "processed";
+    const retry = e3.history.find((h) => h.status === "retry");
+    if (retry) { retry.status = "acked"; retry.result = '{"digestId":"d_81","queued":true}'; retry.when = "just now"; }
+    renderAll();
+  }
+}, 12000);
+
+/* ══════════════════════════ RENDER ROOT ══════════════════════════ */
+
+function renderAll() {
+  renderBell();
+  renderToolbar();
+  if (tab === "config") renderConfig();
+  else if (selectedId) renderDetail();
+  else renderList();
+  renderFooter();
+}
+
+updateClock();
+setInterval(updateClock, 15000);
+renderAll();
+icons();
+</script>
+</body>
+</html>
