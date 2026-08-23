@@ -204,7 +204,7 @@ function hist(ack, app, name, attempt, when, result) {
 
 const INITIAL_EVENTS = [
   {
-    id: "e1", type: "com.bos.gsuite.email.received", seq: 4821, ts: "12 s ago",
+    id: "e1", type: "com.bos.gsuite.email.received", seq: 4821, ts: "12 s ago", tsFull: "2026-08-23 18:26:14 UTC",
     source: "gsuite", read: false, processing: "processed",
     summary: "Invoice #4812 from Northwind Traders — $14,300 due Aug 30",
     payload: [
@@ -216,7 +216,7 @@ const INITIAL_EVENTS = [
     history: [hist(true, "gsuite", "Auto-archive", 1, "12 s ago", '{"folder":"Inbox"}')],
   },
   {
-    id: "e2", type: "com.bos.workflow.completed", seq: 104, ts: "2 m ago",
+    id: "e2", type: "com.bos.workflow.completed", seq: 104, ts: "2 m ago", tsFull: "2026-08-23 18:24:03 UTC",
     source: "workflow", read: false, processing: "processed",
     summary: "Workflow “Nightly sync” finished — 47/47 steps OK",
     payload: [
@@ -227,7 +227,7 @@ const INITIAL_EVENTS = [
     history: [hist(true, "workflow", "Run tracker", 1, "2 m ago", '{"status":"ok","durationS":412}')],
   },
   {
-    id: "e3", type: "com.bos.devops.health.degraded", seq: 77, ts: "14 m ago",
+    id: "e3", type: "com.bos.devops.health.degraded", seq: 77, ts: "14 m ago", tsFull: "2026-08-23 18:12:41 UTC",
     source: "devops", read: false, processing: "pending",
     summary: "auth-svc p95 latency 842 ms (threshold 500 ms)",
     payload: [
@@ -240,7 +240,7 @@ const INITIAL_EVENTS = [
     ],
   },
   {
-    id: "e4", type: "com.bos.scheduler.task.failed", seq: 31, ts: "38 m ago",
+    id: "e4", type: "com.bos.scheduler.task.failed", seq: 31, ts: "38 m ago", tsFull: "2026-08-23 17:48:22 UTC",
     source: "scheduler", read: false, processing: "processed",
     summary: "Scheduled task “Backup export” failed — disk quota exceeded",
     payload: [
@@ -254,7 +254,7 @@ const INITIAL_EVENTS = [
     ],
   },
   {
-    id: "h1", type: "com.bos.gsuite.email.received", seq: 4819, ts: "2 h ago",
+    id: "h1", type: "com.bos.gsuite.email.received", seq: 4819, ts: "2 h ago", tsFull: "2026-08-23 16:26:00 UTC",
     source: "gsuite", read: true, processing: "processed",
     summary: "Calendar invite: Design review — Thu 10:00",
     payload: [["from", "chen@browseros.dev"], ["subject", "Design review — Thu 10:00"],
@@ -262,7 +262,7 @@ const INITIAL_EVENTS = [
     history: [hist(true, "gsuite", "Auto-archive", 1, "2 h ago", '{"folder":"Inbox"}')],
   },
   {
-    id: "h2", type: "com.bos.assistant.turn.completed", seq: 512, ts: "5 h ago",
+    id: "h2", type: "com.bos.assistant.turn.completed", seq: 512, ts: "5 h ago", tsFull: "2026-08-23 13:26:00 UTC",
     source: "assistant", read: true, processing: "processed",
     summary: "Assistant run finished — 12 tool calls, 41 s",
     payload: [["turnId", "t_2a91"], ["toolCalls", 12], ["durationS", 41],
@@ -270,7 +270,7 @@ const INITIAL_EVENTS = [
     history: [],
   },
   {
-    id: "h3", type: "com.bos.devops.health.degraded", seq: 74, ts: "9 h ago",
+    id: "h3", type: "com.bos.devops.health.degraded", seq: 74, ts: "9 h ago", tsFull: "2026-08-23 09:26:00 UTC",
     source: "devops", read: true, processing: "processed",
     summary: "search-svc error rate 2.4 % (threshold 1 %)",
     payload: [["service", "search-svc"], ["metric", "error_rate_pct"], ["value", 2.4], ["threshold", 1]],
@@ -544,7 +544,7 @@ function renderDetail() {
         <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">${e.type}</span>
         <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">seq ${e.seq}</span>
         <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">${e.id}</span>
-        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">2026-08-23 18:${String(26 - (seqCounter - e.seq)).padStart(2, "0")}:04 UTC</span>
+        <span class="rounded border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-white/70">${e.tsFull}</span>
       </div>
 
       ${pending
@@ -834,6 +834,7 @@ function emitEvent() {
   const newEvent = {
     id: "evt-" + Date.now(),
     type: s.type, seq: seqCounter + 40, ts: "just now",
+    tsFull: new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC",
     source: s.source, read: false,
     processing: s.history.some((h) => h.status === "retry") ? "pending" : "processed",
     summary: s.summary,
