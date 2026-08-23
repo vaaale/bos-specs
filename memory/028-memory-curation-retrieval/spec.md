@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-22
 
-**Status**: Draft
+**Status**: Implemented (promoted 2026-08-23; converged — all FRs met; see ../discrepancies.md for non-blocking findings)
 
 **App Target**: `bos-core`
 
