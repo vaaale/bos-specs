@@ -8,7 +8,7 @@
 
 **App Target**: bos-core
 
-**Input**: User description: "Any application in BOS should be able to produce events. The producer may also define the event type and payload. If a user clicks on the notifications in the top toolbar, an event viewer app must be shown. The notification app must be part of BOS core, but extensible by any app in BOS including marketplace apps. An app can register an event handler UI part that handles certain event types. When the user clicks on an event in the event app, the appropriate handler will launch if such a handler is registered. If multiple apps have registered to handle the same event type, the user must be prompted to select which handler to launch, and have the option for 'Always use this app for this event type'. The event handler app must have a configuration page where these handlers can be configured / re-configured / cleared. If the user clicks on an event that has no handler associated with it, a generic event viewer app / dialog must be shown."
+**Input**: User description: "Any application in BOS should be able to produce events. The producer may also define the event type and payload. If a user clicks on the notifications in the top toolbar, an event viewer app must be shown. The notification app must be part of BOS core, but extensible by any app in BOS including marketplace apps. An app can register an event handler UI part that handles certain event types. When the user clicks on an event in the event app, the appropriate handler will launch if such a handler is registered. If multiple apps have registered to handle the same event type, the user must be prompted to select which handler to launch, and have the option for 'Always use this app for this event type'. The event handler app must have a configuration page where these handlers can be configured / re-configured / cleared. If the user clicks on an event that has no handler associated with it, a generic event viewer app / dialog must be shown. In addition to UI handlers triggered by user clicks, an app must also be able to register a headless handler that processes the event automatically upon emission (e.g., the Workflow Manager listening to event types and triggering workflows)."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -103,9 +103,10 @@ The Event Viewer has a Settings/Configuration section where the user can see all
 
 **Acceptance Scenarios**:
 
-1. **Given** handlers are registered for various event types, **When** the user opens the Event Viewer configuration page, **Then** all registered event type → handler mappings are listed with the event type, handler app name, and whether it's set as default.
-2. **Given** the configuration page is open, **When** the user changes the default handler for an event type, **Then** the change is persisted and subsequent clicks on events of that type use the new default.
-3. **Given** the configuration page is open, **When** the user clears the default handler for an event type, **Then** the preference is removed; subsequent clicks on events of that type will prompt if multiple handlers exist, or use the single registered handler if only one exists.
+1. **Given** handlers are registered for various event types (both UI and headless), **When** the user opens the Event Viewer configuration page, **Then** all registered event type → handler mappings are listed with the event type, handler mode (UI or Headless), handler app name, and whether a UI default is set.
+2. **Given** the configuration page is open, **When** the user changes the default UI handler for an event type, **Then** the change is persisted and subsequent clicks on events of that type use the new default.
+3. **Given** the configuration page is open, **When** the user clears the default UI handler for an event type, **Then** the preference is removed; subsequent clicks on events of that type will prompt if multiple handlers exist, or use the single registered handler if only one exists.
+4. **Given** a headless handler is registered and enabled for an event type, **When** the user disables it from the configuration page, **Then** the headless handler is no longer invoked when events of that type are emitted, until re-enabled.
 
 ---
 
@@ -187,6 +188,7 @@ An app registers a **headless handler** for one or more event types. Unlike UI h
 - **SC-003**: A marketplace app developer can integrate event emission and handler registration by following documented API contracts, without modifying BOS source code, in under 30 minutes of development time.
 - **SC-004**: When multiple handlers exist for an event type, the user can resolve the ambiguity (select a handler) in a single dialog interaction, and the "always use" preference eliminates all future prompts for that type.
 - **SC-005**: The toolbar bell count accurately reflects the number of unread events at all times, with a maximum rendering latency of 1 second from event emission to count update.
+- **SC-006**: A headless handler registered for an event type receives and begins processing the event within 500ms of emission (measured from durable record to handler invocation start), with zero user interaction required.
 
 ## Assumptions
 
