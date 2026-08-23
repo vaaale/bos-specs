@@ -1,9 +1,9 @@
 # Test Results — 028-memory-curation-retrieval
 
-**Status**: FAILED
+**Status**: PASSED
 
-- Passed: 8
-- Failed: 1
+- Passed: 9
+- Failed: 0
 - Flaky: 0
 - Skipped: 0
 

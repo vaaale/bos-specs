@@ -6,7 +6,13 @@ Spec/code drift and post-converge findings. Newest first. Per project convention
 
 ## 028-memory-curation-retrieval — post-converge (2026-08-23)
 
-**Converge verdict: CONVERGED.** All 20 FRs (FR-001…FR-020) met by the implemented code; no functional drift. The items below are non-blocking cleanups and test-coverage gaps found by the code-vs-spec check.
+**Converge verdict: CONVERGED.** All 20 FRs (FR-001…FR-020) met by the implemented code; no functional drift. **E2E: 9/9 passing.** The items below are non-blocking cleanups and test-coverage gaps found by the code-vs-spec check.
+
+### E2E test stabilization (2026-08-23)
+Three rounds of e2e fixes were needed after the initial implementation:
+1. **SC-001 cross-run state pollution** — added `test.beforeAll` to delete the shared topic before the block runs. Resolved.
+2. **Browser tests: `channel: "chrome"` not found** — the `buildstudio_run_tests` sandbox had no system Chrome. Fixed by user (Playwright config). Resolved.
+3. **Browser tests: inner `toBeVisible` waits capped at 30 s test timeout** — Playwright caps inner waits at the test-level timeout. The assistant test needs ~80 s of sequential waits. Fixed by adding `test.setTimeout(120_000)` to both browser tests. Resolved.
 
 ### Code cleanups (non-blocking)
 - **`pruneEmbeddingCache` (embeddings.ts:95) is dead code** — exported but has zero call sites. Design ADR-3 promised it'd be called lazily (slow-loop pass or post-search) to bound cache growth; it was never wired. The `.embeddings.json` cache retains vectors for removed/re-texted entries until a model change. *Action: wire it into a slow-loop pass, or remove it.*
