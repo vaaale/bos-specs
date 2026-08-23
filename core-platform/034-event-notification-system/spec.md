@@ -253,3 +253,37 @@ The Event Viewer has a Configuration section where the user can:
 - The public event API surface (emit, ack, query, register, unregister) is the same API exposed as agent tools — one contract for both.
 - An event with no active headless handlers is immediately processed (no one to wait for).
 - Handler result payloads are stored indefinitely with the event (no separate retention policy for results).
+
+## Clarifications
+
+### Session 2026-08-23
+
+- **Q: Can background services emit events?**
+  **A**: Yes. Services are in fact the primary emitters of events. The public event API is available to all BOS components (services, apps, assistant).
+
+- **Q: Who dispatches headless handlers — the core service or the consuming app?**
+  **A**: The core event service invokes all registered headless handlers on emission (fan-out), like any pub/sub system. It is NOT the consuming app's job to poll/listen; the service pushes to active handlers.
+
+- **Q: How are UI handlers triggered relative to event processing?**
+  **A**: UI handlers are NOT triggered by the core service and do NOT listen to the event queue. They are triggered only when the user opens the Event Viewer and clicks an event. They are a pure display/interaction layer and do NOT participate in the pending→processed ack model.
+
+- **Q: When is an event marked processed?**
+  **A**: When ALL active headless handlers for its type have acknowledged. If no active headless handlers exist for the type, it is immediately processed on emission. A handler that is disabled (by user config) or whose service is not running is not "active" and does not block completion.
+
+- **Q: Does the Event Viewer consume events on display?**
+  **A**: No. The viewer "peeks" at the queue. Viewing does not change an event's status. Events remain in the queue until handlers process them.
+
+- **Q: How does the user see processed events?**
+  **A**: The Event Viewer shows pending events by default. A "Show historical events" toggle reveals processed events, which remain in persistent storage indefinitely and include their full processing history.
+
+- **Q: Can a handler include data when it acknowledges?**
+  **A**: Yes. An ack may carry an optional result payload (structured JSON) that is stored on the event, so a UI handler (or the generic view) can inspect what happened when the event was processed.
+
+- **Q: What is the retention policy?**
+  **A**: Indefinite retention. Events are never auto-pruned; performance must hold at 100,000+ events.
+
+- **Q: Is event replay supported (delivering past events to a handler that was offline)?**
+  **A**: No, not in v1. If a handler's service was not running at emission, it does not retroactively receive the event; the event completes based on active handlers only.
+
+- **Q: Is the public event API the same as the agent tool API?**
+  **A**: Yes. The same API contract is used by emitters, subscribers, handlers, and agent tools — one surface for emit, ack, query, register, and unregister.
