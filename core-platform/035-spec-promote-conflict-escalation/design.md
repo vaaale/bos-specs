@@ -447,7 +447,8 @@ The spec named four; the design sweep found six; the implementation sweep (T040)
 - `git-remotes` `fetch` + `push` (`src/app/api/git-remotes/route.ts`) — rows 5–6. ✔
 - **`coupledConflicts` + `promoteCoupled`** (`tools/supervisor/lib/coupled-repos.mjs`) — rows 1–2. ✔ *(the reported bug's site; not named in the spec's table — "partly in the Supervisor," which this pins.)*
 - **`appPromote`** (`tools/supervisor/lib/app-candidate.mjs`) — row 3. ✔
-- `git-ops.ts` `mergeBranch` / `rebaseOntoRemote` / `merge-tree`-style helpers: these *throw* `MERGE_CONFLICT`/return `{status:"conflict"}` — they are **leaves**, not call sites; their callers are the six rows above (or the `reconcile` pipeline, which already escalates). No *other* caller tolerates a conflict and dead-ends. **Invariant satisfied: no git conflict path returns a static "resolve manually" with no agent.**
+- **`/api/git-sync` `case "resolve"`** (VFS-mounted repo) — row 7. ✔ *(added at implementation by the T040 sweep.)*
+- `git-ops.ts` `mergeBranch` / `rebaseOntoRemote` / `merge-tree`-style helpers: these *throw* `MERGE_CONFLICT`/return `{status:"conflict"}` — they are **leaves**, not call sites; their callers are the seven rows above (or the `reconcile` pipeline, which already escalates). No *other* caller tolerates a conflict and dead-ends. **Invariant satisfied: no git conflict path returns a static "resolve manually" with no agent.**
 
 > **FR-015 (user-apps) pinned (D4):** the user-apps conflict paths are exactly row 3 (`appPromote`) and row 2 (the user-apps entry in `promoteCoupled`, both `working-tree` and `plumbing`). They reach the generalized mechanism by the Supervisor's existing **loopback** call to `/api/gitfs/reconcile` (`reconcile-client.mjs` `reconcileViaApi`), passing `repoPath` (from `APPS_REPO`/`getGitFsInstance("user-apps").root`) and the working context — the Supervisor never imports BOS source and never hard-codes a BOS path.
 
