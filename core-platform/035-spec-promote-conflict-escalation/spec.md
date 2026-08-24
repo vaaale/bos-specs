@@ -193,7 +193,8 @@ The resolution is always safe and always resumable. A rollback tag is created be
 
 **Interaction / UI (layer 4)**
 
-- **FR-007**: A conflict-resolution UI MUST **launch automatically when a conflict is detected** (the user takes no action to find it).
+- **FR-007**: A conflict-resolution UI MUST **launch automatically when a conflict is detected** (the user takes no action to find it). The mechanism: the pipeline's escalation step MUST emit a `com.bos.gitops.conflict.escalated` event (via the 034 event system) carrying the session id, repo identity, and `devopsConversationId`. Build Studio MUST declare a UI handler for this event type in its `AppManifest`; the event system opens or focuses BS and routes it to the conflict-resolution pane.
+- **FR-007a**: The conflict-resolution pane MUST live in **Build Studio** as a custom pane in BS's main view (per D1). BS's existing chat MUST connect to the DevOps Agent conversation for the session — the agent↔user channel is the existing Assistant conversation, not a new mechanism.
 - **FR-008**: The UI MUST render the session: conflicting files, a 3-way (ours/theirs/base) view at hunk granularity for code and a content comparison for text, and the agent's live status.
 - **FR-009**: The UI MUST provide an **agent↔user message channel**: the agent's decision questions are visible, the user can answer them and proactively give direction, and the session reflects each exchange in the decision timeline.
 - **FR-010**: The UI MUST provide per-file/per-hunk **decision controls**: accept theirs, accept ours, keep both, edit the hunk manually, and accept the agent's suggested resolution.
