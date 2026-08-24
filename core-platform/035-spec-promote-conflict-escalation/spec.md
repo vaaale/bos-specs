@@ -232,7 +232,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 - **Working context**: The per-repo bundle the escalation provides to the agent at execution time — repo identity (source / user-specs / user-apps / VFS mount / generic), absolute worktree path, the base/branch being reconciled, and the means to read/write within that repo. The single parameter that makes the mechanism repo-agnostic (PR-1).
 - **Decision request**: A typed question the agent issues to the user for one file/hunk — options among accept-theirs / accept-ours / keep-both / manual-per-hunk (+ the agent's suggested resolution). Answered by the user through the UI; recorded in the decision timeline.
 - **Conflict snapshot**: The captured state of the conflict at detection time — the conflicting file list and, per file/hunk, the ours/theirs/base content — so the 3-way view renders and the session resumes without re-deriving it.
-- **DevOps Agent conversation**: The persisted, resumable Assistant conversation scoped to the DevOps Agent, created by the pipeline's escalation step and linked to the session. (Source case: also carries `activeFeatureBranch` for `dev_delegate`.)
+- **Conflict-resolution agent conversation**: The persisted, resumable Assistant conversation scoped to the user-configured conflict-resolution agent (default: DevOps Agent), created by the pipeline's escalation step and linked to the session. (Source case: also carries `activeFeatureBranch` for `dev_delegate`.)
 
 ## Success Criteria
 
