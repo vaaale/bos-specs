@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-24
 
-**Status**: Draft
+**Status**: Complete — implemented, promoted, converged (2026-08-24). See `discrepancies.md` for the converge outcome.
 
 **App Target**: bos-core  *(the feature is a cross-cutting system capability — core plumbing in `src/lib/` + API routes + a new interactive resolution surface. The surface's exact form factor (dedicated window vs desktop panel vs embedded Assistant view) is a design decision, captured in Open Questions; the spec target remains bos-core.)*
 
