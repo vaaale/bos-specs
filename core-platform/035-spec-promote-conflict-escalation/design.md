@@ -490,7 +490,7 @@ The spec named four; the design sweep found six; the implementation sweep (T040)
 | FR-008/009/010/011 | §8.3 pane (`ConflictPane`) renders the session (3-way from snapshot), chat decision cards, per-hunk controls (all → `/decision`), status + abandon. |
 | FR-012/013/014 | §10 rows 4, 5, 6. |
 | FR-012a | §10 rows 1–2 (pre-check `coupledConflicts` + merge `promoteCoupled`); row 1 escalates instead of throwing and returns the session id (FR-018). |
-| FR-015/016 | §10 rows 1–3 + completeness sweep; user-apps pinned (D4). |
+| FR-015/016 | §10 rows 1–3 + 7 (VFS-mount resolve, added at implementation) + completeness sweep; user-apps pinned (D4). |
 | FR-017 | §5.3 (rollback tag from step 1; conflict on the feature branch; main `--ff-only`); never left conflicted. |
 | FR-018 | §5.1 — `ReconcileOutcome.sessionId` + `devopsConversationId` flow to every caller (incl. the Supervisor job via `reconcile-jobs.ts`). |
 | FR-019/020 | the four surfaces read `session.status` (distinguishing `awaiting-user` from terminal) via the session API. |
