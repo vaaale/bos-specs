@@ -48,6 +48,11 @@ No agent is triggered; the user must resolve it manually via CLI.
 4. **Interaction / UI** — a conflict-resolution surface that **launches automatically when a conflict is detected** (not merely a passive state shown in an existing dialog). It renders the session, provides the 3-way diff / content comparison, the **agent↔user message channel**, per-file/per-hunk **decision controls**, manual editing, live status, and rollback/abandon. Resolving a conflict here completes the underlying operation.
 5. **Safety** — base/main never left conflicted; rollback tag always created; one in-flight escalation per repo (the existing `inFlightEscalations` guard, extended to all repo paths); loud failure if the agent has no working context it can actually write to; no silent success on an unresolvable (e.g. binary) conflict.
 6. **Cross-repo scope** — source, user-specs, user-apps, and VFS-mounted repos, all through the same session/agent/UI machinery, with the working context as the only per-repo variable.
+7. **Configuration** — the conflict-resolution agent is a user-configurable setting in Settings → Build Studio, alongside the existing BS chat agent dropdown.
+
+**Settings → Build Studio (addition to existing tab)**
+
+The existing tab (`src/components/apps/settings/BuildStudioTab.tsx`) has one field: **Agent** (which sub-agent powers the Build Studio chat, stored as `build-studio.agent`). This feature adds a second field, **Conflict resolution agent** (stored as `build-studio.conflictAgent`, default `"devops"`), using the same `<select>` + Save button pattern. The pipeline reads `conflictAgent` at escalation time (FR-025) — the same "read on each operation" model as the existing `agent` field, so no reload is needed to pick up a change. The dropdown is populated from `GET /api/subagents` (same source as the existing field). No new UI mockup is required for this — it is a direct, in-tab extension of an existing, already-shipped pattern.
 
 ## User Scenarios & Testing
 
