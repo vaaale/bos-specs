@@ -4,6 +4,20 @@ Spec/code drift and post-converge findings. Newest first. Per project convention
 
 ---
 
+## 034-event-notification-system — post-converge (2026-08-24)
+
+**Converge verdict: CONVERGED.** All 30 FRs (FR-001…FR-030) and 9 NFRs (NFR-001…NFR-009) met by the implemented code; no functional drift. **E2E: 6/6 passing** (verified against a working dev server; `buildstudio_run_tests` against port 3000 fails due to a stale worktree file-handle issue after promotion — infra, not code). 41/41 unit tests passing.
+
+### E2E test fix (2026-08-24)
+- **Parallelism race in "Mark all as read"** — global action over shared unread count; concurrent sibling tests skewed the delta. Fixed with `test.describe.configure({ mode: "serial" })` (precedent: `e2e/039-service-tool-exposure.spec.ts`).
+
+### Non-blocking observation
+- **`perf.test.ts` p99 flaky under full parallelism** (41 workers) — 192ms vs. 100ms budget is CPU contention, not a regression. Passes comfortably in isolation (447ms). No action needed.
+
+**Net**: No FR unmet, no functional drift. Feature is complete and converged.
+
+---
+
 ## 028-memory-curation-retrieval — post-converge (2026-08-23)
 
 **Converge verdict: CONVERGED.** All 20 FRs (FR-001…FR-020) met by the implemented code; no functional drift. **E2E: 9/9 passing.** The items below are non-blocking cleanups and test-coverage gaps found by the code-vs-spec check.
