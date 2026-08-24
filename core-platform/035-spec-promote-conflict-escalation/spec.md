@@ -169,7 +169,8 @@ The resolution is always safe and always resumable. A rollback tag is created be
 - **Worktree not materialized**: `promoteFeature` already calls `ensureWorktree`; the working context references the materialized worktree path.
 - **No suitable working context for a repo type**: loud failure + rollback tag, never silent success (US5).
 - **User-apps path partly lives in the Supervisor process** (`tools/supervisor/supervisor.mjs`): its escalation must reach the same generalized mechanism (the `/api/gitfs/reconcile` job endpoint or equivalent) so the working context is configured consistently.
-- **User is idle / away when `awaiting-user`**: the session stays `awaiting-user` (not timed out) until the user returns or explicitly abandons — the 25-min timeout applies to the agent's *working* phases, not to a parked `awaiting-user` state. [NEEDS CLARIFICATION: confirm the user wants `awaiting-user` to be exempt from the timeout, vs. a longer/idle timeout.]
+- **User is idle / away when `awaiting-user`**: the session stays `awaiting-user` **indefinitely** (D3) — not timed out — until the user returns or explicitly abandons. The 25-min timeout applies to the agent's *working* phases only, never to a parked `awaiting-user` state.
+- **BOS restart / browser refresh mid-resolution**: a `working` session whose agent run died is re-launched on boot (FR-024); an `awaiting-user` session is restored and waits for the user. The conflict pane re-queries the session store on load, so a browser refresh restores it without re-emitting the event.
 
 ## Requirements
 
