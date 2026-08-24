@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>035 · Git Conflict Resolution Pane — Mockup</title>
+<style>
+  :root{
+    --bg:#0b0d10; --bg-2:#0e1116; --panel:#101317; --panel-2:#12151b;
+    --border:rgba(255,255,255,.08); --border-2:rgba(255,255,255,.14);
+    --txt:rgba(255,255,255,.74); --dim:rgba(255,255,255,.44); --faint:rgba(255,255,255,.30);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,"Segoe UI",system-ui,Roboto,sans-serif;
+    --amber:#f5a524; --amber-bg:rgba(245,165,36,.14); --amber-bd:rgba(245,165,36,.42); --amber-tx:#fbbf57;
+    --green:#34d399; --green-bg:rgba(52,211,153,.14); --green-bd:rgba(52,211,153,.40); --green-tx:#6ee7b7;
+    --red:#f4536a;  --red-bg:rgba(244,83,106,.14);  --red-bd:rgba(244,83,106,.42);  --red-tx:#fca5b1;
+    --blue:#7aa2c7; --blue-bg:rgba(96,140,200,.10); --blue-bd:rgba(96,140,200,.34); --blue-tx:#9ec2e8;
+    --ours-bg:rgba(244,83,106,.055); --ours-bd:rgba(244,83,106,.30);
+    --theirs-bg:rgba(96,140,200,.07);  --theirs-bd:rgba(96,140,200,.32);
+    --base-bg:rgba(255,255,255,.02);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--txt);font:12px/1.5 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+  button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
+  code,pre,.mono{font-family:var(--mono)}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.10);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.18);background-clip:padding-box}
+
+  /* ===== Reviewer demo bar (NOT product UI) ===== */
+  .demo-bar{display:flex;align-items:center;gap:14px;height:34px;padding:0 12px;background:#15181e;border-bottom:1px solid var(--border-2);flex-shrink:0}
+  .demo-bar .tag{font:700 9px/1 var(--mono);letter-spacing:.12em;color:var(--faint);text-transform:uppercase;padding:3px 6px;border:1px dashed var(--border-2);border-radius:4px}
+  .demo-bar .lbl{font-size:10px;color:var(--faint)}
+  .state-switch{display:flex;gap:2px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px}
+  .state-switch button{padding:3px 8px;font-size:10px;color:var(--dim);border-radius:4px;white-space:nowrap}
+  .state-switch button:hover{color:var(--txt)}
+  .state-switch button.on{color:var(--txt);background:rgba(255,255,255,.10)}
+  .state-switch button[data-s="working"].on{background:var(--blue-bg);color:var(--blue-tx)}
+  .state-switch button[data-s="awaiting-user"].on{background:var(--amber-bg);color:var(--amber-tx)}
+  .state-switch button[data-s="resolved"].on{background:var(--green-bg);color:var(--green-tx)}
+  .state-switch button[data-s="failed"].on{background:var(--red-bg);color:var(--red-tx)}
+  .state-switch button[data-s="timed-out"].on{background:var(--red-bg);color:var(--red-tx)}
+  .demo-bar select{background:var(--bg);border:1px solid var(--border);color:var(--txt);border-radius:5px;padding:3px 6px;font-size:10px;font-family:var(--mono)}
+  .demo-bar .spacer{flex:1}
+  .demo-bar .hint{font-size:10px;color:var(--faint);font-style:italic}
+
+  /* ===== App chrome: 3 columns (matches Build Studio) ===== */
+  .app{display:flex;height:calc(100% - 34px);text-sm}
+  .col{min-height:0;display:flex;flex-direction:column}
+  .left{width:230px;flex-shrink:0;border-right:1px solid var(--border);background:rgba(255,255,255,.02)}
+  .right{width:400px;flex-shrink:0;border-left:1px solid var(--border);background:var(--bg-2)}
+  .center{flex:1;min-width:0;background:var(--bg)}
+  .rh{width:3px;background:var(--border);cursor:col-resize;flex-shrink:0}
+  .rh:hover{background:var(--border-2)}
+
+  /* ---- Left: spec tree ---- */
+  .left .hd{display:flex;align-items:center;gap:7px;padding:8px 12px;font:700 10px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .left .hd svg{opacity:.6}
+  .tree{overflow:auto;flex:1;padding:2px 6px 12px}
+  .grp{margin-top:8px}
+  .grp .gh{display:flex;align-items:center;gap:6px;padding:4px 6px;font:700 9px/1 var(--sans);letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+  .badge{margin-left:auto;font:600 8px/1 var(--sans);padding:2px 5px;border-radius:4px;letter-spacing:0;text-transform:none}
+  .badge.user{background:rgba(52,211,153,.18);color:#a7f3d0}
+  .badge.src{background:rgba(139,92,246,.18);color:#ddd6fe}
+  .badge.app{background:rgba(56,189,248,.18);color:#bae6fd}
+  .node{display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:3px 6px;font-size:11px;color:rgba(255,255,255,.6);border-radius:5px}
+  .node:hover{background:rgba(255,255,255,.05)}
+  .node svg{opacity:.5;flex-shrink:0}
+  .node .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .node.active{background:rgba(255,255,255,.12);color:#fff}
+  .node .conf-dot{width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:auto;flex-shrink:0}
+
+  /* ---- Center: the CONFLICT PANE (replaces artifact viewer) ---- */
+  .pane{display:flex;flex-direction:column;height:100%;min-width:0}
+  .pane .body{flex:1;min-height:0;display:flex}
+
+  /* Session status header */
+  .status{flex-shrink:0;border-bottom:1px solid var(--border);background:var(--panel)}
+  .status .row1{display:flex;align-items:center;gap:12px;padding:8px 14px}
+  .status-pill{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:20px;border:1px solid var(--border-2);font:700 11px/1 var(--sans);letter-spacing:.03em;white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 0 currentColor}
+  .status .meta{display:flex;align-items:center;gap:14px;font-size:11px;color:var(--dim);overflow:auto;flex:1}
+  .status .meta .k{color:var(--faint);font-size:9px;text-transform:uppercase;letter-spacing:.06em;margin-right:5px}
+  .status .meta code{color:var(--txt);font-size:11px}
+  .status .meta .rtag{display:inline-flex;align-items:center;gap:5px}
+  .copy{color:var(--faint);padding:1px 4px;border-radius:3px}
+  .copy:hover{background:rgba(255,255,255,.10);color:var(--txt)}
+  .status .abandon{padding:5px 10px;border-radius:6px;font-size:11px;color:var(--red-tx);border:1px solid var(--red-bd);background:var(--red-bg);white-space:nowrap}
+  .status .abandon:hover{background:rgba(244,83,106,.22)}
+  .status .abandon.primary{animation:none}
+  /* timeline chips */
+  .timeline{display:flex;align-items:center;gap:6px;padding:6px 14px;border-top:1px solid var(--border);overflow:auto}
+  .timeline .tl-lbl{font:700 9px/1 var(--sans);letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-right:2px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:5px;font-size:10px;border:1px solid var(--border);background:var(--bg-2);white-space:nowrap;color:var(--dim)}
+  .chip .ic{font-size:10px}
+  .chip.resolved{color:var(--green-tx);border-color:rgba(52,211,153,.24)}
+  .chip.resolved .ic{color:var(--green)}
+  .chip.awaiting{color:var(--amber-tx);border-color:var(--amber-bd);background:var(--amber-bg)}
+  .chip.awaiting .ic{color:var(--amber)}
+  .chip.active{box-shadow:0 0 0 1px rgba(255,255,255,.25)}
+  .chip .by{color:var(--faint)}
+
+  /* Files rail (within center) */
+  .files{width:230px;flex-shrink:0;border-right:1px solid var(--border);overflow:auto;background:var(--bg-2)}
+  .files .fh{padding:8px 12px 6px;font:700 9px/1 var(--sans);letter-spacing:.07em;text-transform:uppercase;color:var(--faint);display:flex;align-items:center;gap:6px}
+  .files .fh .ct{margin-left:auto;color:var(--dim)}
+  .fitem{width:100%;text-align:left;padding:8px 12px;border-left:2px solid transparent;display:flex;flex-direction:column;gap:3px}
+  .fitem:hover{background:rgba(255,255,255,.03)}
+  .fitem.sel{background:rgba(255,255,255,.06);border-left-color:var(--blue)}
+  .fitem .fp{font-family:var(--mono);font-size:11px;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fitem .frow{display:flex;align-items:center;gap:6px}
+  .fkind{font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg);border:1px solid var(--border);color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+  .fstat{margin-left:auto;font-size:9px;padding:1px 6px;border-radius:10px;font-weight:700}
+  .fstat.conflict{background:var(--red-bg);color:var(--red-tx)}
+  .fstat.resolved{background:var(--green-bg);color:var(--green-tx)}
+  .fitem.awaiting{border-left-color:var(--amber)}
+  .fitem.awaiting .fp{color:var(--amber-tx)}
+
+  /* Detail / 3-way view */
+  .detail{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .detail .dhead{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .detail .dhead .path{font-family:var(--mono);font-size:12px;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .detail .dhead .vmt{margin-left:auto;display:flex;gap:2px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px}
+  .detail .dhead .vmt button{padding:2px 8px;font-size:10px;color:var(--dim);border-radius:4px}
+  .detail .dhead .vmt button.on{background:rgba(255,255,255,.10);color:var(--txt)}
+  .detail .dscroll{flex:1;overflow:auto;padding:12px 14px}
+
+  .code{font-family:var(--mono);font-size:11.5px;line-height:1.55;counter-reset:ln}
+  .cl{display:flex;white-space:pre}
+  .cl .ln{width:34px;flex-shrink:0;text-align:right;padding-right:10px;color:rgba(255,255,255,.18);user-select:none}
+  .cl .tx{color:rgba(255,255,255,.78);white-space:pre-wrap;word-break:break-word}
+  .cl.ctx .tx{color:rgba(255,255,255,.42)}
+  /* hunk wrapper */
+  .hunk{border:1px solid var(--border);border-radius:8px;margin:10px 0;overflow:hidden;background:var(--panel)}
+  .hunk.awaiting{border-color:var(--amber-bd);box-shadow:0 0 0 1px var(--amber-bd),0 0 22px rgba(245,165,36,.10)}
+  .hunk.resolved{border-color:rgba(52,211,153,.28)}
+  .hunk .hh{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:10px;background:rgba(255,255,255,.03);border-bottom:1px solid var(--border)}
+  .hunk .hh .ht{font-family:var(--mono);color:var(--dim)}
+  .hunk .hh .hs{margin-left:auto;font-weight:700;font-size:9px;letter-spacing:.03em;padding:2px 7px;border-radius:10px}
+  .hs.conflict{background:var(--red-bg);color:var(--red-tx)}
+  .hs.resolved{background:var(--green-bg);color:var(--green-tx)}
+  .mk{display:flex;white-space:pre}
+  .mk .ln{width:34px;flex-shrink:0;text-align:right;padding-right:10px;color:rgba(255,255,255,.12);user-select:none}
+  .mk.ours .tx,.mk.ours .t{color:var(--red-tx);opacity:.75}
+  .mk.theirs .tx,.mk.theirs .t{color:var(--blue-tx);opacity:.75}
+  .mk.base .tx,.mk.base .t{color:var(--faint)}
+  .blk{border-left:2px solid var(--border);margin-left:34px}
+  .blk.ours{border-left-color:var(--ours-bd);background:var(--ours-bg)}
+  .blk.theirs{border-left-color:var(--theirs-bd);background:var(--theirs-bg)}
+  .blab{font-size:9px;letter-spacing:.04em;text-transform:uppercase;padding:3px 10px;color:var(--faint);border-bottom:1px dashed var(--border);margin-left:34px;display:flex;gap:6px}
+  .blab .side{font-weight:700}
+  .blab.ours .side{color:var(--red-tx)}
+  .blab.theirs .side{color:var(--blue-tx)}
+
+  /* three-way columns */
+  .cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:10px 0}
+  .colpane{display:flex;flex-direction:column;min-width:0}
+  .colpane + .colpane{border-left:1px solid var(--border)}
+  .colpane .ch{padding:6px 10px;font-size:10px;font-weight:700;border-bottom:1px solid var(--border);background:rgba(255,255,255,.03)}
+  .colpane.ours .ch{color:var(--red-tx)}
+  .colpane.theirs .ch{color:var(--blue-tx)}
+  .colpane.base .ch{color:var(--faint)}
+  .colpane .cc{flex:1;overflow:auto;padding:6px 0}
+  .colpane .empty{padding:14px 12px;color:var(--faint);font-style:italic;font-size:11px}
+
+  /* decision controls */
+  .decide{padding:9px 10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+  .decide .agent-sugg{display:flex;flex-direction:column;gap:5px;padding:8px 10px;border:1px solid var(--green-bd);background:var(--green-bg);border-radius:7px}
+  .decide .agent-sugg .as-t{font-size:10px;color:var(--green-tx);font-weight:700;display:flex;gap:6px;align-items:center}
+  .decide .agent-sugg .as-d{font-size:10.5px;color:var(--txt);opacity:.85}
+  .as-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:6px;font-size:11px;font-weight:600;color:var(--green-tx);background:rgba(52,211,153,.16);border:1px solid var(--green-bd)}
+  .as-btn:hover{background:rgba(52,211,153,.26)}
+  .btnrow{display:flex;flex-wrap:wrap;gap:6px}
+  .dbtn{padding:5px 10px;border-radius:6px;font-size:11px;border:1px solid var(--border-2);background:var(--bg);color:var(--txt);display:inline-flex;align-items:center;gap:6px}
+  .dbtn:hover{background:rgba(255,255,255,.06)}
+  .dbtn.theirs{border-color:var(--theirs-bd);color:var(--blue-tx)}
+  .dbtn.ours{border-color:var(--ours-bd);color:var(--red-tx)}
+  .dbtn.both{border-color:var(--amber-bd);color:var(--amber-tx)}
+  .dbtn.edit{color:var(--dim)}
+  .dbtn:disabled{opacity:.4;cursor:not-allowed}
+  .decide.resolved-note{padding:9px 12px;border-top:1px solid var(--border)}
+  .decide.resolved-note .rn{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--green-tx)}
+  .decide .editbox{width:100%;min-height:120px;background:#0a0c10;border:1px solid var(--border-2);border-radius:6px;color:var(--txt);font-family:var(--mono);font-size:11px;padding:8px;resize:vertical;outline:none}
+  .decide .editbox:focus{border-color:var(--blue-bd)}
+  .decide .saveedit{align-self:flex-start;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;color:var(--green-tx);background:rgba(52,211,153,.16);border:1px solid var(--green-bd)}
+  .decide .cane{padding:5px 12px;border-radius:6px;font-size:11px;color:var(--dim);border:1px solid var(--border-2)}
+  .decide .cane:hover{background:rgba(255,255,255,.06)}
+
+  /* awaiting banner in detail */
+  .banner{margin:0 0 12px;padding:11px 13px;border-radius:8px;display:flex;gap:11px;align-items:flex-start}
+  .banner.awaiting{background:var(--amber-bg);border:1px solid var(--amber-bd)}
+  .banner.failed{background:var(--red-bg);border:1px solid var(--red-bd)}
+  .banner.resolved{background:var(--green-bg);border:1px solid var(--green-bd)}
+  .banner .bic{font-size:16px;line-height:1;flex-shrink:0;margin-top:1px}
+  .banner .bt{font-size:12px;font-weight:700}
+  .banner.awaiting .bt{color:var(--amber-tx)}
+  .banner.failed .bt{color:var(--red-tx)}
+  .banner.resolved .bt{color:var(--green-tx)}
+  .banner .bd{font-size:11px;color:var(--txt);opacity:.85;margin-top:2px}
+  .banner .bd code{font-size:10.5px}
+  .pulse{animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* text side-by-side */
+  .text-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .text-pane{border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;background:var(--panel)}
+  .text-pane .tp-h{padding:6px 10px;font-size:10px;font-weight:700;border-bottom:1px solid var(--border);background:rgba(255,255,255,.03);display:flex;align-items:center;gap:6px}
+  .text-pane.ours .tp-h{color:var(--red-tx)}
+  .text-pane.theirs .tp-h{color:var(--blue-tx)}
+  .text-pane .tp-c{overflow:auto;padding:6px 0}
+  .tl{display:flex;padding:0 10px 0 0;white-space:pre-wrap;word-break:break-word}
+  .tl .ln{width:34px;flex-shrink:0;text-align:right;padding-right:10px;color:rgba(255,255,255,.16);user-select:none;font-family:var(--mono)}
+  .tl .tx{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.72)}
+  .tl.hi.ours{background:var(--ours-bg)} .tl.hi.ours .tx{color:var(--red-tx)}
+  .tl.hi.theirs{background:var(--theirs-bg)} .tl.hi.theirs .tx{color:var(--blue-tx)}
+  .base-note{margin:0 0 10px;padding:6px 10px;font-size:10.5px;color:var(--faint);border:1px dashed var(--border);border-radius:6px;font-style:italic}
+
+  /* ---- Right: existing chat (agent channel) ---- */
+  .chat .ch-hd{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .chat .ch-hd .tt{font-size:12px;font-weight:600;color:var(--txt)}
+  .chat .ch-hd .sub{font-size:10px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chat .ch-hd .ag{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim);padding:2px 7px;border:1px solid var(--border);border-radius:12px}
+  .chat .msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:11px}
+  .msg{display:flex;flex-direction:column;gap:3px;max-width:100%}
+  .msg .who{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .msg.user{align-items:flex-end}
+  .msg.user .bubble{background:rgba(96,140,200,.14);border:1px solid var(--blue-bd);color:var(--blue-tx);border-bottom-right-radius:2px}
+  .msg .bubble{background:var(--panel);border:1px solid var(--border);padding:8px 10px;border-radius:8px;border-bottom-left-radius:2px;color:var(--txt);font-size:11.5px;line-height:1.55}
+  .msg .bubble code{background:rgba(255,255,255,.08);padding:1px 4px;border-radius:3px;font-size:10.5px}
+  .msg .bubble b{color:#fff}
+  /* decision-request card in chat */
+  .qcard{border:1px solid var(--amber-bd);background:var(--amber-bg);border-radius:9px;padding:10px 11px;display:flex;flex-direction:column;gap:8px}
+  .qcard.answered{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}
+  .qcard .qt{font-size:11px;font-weight:700;color:var(--amber-tx);display:flex;gap:7px;align-items:flex-start}
+  .qcard.answered .qt{color:var(--green-tx)}
+  .qcard .qb{font-size:11.5px;color:var(--txt);line-height:1.55}
+  .qcard .qb code{background:rgba(0,0,0,.25);padding:1px 4px;border-radius:3px;font-size:10.5px}
+  .qcard .opts{display:flex;flex-wrap:wrap;gap:5px}
+  .qcard .opt{padding:4px 9px;border-radius:6px;font-size:10.5px;border:1px solid var(--border-2);background:var(--bg);color:var(--txt)}
+  .qcard .opt:hover{background:rgba(255,255,255,.07)}
+  .qcard .opt.sug{border-color:var(--green-bd);color:var(--green-tx)}
+  .qcard .answered-lbl{font-size:10.5px;color:var(--green-tx);display:flex;gap:6px;align-items:center}
+  .chat .input{flex-shrink:0;border-top:1px solid var(--border);padding:9px 11px;display:flex;gap:8px;align-items:flex-end}
+  .chat .input .field{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:11.5px;color:var(--dim);min-height:34px}
+  .chat .input .send{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.08);display:grid;place-items:center;color:var(--txt)}
+
+  /* modal */
+  .modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;z-index:50}
+  .modal-ov.open{display:grid}
+  .modal{width:420px;max-width:90vw;background:var(--panel);border:1px solid var(--border-2);border-radius:12px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .modal .mh{padding:13px 16px;font-size:13px;font-weight:700;color:#fff;border-bottom:1px solid var(--border);display:flex;gap:9px;align-items:center}
+  .modal .mb{padding:14px 16px;font-size:12px;color:var(--txt);line-height:1.6}
+  .modal .mb code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:3px;font-size:11px}
+  .modal .mf{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)}
+  .modal .mf .ghost{padding:6px 13px;border-radius:7px;font-size:12px;color:var(--dim);border:1px solid var(--border-2)}
+  .modal .mf .ghost:hover{background:rgba(255,255,255,.06)}
+  .modal .mf .danger{padding:6px 13px;border-radius:7px;font-size:12px;font-weight:600;color:#fff;background:var(--red);border:1px solid var(--red)}
+  .modal .mf .danger:hover{background:#ff6478}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;transition:.25s;background:var(--panel);border:1px solid var(--green-bd);color:var(--green-tx);padding:9px 15px;border-radius:9px;font-size:12px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.warn{border-color:var(--amber-bd);color:var(--amber-tx)}
+  .toast.err{border-color:var(--red-bd);color:var(--red-tx)}
+</style>
+</head>
+<body>
+
+<!-- REVIEWER DEMO BAR (not part of the product) -->
+<div class="demo-bar">
+  <span class="tag">Mockup</span>
+  <span class="lbl">Flip session state</span>
+  <div class="state-switch" id="stateSwitch">
+    <button data-s="working">working</button>
+    <button data-s="awaiting-user" class="on">awaiting-user</button>
+    <button data-s="resolved">resolved</button>
+    <button data-s="failed">failed</button>
+    <button data-s="timed-out">timed-out</button>
+  </div>
+  <span class="lbl">Repo</span>
+  <select id="repoSel">
+    <option value="user-specs">user-specs store</option>
+    <option value="bos-source">BOS source</option>
+    <option value="user-apps">user-apps</option>
+  </select>
+  <div class="spacer"></div>
+  <span class="hint">click a file → 3-way view · answer the agent’s question · the amber card is the awaiting-user state</span>
+</div>
+
+<div class="app">
+  <!-- LEFT: spec tree (unchanged, kept visible for context) -->
+  <div class="col left">
+    <div class="hd">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      Build Studio
+    </div>
+    <div class="tree" id="tree"></div>
+  </div>
+  <div class="rh"></div>
+
+  <!-- CENTER: the conflict pane (replaces the artifact viewer while active) -->
+  <div class="col center">
+    <div class="pane">
+      <div class="status" id="status"></div>
+      <div class="body">
+        <div class="files" id="files"></div>
+        <div class="detail" id="detail"></div>
+      </div>
+    </div>
+  </div>
+  <div class="rh"></div>
+
+  <!-- RIGHT: EXISTING chat, reused as the agent<->user channel (D1) -->
+  <div class="col right chat">
+    <div class="ch-hd">
+      <div>
+        <div class="tt">Conflict resolution</div>
+        <div class="sub" id="chatSub">auto-connected to the DevOps Agent conversation</div>
+      </div>
+      <div class="ag"><span class="dot" id="agDot" style="color:var(--amber)"></span><span id="agName">DevOps Agent</span></div>
+    </div>
+    <div class="msgs" id="msgs"></div>
+    <div class="input">
+      <div class="field" id="chatField">Message the agent… or give it direction</div>
+      <button class="send" id="chatSend" title="Send">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- abandon confirm -->
+<div class="modal-ov" id="modalOv">
+  <div class="modal">
+    <div class="mh" style="color:var(--red-tx)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Abandon resolution & roll back?
+    </div>
+    <div class="mb" id="modalBody"></div>
+    <div class="mf">
+      <button class="ghost" id="modalCancel">Cancel</button>
+      <button class="danger" id="modalConfirm">Roll back</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   035 · Git Conflict Resolution Pane — interactive mockup
+   Layout decision (D1): the pane REPLACES Build Studio's center
+   artifact-viewer column while a session is active. The left spec tree
+   stays (context) and the RIGHT chat is reused as the agent<->user
+   channel — the same chat, no second one. Resolving/abandoning reverts
+   the center to the normal viewer.
+   ===================================================================== */
+
+const REPOS = {
+  "user-specs": {
+    label: "user-specs store", badge: "user", badgeLabel: "User",
+    branch: "bos/034-event-notification-system",
+    baseRef: "main",
+    rollback: "pre-reconcile/bos/034-event-notification-system",
+    operation: "promote",
+    queue: ["test-results", "emit"],   // order the agent will surface questions in
+    files: [
+      {
+        id: "test-results", kind: "text", type: "markdown", kindLabel: "add/add",
+        path: "core-platform/034-event-notification-system/test-results.md",
+        baseNote: "base: (empty) — file was added on both branches (add/add)",
+        ours: [
+          ["# Test Results — 034 Event Notification System", 0],
+          ["", 0],
+          ["## Unit — dispatch", 0],
+          ["- ✓ FR-001 … FR-011 core dispatch", 0],
+          ["- ✓ 034-UI-01 … UI-handler dispatch", 0],
+          ["- ✓ 034-UI-02 redispatchPendingOnBoot", 1],
+          ["", 0],
+          ["## Integration — event bus", 0],
+          ["- ✓ 034-INT-01 emit → handler ack", 0],
+          ["- ✓ 034-INT-02 ack_event ownership", 0],
+          ["- PENDING 034-INT-03 (flaky: query-cursor race)", 1],
+          ["", 0],
+          ["## Coverage", 0],
+          ["- core-platform/034: **92%**", 1]
+        ],
+        theirs: [
+          ["# Test Results — 034 Event Notification System", 0],
+          ["", 0],
+          ["## Unit — dispatch", 0],
+          ["- ✓ FR-001 … FR-011 core dispatch", 0],
+          ["- ✓ 034-UI-01 … UI-handler dispatch", 0],
+          ["", 0],
+          ["## Integration — event bus", 0],
+          ["- ✓ 034-INT-01 emit → handler ack", 0],
+          ["- ✓ 034-INT-02 ack_event ownership", 0],
+          ["- ✗ 034-INT-03 query-cursor — KNOWN BUG (fixed in PR #482)", 1],
+          ["", 0],
+          ["## Coverage", 0],
+          ["- core-platform/034: **88%**", 1]
+        ],
+        suggestion: {
+          label: "Keep the feature-branch file and fold in main’s PR #482 line",
+          detail: "You’re mid-fix on INT-03; main already merged the real fix (#482). Merge = feature-branch file, but mark INT-03 as FIXED (not PENDING) and bump coverage to 92%.",
+        }
+      },
+      {
+        id: "emit", kind: "code", type: "typescript", kindLabel: "add/add",
+        path: "core-platform/034-event-notification-system/emit-handler.ts",
+        baseNote: "base: (empty) — file was added on both branches (add/add)",
+        ctxTop: [
+          ["// emit-handler.ts — surfaces a UI-mode handler for an event type", "c"],
+          ["import { registry } from './registry';", "c"],
+          ["import { bus, log, notifyUI } from './bus';", "c"],
+          ["import type { EmittedEvent } from './types';", "c"],
+          ["", "c"],
+        ],
+        hunks: [
+          {
+            id: "h1", ours: [
+              ["export async function dispatch(event: EmittedEvent): Promise<void> {", "o"],
+              ["  const handlers = registry.lookup(event.type, { ui: true });", "o"],
+              ["  await Promise.all(handlers.map((h) => runHandler(h, event)));", "o"],
+              ["  // FR-007: emit a UI-handler notification so the event system surfaces it.", "o"],
+              ["  notifyUI(event, { handlers });", "o"],
+              ["  await bus.commit(event.id, { resolved: true });", "o"],
+              ["}", "o"],
+            ], theirs: [
+              ["export async function dispatch(event: EmittedEvent): Promise<void> {", "t"],
+              ["  const handlers = registry.lookup(event.type);", "t"],
+              ["  for (const h of handlers) {", "t"],
+              ["    try { await runHandler(h, event); } catch (e) { log.error(e); }", "t"],
+              ["  }", "t"],
+              ["  await bus.ack(event.id, { handlerId: 'default' });", "t"],
+              ["}", "t"],
+            ],
+            suggestion: {
+              label: "Keep your dispatcher (ours); fold in main’s per-handler try/catch",
+              detail: "Your version adds the FR-007 notifyUI() call (the whole point of the feature). Main added error isolation per handler. Merge = ours, plus wrap runHandler in try/catch + log.error.",
+              code: [
+                ["export async function dispatch(event: EmittedEvent): Promise<void> {", "r"],
+                ["  const handlers = registry.lookup(event.type, { ui: true });", "r"],
+                ["  for (const h of handlers) {", "r"],
+                ["    try { await runHandler(h, event); } catch (e) { log.error(e); }", "r"],
+                ["  }", "r"],
+                ["  notifyUI(event, { handlers }); // FR-007", "r"],
+                ["  await bus.commit(event.id, { resolved: true });", "r"],
+                ["}", "r"],
+              ],
+            },
+          },
+        ],
+        ctxBottom: [],
+      },
+      {
+        id: "redispatch", kind: "code", type: "typescript", kindLabel: "add/add",
+        path: "core-platform/034-event-notification-system/redispatch.test.ts",
+        baseNote: "base: (empty) — added on both branches (add/add). Resolved autonomously (unambiguous).",
+        ctxTop: [
+          ["import { describe, it, expect } from 'vitest';", "c"],
+          ["import { redispatchPendingOnBoot } from './redispatch';", "c"],
+          ["", "c"],
+        ],
+        hunks: [
+          {
+            id: "h1", ours: [
+              ["describe('redispatchPendingOnBoot', () => {", "o"],
+              ["  it('re-emits non-terminal sessions on boot', async () => {", "o"],
+              ["    const n = await redispatchPendingOnBoot();", "o"],
+              ["    expect(n).toBeGreaterThanOrEqual(0);", "o"],
+              ["  });", "o"],
+              ["});", "o"],
+            ], theirs: [
+              ["describe('redispatchPendingOnBoot', () => {", "t"],
+              ["  it('re-emits non-terminal sessions on boot', async () => {", "t"],
+              ["    const n = await redispatchPendingOnBoot();", "t"],
+              ["    expect(n).toBeTypeOf('number');", "t"],
+              ["  });", "t"],
+              ["});", "t"],
+            ],
+            suggestion: {
+              label: "Unambiguous — kept yours (toBeGreaterThanOrEqual is the stronger assertion)",
+              detail: "Both sides test the same behavior; yours asserts n >= 0, the tighter check. No genuine ambiguity — resolved on my own, no input needed.",
+              code: [
+                ["describe('redispatchPendingOnBoot', () => {", "r"],
+                ["  it('re-emits non-terminal sessions on boot', async () => {", "r"],
+                ["    const n = await redispatchPendingOnBoot();", "r"],
+                ["    expect(n).toBeGreaterThanOrEqual(0);", "r"],
+                ["  });", "r"],
+                ["});", "r"],
+              ],
+            },
+          },
+        ],
+        ctxBottom: [],
+      },
+    ],
+    // narrative: agent resolved the unambiguous test file on its own (autonomous-first, D2);
+    // it parked awaiting the user on test-results.md (the genuinely ambiguous one).
+    preResolve: { redispatch: "suggestion" },
+    awaiting: "test-results",
+  },
+  "bos-source": {
+    label: "BOS source", badge: "src", badgeLabel: "System",
+    branch: "bos/035-spec-promote-conflict",
+    baseRef: "claude",
+    rollback: "pre-reconcile/bos/035-spec-promote-conflict",
+    operation: "promote",
+    queue: ["reconcile"],
+    files: [
+      {
+        id: "reconcile", kind: "code", type: "typescript", kindLabel: "modify/modify",
+        path: "src/lib/gitops/reconcile.ts",
+        baseNote: "base: src/lib/gitops/reconcile.ts @ merge-base",
+        ctxTop: [
+          ["export async function reconcile(ctx: ReconcileContext): Promise<ReconcileResult> {", "c"],
+          ["  const rollbackTag = await createRollbackTag(ctx.repo, ctx.branch);", "c"],
+          ["  await remoteSync(ctx);", "c"],
+          ["  const strategy = ctx.strategy ?? 'merge-squash';", "c"],
+          ["  const merged = await attemptMerge(ctx, strategy);", "c"],
+        ],
+        hunks: [
+          {
+            id: "h1", ours: [
+              ["  if (!merged.ok) {", "o"],
+              ["    const rebased = await scriptedRebaseFallback(ctx);", "o"],
+              ["    if (!rebased.ok) {", "o"],
+              ["      // Generalized escalation — working context is repo-agnostic (PR-1).", "o"],
+              ["      return await escalate(ctx, { rollbackTag, files: rebased.conflicts });", "o"],
+              ["    }", "o"],
+              ["  }", "o"],
+            ], theirs: [
+              ["  if (!merged.ok) {", "t"],
+              ["    // legacy: hard-coded to the BOS source feature worktree", "t"],
+              ["    return { kind: 'conflict', files: merged.conflicts }; // dead-end", "t"],
+              ["  }", "t"],
+            ],
+            suggestion: {
+              label: "Take ours (the generalized escalation) — it subsumes the legacy dead-end",
+              detail: "Ours is the new pipeline (rollbackTag + repo-agnostic escalation, FR-016). The theirs branch is the exact dead-end this feature removes. Keep ours.",
+              code: [
+                ["  if (!merged.ok) {", "r"],
+                ["    const rebased = await scriptedRebaseFallback(ctx);", "r"],
+                ["    if (!rebased.ok) {", "r"],
+                ["      return await escalate(ctx, { rollbackTag, files: rebased.conflicts });", "r"],
+                ["    }", "r"],
+                ["  }", "r"],
+              ],
+            },
+          },
+        ],
+        ctxBottom: [
+          ["  return { kind: 'ok', rollbackTag };", "c"],
+          ["}", "c"],
+        ],
+      },
+    ],
+    preResolve: {},
+    awaiting: "reconcile",
+  },
+  "user-apps": {
+    label: "user-apps", badge: "app", badgeLabel: "Apps",
+    branch: "app-candidate",
+    baseRef: "main",
+    rollback: "pre-reconcile/app-candidate",
+    operation: "app promote",
+    queue: ["inbox"],
+    files: [
+      {
+        id: "inbox", kind: "code", type: "typescript", kindLabel: "add/add",
+        path: "items/widget-gmail/inbox.ts",
+        baseNote: "base: (empty) — added on both branches (add/add)",
+        ctxTop: [["// inbox.ts — Gmail inbox surface for widget-gmail", "c"], ["", "c"]],
+        hunks: [
+          {
+            id: "h1", ours: [
+              ["export function openInbox() {", "o"],
+              ["  gws.gmail.list({ max: 25, unread: true });", "o"],
+              ["  renderTray('gmail', { badge: unreadCount });", "o"],
+              ["}", "o"],
+            ], theirs: [
+              ["export function openInbox() {", "t"],
+              ["  gws.gmail.list({ max: 10 });", "t"],
+              ["  renderTray('gmail');", "t"],
+              ["}", "t"],
+            ],
+            suggestion: {
+              label: "Keep yours (the unread badge + 25-cap)",
+              detail: "Yours adds the unread badge and a higher cap — a superset of theirs. Keep ours.",
+              code: [
+                ["export function openInbox() {", "r"],
+                ["  gws.gmail.list({ max: 25, unread: true });", "r"],
+                ["  renderTray('gmail', { badge: unreadCount });", "r"],
+                ["}", "r"],
+              ],
+            },
+          },
+        ],
+        ctxBottom: [],
+      },
+    ],
+    preResolve: {},
+    awaiting: "inbox",
+  },
+};
+
+const STATUS_META = {
+  "working":      { label: "Agent resolving", short: "working",      color: "var(--blue)",  bg: "var(--blue-bg)",  bd: "var(--blue-bd)" },
+  "awaiting-user":{ label: "Awaiting your decision", short: "awaiting-user", color: "var(--amber)", bg: "var(--amber-bg)", bd: "var(--amber-bd)" },
+  "resolved":     { label: "Resolved — operation complete", short: "resolved", color: "var(--green)", bg: "var(--green-bg)", bd: "var(--green-bd)" },
+  "failed":       { label: "Failed", short: "failed", color: "var(--red)", bg: "var(--red-bg)", bd: "var(--red-bd)" },
+  "timed-out":    { label: "Timed out (25 min)", short: "timed-out", color: "var(--red)", bg: "var(--red-bg)", bd: "var(--red-bd)" },
+  "abandoned":    { label: "Rolled back — operation aborted", short: "abandoned", color: "var(--dim)", bg: "rgba(255,255,255,.06)", bd: "var(--border-2)" },
+};
+
+const state = {
+  status: "awaiting-user",
+  repo: "user-specs",
+  selectedFile: null,
+  viewMode: "unified", // unified | columns  (code files only)
+  decisions: {},   // fileId -> "ours"|"theirs"|"both"|"edit"|"suggestion"
+  edits: {},       // fileId -> text
+  editing: {},     // fileId -> bool (edit box open)
+  chat: [],        // messages
+  abandoned: false,
+};
+
+function cur() { return REPOS[state.repo]; }
+function selected() { return cur().files.find(f => f.id === state.selectedFile) || cur().files[0]; }
+function fileResolved(f) { return !!state.decisions[f.id]; }
+function activeAwaitingId(){
+  const r = cur();
+  return (r.queue || r.files.map(x=>x.id)).find(id => !fileResolved(r.files.find(x=>x.id===id)));
+}
+function isAwaitingTarget(f) {
+  return !fileResolved(f) && state.status === "awaiting-user" && activeAwaitingId() === f.id;
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+/* ---------- chat seeding ---------- */
+function seedChat() {
+  const r = cur();
+  state.chat = [
+    { role: "agent", html: `Promote of <code>${esc(r.branch)}</code> hit a conflict in the <b>${esc(r.label)}</b> repo. I took the snapshot — <b>${r.files.length} file${r.files.length>1?'s':''}</b>, rollback tag <code>${esc(r.rollback)}</code> is set. Working now.` },
+  ];
+  // narrative pre-resolutions
+  for (const f of r.files) {
+    const pre = r.preResolve && r.preResolve[f.id];
+    if (pre) {
+      state.chat.push({
+        role: "agent",
+        html: `I resolved <code>${esc(f.path.split('/').pop())}</code> on my own — <b>${pre==='suggestion'?'kept your version and folded in the other side’s safe parts':'took the clearer side'}</b>. No input needed.`,
+      });
+      state.decisions[f.id] = pre;
+    }
+  }
+  // The agent is parked on the first file in its question order it couldn't decide on its own.
+  const nextQ = (r.queue || r.files.map(f=>f.id)).find(id => !state.decisions[id]);
+  if (nextQ) {
+    const f = r.files.find(x=>x.id===nextQ);
+    state.chat.push({
+      role: "agent", kind: "question", qf: f.id,
+      title: "I can’t decide this one",
+      body: questionBody(f),
+    });
+  }
+}
+function questionBody(f){
+  const base = f.kind === "text"
+    ? `add/add conflict on <code>${esc(f.path.split('/').pop())}</code> — I can’t tell which version is canonical. `
+    : `conflict on <code>${esc(f.path.split('/').pop())}</code> — the two sides are meaningfully different. `;
+  return base + `<b>Keep the ${esc(cur().branch)} (ours) version, the ${esc(cur().baseRef)} (theirs) version, or merge manually?</b>`;
+}
+
+/* ---------- render ---------- */
+function render(){
+  renderTree(); renderStatus(); renderFiles(); renderDetail(); renderChat();
+}
+
+function renderTree(){
+  const r = cur();
+  const el = document.getElementById("tree");
+  const groups = { "user-specs":"User Specs", "bos-source":"System Specs", "user-apps":"User Apps" };
+  let h = `<div class="grp">
+    <div class="gh">${groups[state.repo]}<span class="badge ${r.badge}">${r.badgeLabel}</span>
+      <span class="badge" style="background:rgba(52,211,153,.18);color:#a7f3d0">${esc(r.branch)}</span></div>`;
+  // feature node
+  h += `<div class="node" style="padding-left:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg><span class="nm">035-spec-promote-conflict-escalation</span></div>`;
+  h += `<div class="node active" style="padding-left:24px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="nm">spec.md</span></div>`;
+  // conflicting files (the new surface content)
+  h += `<div style="padding:6px 6px 2px 24px;font:700 8px/1 var(--sans);letter-spacing:.06em;color:var(--faint)">CONFLICT SNAPSHOT</div>`;
+  for (const f of r.files){
+    h += `<div class="node" data-file="${f.id}" style="padding-left:24px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg><span class="nm">${esc(f.path.split('/').pop())}</span><span class="conf-dot"></span></div>`;
+  }
+  h += `</div>`;
+  el.innerHTML = h;
+  el.querySelectorAll("[data-file]").forEach(n=>n.onclick=()=>{state.selectedFile=n.dataset.file;render();});
+}
+
+function renderStatus(){
+  const r = cur(); const m = STATUS_META[state.status];
+  const el = document.getElementById("status");
+  const pulsing = (state.status==="working"||state.status==="awaiting-user");
+  const openCount = r.files.filter(f=>!fileResolved(f)).length;
+  // timeline chips
+  let chips = r.files.map(f=>{
+    const done = fileResolved(f);
+    const by = state.decisions[f.id] ? (state.decisions[f.id]==="suggestion"?"agent":"you") : "";
+    const awaiting = isAwaitingTarget(f);
+    const cls = done?"resolved":(awaiting?"awaiting":"");
+    const ic = done?"✓":(awaiting?"?":"…");
+    const act = (state.selectedFile===f.id)?"active":"";
+    return `<button class="chip ${cls} ${act}" data-file="${f.id}"><span class="ic">${ic}</span>${esc(f.path.split('/').pop())}<span class="by">${done?("by "+by):(awaiting?"awaiting":"")}</span></button>`;
+  }).join("");
+
+  let banner = "";
+  el.innerHTML = `
+    <div class="row1">
+      <span class="status-pill" style="color:${m.color};background:${m.bg};border-color:${m.bd}">
+        <span class="dot ${pulsing?'pulse':''}"></span>${m.label}
+      </span>
+      <div class="meta">
+        <span><span class="k">repo</span><code>${esc(r.label)}</code></span>
+        <span><span class="k">branch</span><code>${esc(r.branch)}</code></span>
+        <span class="rtag"><span class="k">rollback</span><code>${esc(r.rollback)}</code><button class="copy" id="copyTag" title="copy">⧉</button></span>
+        <span><span class="k">op</span><code>${esc(r.operation)}</code></span>
+      </div>
+      <button class="abandon ${state.status==='failed'||state.status==='timed-out'?'primary':''}" id="abandon">
+        <span style="margin-right:5px">↩</span>Abandon & roll back
+      </button>
+    </div>
+    <div class="timeline">
+      <span class="tl-lbl">Decisions</span>${chips}
+      <span style="margin-left:auto;font-size:10px;color:var(--faint)" id="tlSummary"></span>
+    </div>`;
+  const done = r.files.length-openCount;
+  document.getElementById("tlSummary").textContent = `${done}/${r.files.length} files resolved · ${openCount} open`;
+  el.querySelectorAll("[data-file]").forEach(n=>n.onclick=()=>{state.selectedFile=n.dataset.file;render();});
+  document.getElementById("copyTag").onclick=()=>{ copyText(r.rollback); toast("rollback tag copied","ok"); };
+  document.getElementById("abandon").onclick=openAbandon;
+}
+
+function renderFiles(){
+  const r = cur(); const el = document.getElementById("files");
+  let h = `<div class="fh">Conflicting files<span class="ct">${r.files.length}</span></div>`;
+  for (const f of r.files){
+    const done = fileResolved(f); const awaiting = isAwaitingTarget(f);
+    const cls = (state.selectedFile===f.id||f===selected())?"sel":"" + (awaiting?" awaiting":"");
+    h += `<button class="fitem ${cls}" data-file="${f.id}">
+      <div class="fp">${esc(f.path.split('/').pop())}</div>
+      <div class="frow"><span class="fkind">${esc(f.kindLabel)}</span><span class="fstat ${done?'resolved':'conflict'}">${done?'resolved':'conflict'}</span></div>
+      <div style="font-size:9.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.path)}</div>
+    </button>`;
+  }
+  el.innerHTML = h;
+  el.querySelectorAll("[data-file]").forEach(n=>n.onclick=()=>{state.selectedFile=n.dataset.file;render();});
+}
+
+function renderDetail(){
+  const r = cur(); const f = selected(); const el = document.getElementById("detail");
+  const vmToggle = f.kind==="code" ? `
+    <div class="vmt">
+      <button data-vm="unified" class="${state.viewMode==='unified'?'on':''}">Unified · markers</button>
+      <button data-vm="columns" class="${state.viewMode==='columns'?'on':''}">3-way columns</button>
+    </div>` : "";
+
+  let banner = "";
+  if (state.status==="awaiting-user" && isAwaitingTarget(f)){
+    banner = `<div class="banner awaiting"><span class="bic">⚠</span>
+      <div><div class="bt">The agent is waiting on you for <code>${esc(f.path.split('/').pop())}</code></div>
+      <div class="bd">${questionBody(f)}</div></div></div>`;
+  } else if (state.status==="awaiting-user"){
+    banner = `<div class="banner awaiting"><span class="bic">⚠</span>
+      <div><div class="bt">Agent waiting on you — but for a different file</div>
+      <div class="bd">Select the amber file in the list to answer. This file is currently <b>${fileResolved(f)?'resolved':'waiting on the agent'}</b>.</div></div></div>`;
+  } else if (state.status==="failed"){
+    banner = `<div class="banner failed"><span class="bic">✕</span>
+      <div><div class="bt">The agent could not resolve this</div>
+      <div class="bd">It errored after trying the configured strategy and the rebase fallback. <code>${esc(f.path.split('/').pop())}</code> is still conflicted. <b>Roll back</b> to restore the pre-reconciliation state (tag <code>${esc(r.rollback)}</code>), or keep editing manually.</div></div></div>`;
+  } else if (state.status==="timed-out"){
+    banner = `<div class="banner failed"><span class="bic">⏱</span>
+      <div><div class="bt">Agent timed out after 25 minutes</div>
+      <div class="bd">The working phase exceeded its budget. The session is terminal — <b>roll back</b> via <code>${esc(r.rollback)}</code>, or resolve the remaining hunks manually below.</div></div></div>`;
+  } else if (state.status==="resolved"){
+    banner = `<div class="banner resolved"><span class="bic">✓</span>
+      <div><div class="bt">All conflicts resolved</div>
+      <div class="bd">The <b>${esc(r.operation)}</b> completed: <code>${esc(r.baseRef)}</code> fast-forwarded, worktree pruned. Rollback tag <code>${esc(r.rollback)}</code> is retained until you’re sure.</div></div></div>`;
+  }
+
+  let body = "";
+  if (f.kind==="text") body = renderText(f);
+  else body = state.viewMode==="columns" ? renderCodeColumns(f) : renderCodeUnified(f);
+
+  el.innerHTML = `
+    <div class="dhead">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--faint)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      <span class="path">${esc(f.path)}</span>
+      ${vmToggle}
+    </div>
+    <div class="dscroll">
+      ${banner}
+      <div class="base-note">${esc(f.baseNote)}</div>
+      ${body}
+    </div>`;
+
+  // wire vm toggle
+  el.querySelectorAll("[data-vm]").forEach(b=>b.onclick=()=>{state.viewMode=b.dataset.vm;render();});
+  // wire decision buttons
+  wireDecisions(el, f);
+}
+
+function codeLines(lines, startLn, cls){
+  let h=""; let ln=startLn;
+  for (const [t,tag] of lines){
+    h += `<div class="cl ${cls||''}"><span class="ln">${ln++}</span><span class="tx">${esc(t)}</span></div>`;
+  }
+  return [h,ln];
+}
+
+function renderCodeUnified(f){
+  const r = cur(); let h=""; let ln=1;
+  let [ch,ln2]=codeLines(f.ctxTop.map(x=>[x[0],x[1]]), ln, "ctx"); ln=ln2; h+=ch;
+  for (const hk of f.hunks){
+    const done = fileResolved(f);
+    const awaiting = isAwaitingTarget(f) && !done;
+    h += `<div class="hunk ${done?'resolved':(awaiting?'awaiting':'')}">
+      <div class="hh"><span class="ht">hunk ${hk.id} · ${esc(f.kindLabel)}</span>
+        <span class="hs ${done?'resolved':'conflict'}">${done?'resolved':'conflict'}</span></div>`;
+    if (done){
+      h += renderResolved(f, hk);
+    } else {
+      // conflict with real markers
+      h += mk("ours", `<<<<<<< ${r.branch.split('/').pop()}`, ln++);
+      let [oh, lnNext]=codeLines(hk.ours, ln, ""); ln=lnNext; h+=oh;
+      h += mk("base", "=======", ln++);
+      let [th, lnNext2]=codeLines(hk.theirs, ln, ""); ln=lnNext2; h+=th;
+      h += mk("theirs", `>>>>>>> ${r.baseRef}`, ln++);
+      h += decideBlock(f, hk, false);
+    }
+    h += `</div>`;
+  }
+  let bh = "";
+  if (f.ctxBottom) bh = codeLines(f.ctxBottom, ln, "ctx")[0];
+  h += bh;
+  return `<div class="code">${h}</div>`;
+}
+function mk(kind, txt, ln){
+  const c = kind==="ours"?"ours":kind==="theirs"?"theirs":"base";
+  return `<div class="mk ${c}"><span class="ln">${ln}</span><span class="t">${esc(txt)}</span></div>`;
+}
+function renderResolved(f, hk){
+  const d = state.decisions[f.id];
+  const r = cur();
+  let note, lines, tag;
+  if (d==="ours"){ note=`Accepted <b>${r.branch} (ours)</b>`; lines=hk.ours; tag="o"; }
+  else if (d==="theirs"){ note=`Accepted <b>${r.baseRef} (theirs)</b>`; lines=hk.theirs; tag="t"; }
+  else if (d==="suggestion"){ note=`Applied <b>agent’s suggested merge</b>`; lines=hk.suggestion.code; tag="r"; }
+  else if (d==="both"){ note=`Kept <b>both</b> (ours + theirs)`; lines=[...hk.ours, ["", "x"], ...hk.theirs]; tag="b"; }
+  else { note=`Manually <b>edited</b>`; lines=(state.edits[f.id]||"").split("\n").map(t=>[t,"r"]); tag="r"; }
+  let h=`<div class="decide resolved-note"><span class="rn"><span style="color:var(--green)">✓</span>${note} — markers removed, ready to commit</span></div>`;
+  let ln=1; let [ch]=codeLines(lines, ln, ""); h+=`<div class="code" style="margin:8px 0">${ch}</div>`;
+  return h;
+}
+
+function renderCodeColumns(f){
+  const r = cur(); const hk = f.hunks[0];
+  return `<div class="cols">
+    <div class="colpane ours"><div class="ch">ours · ${esc(r.branch)}</div><div class="cc code">${codeLines(hk.ours,1)[0]}</div></div>
+    <div class="colpane base"><div class="ch">base · merge-base</div><div class="cc"><div class="empty">(empty — file added on both branches)</div></div></div>
+    <div class="colpane theirs"><div class="ch">theirs · ${esc(r.baseRef)}</div><div class="cc code">${codeLines(hk.theirs,1)[0]}</div></div>
+  </div>
+  ${fileResolved(f) ? renderResolved(f, hk) : decideBlock(f, hk, true)}`;
+}
+
+function renderText(f){
+  const r = cur();
+  const pane = (side, lines) => {
+    let h = `<div class="text-pane ${side}"><div class="tp-h"><span class="side" style="font-weight:700">${side==='ours'?'ours':'theirs'}</span><span style="color:var(--faint);font-weight:400">· ${esc(side==='ours'?r.branch:r.baseRef)}</span></div><div class="tp-c">`;
+    lines.forEach(([t,df],i)=>{ h += `<div class="tl ${df?'hi '+side:''}"><span class="ln">${i+1}</span><span class="tx">${esc(t)}</span></div>`; });
+    h += `</div></div>`; return h;
+  };
+  return `<div class="text-cols">${pane("ours", f.ours)}${pane("theirs", f.theirs)}</div>
+    ${fileResolved(f) ? textResolvedNote(f) : decideBlock(f, f, false)}`;
+}
+function textResolvedNote(f){
+  const d = state.decisions[f.id];
+  const map = { ours:`Accepted <b>${cur().branch} (ours)</b>`, theirs:`Accepted <b>${cur().baseRef} (theirs)</b>`, both:`Kept <b>both</b> versions`, suggestion:`Applied <b>agent’s suggested merge</b>`, edit:`Manually <b>edited</b>` };
+  return `<div class="decide resolved-note" style="margin-top:10px"><span class="rn"><span style="color:var(--green)">✓</span>${map[d]||"resolved"} — markers removed, ready to commit</span></div>`;
+}
+
+function decideBlock(f, hk, stacked){
+  const r = cur(); const sid = f.id;
+  const disabled = (state.status==="failed"||state.status==="timed-out") ? "" : "";
+  const sug = hk && hk.suggestion ? hk.suggestion : (f.suggestion);
+  const sugBtn = sug ? `<div class="agent-sugg">
+      <span class="as-t"><span>◆</span> Agent’s suggested resolution</span>
+      <span class="as-d">${esc(sug.detail)}</span>
+      <button class="as-btn" data-decide="${sid}" data-val="suggestion">✓ Accept agent’s suggestion</button>
+    </div>` : "";
+  const editOpen = state.editing[sid];
+  const editArea = editOpen ? `
+      <textarea class="editbox" id="editbox-${sid}">${esc(state.edits[sid]||defaultEdit(f,hk))}</textarea>
+      <div class="btnrow"><button class="saveedit" data-decide="${sid}" data-val="edit">Save edit</button>
+      <button class="cane" data-editcancel="${sid}">Cancel</button></div>` : "";
+  const btns = `<div class="btnrow">
+      <button class="dbtn ours" data-decide="${sid}" data-val="ours">Accept ours · ${esc(r.branch.split('/').pop())}</button>
+      <button class="dbtn theirs" data-decide="${sid}" data-val="theirs">Accept theirs · ${esc(r.baseRef)}</button>
+      <button class="dbtn both" data-decide="${sid}" data-val="both">Keep both</button>
+      <button class="dbtn edit" data-editopen="${sid}">✎ Edit manually</button>
+    </div>`;
+  return `<div class="decide ${stacked?'':' '}">${sugBtn}${btns}${editArea}</div>`;
+}
+function defaultEdit(f, hk){
+  if (f.kind==="text"){
+    const lines=[...f.ours.map(x=>x[0]), "", ...f.theirs.slice(1).map(x=>x[0])];
+    return lines.join("\n");
+  }
+  const s = hk && hk.suggestion && hk.suggestion.code ? hk.suggestion.code.map(x=>x[0]).join("\n") : "";
+  return s;
+}
+
+function wireDecisions(scope, f){
+  scope.querySelectorAll("[data-decide]").forEach(b=>b.onclick=()=>{
+    const sid=b.dataset.decide, val=b.dataset.val;
+    if (val==="edit"){ const box=document.getElementById("editbox-"+sid); state.edits[sid]=box?box.value:state.edits[sid]; }
+    answerDecision(sid, val);
+  });
+  scope.querySelectorAll("[data-editopen]").forEach(b=>b.onclick=()=>{ state.editing[b.dataset.editopen]=true; state.edits[b.dataset.editopen]=state.edits[b.dataset.editopen]||defaultEdit(f, f.kind==="code"?f.hunks[0]:null); render(); });
+  scope.querySelectorAll("[data-editcancel]").forEach(b=>b.onclick=()=>{ state.editing[b.dataset.editcancel]=false; render(); });
+  const box = scope.querySelector(".editbox");
+  if (box) box.oninput=(e)=>{ state.edits[f.id]=e.target.value; };
+}
+
+/* ---------- the agent<->user loop ---------- */
+function answerDecision(fileId, val){
+  const r = cur(); const f = r.files.find(x=>x.id===fileId);
+  state.decisions[fileId]=val; state.editing[fileId]=false;
+  const label = { ours:`${r.branch} (ours)`, theirs:`${r.baseRef} (theirs)`, both:"both versions", suggestion:"the agent’s suggested merge", edit:"a manual edit" }[val];
+  // update the open question in the chat to "answered"
+  state.chat = state.chat.map(m=> (m.kind==="question" && m.qf===fileId) ? { ...m, answered: true, answer: label } : m);
+  state.chat.push({ role:"user", html:`I’ll go with <b>${label}</b> for <code>${esc(f.path.split('/').pop())}</code>.` });
+
+  const allDone = r.files.every(x=>fileResolved(x));
+  if (allDone){
+    state.status="resolved";
+    state.chat.push({ role:"agent", html:`Done — all files resolved. Completing the <b>${esc(r.operation)}</b>: <code>${esc(r.baseRef)}</code> fast-forwarded, worktree pruned. Rollback tag <code>${esc(r.rollback)}</code> is retained in case you want to step back.` });
+    toast("Conflict resolved — operation complete","ok");
+  } else {
+    state.status="working";
+    state.chat.push({ role:"agent", html:`Got it — applied <b>${label}</b>. Resuming on the remaining file(s)…` });
+    // move awaiting to the next unresolved file if any
+    const nextId = (r.queue || r.files.map(x=>x.id)).find(id => !fileResolved(r.files.find(x=>x.id===id)));
+    if (nextId){ const nf = r.files.find(x=>x.id===nextId); state.chat.push({ role:"agent", kind:"question", qf: nextId, title:"Next one", body: questionBody(nf) }); }
+    syncSwitcher();
+  }
+  state.selectedFile=fileId;
+  render();
+}
+
+/* ---------- chat render ---------- */
+function renderChat(){
+  const el = document.getElementById("msgs");
+  const dot = document.getElementById("agDot");
+  const name = document.getElementById("agName");
+  const colorMap = { "working":"var(--blue)","awaiting-user":"var(--amber)","resolved":"var(--green)","failed":"var(--red)","timed-out":"var(--red)" };
+  dot.style.color = colorMap[state.status]; dot.classList.toggle("pulse", state.status==="working"||state.status==="awaiting-user");
+  name.textContent = state.status==="awaiting-user" ? "DevOps Agent · waiting" : "DevOps Agent";
+
+  let h="";
+  for (const m of state.chat){
+    if (m.role==="agent" && m.kind==="question"){
+      const answered = !!m.answered;
+      const f = cur().files.find(x=>x.id===m.qf);
+      const opts = answered ? "" : `
+        <div class="opts">
+          <button class="opt sug" data-qopt="${m.qf}" data-val="suggestion">✓ Agent’s suggestion</button>
+          <button class="opt" data-qopt="${m.qf}" data-val="ours">Feature branch (ours)</button>
+          <button class="opt" data-qopt="${m.qf}" data-val="theirs">${esc(cur().baseRef)} (theirs)</button>
+          <button class="opt" data-qopt="${m.qf}" data-val="both">Keep both</button>
+          <button class="opt" data-qopt="${m.qf}" data-val="edit">✎ Merge manually</button>
+        </div>`;
+      const answer = answered ? `<div class="answered-lbl"><span>✓</span> You chose: <b>${esc(m.answer)}</b> — applied</div>` : "";
+      h += `<div class="msg"><div class="who">DevOps Agent · needs you</div>
+        <div class="qcard ${answered?'answered':''}">
+          <div class="qt"><span>⚠</span>${esc(m.title)}</div>
+          <div class="qb">${m.body}</div>
+          ${opts}${answer}
+        </div></div>`;
+      continue;
+    }
+    const who = m.role==="agent" ? "DevOps Agent" : "You";
+    h += `<div class="msg ${m.role}"><div class="who">${who}</div><div class="bubble">${m.html}</div></div>`;
+  }
+  el.innerHTML = h;
+  el.querySelectorAll("[data-qopt]").forEach(b=>b.onclick=()=>answerDecision(b.dataset.qopt, b.dataset.val));
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ---------- abandon ---------- */
+function openAbandon(){
+  const r = cur();
+  document.getElementById("modalBody").innerHTML =
+    `This restores the <b>${esc(r.label)}</b> repo to the state before reconciliation, using rollback tag <code>${esc(r.rollback)}</code>.<br><br>
+     The in-progress resolution is discarded. <code>${esc(r.baseRef)}</code> is never left in a conflicted state. This action is safe to take at any point.`;
+  document.getElementById("modalOv").classList.add("open");
+}
+function closeAbandon(){ document.getElementById("modalOv").classList.remove("open"); }
+function confirmAbandon(){
+  closeAbandon();
+  state.abandoned = true;
+  state.status = "resolved"; // terminal "rolled back" — use resolved-green? no: show neutral
+  // Represent rollback as a distinct terminal outcome.
+  state.status = "abandoned";
+  const r = cur();
+  state.chat.push({ role:"agent", html:`Rolled back to <code>${esc(r.rollback)}</code>. The <b>${esc(r.operation)}</b> was aborted and <code>${esc(r.baseRef)}</code> is clean — nothing was committed.` });
+  toast("Rolled back — pre-reconciliation state restored","warn");
+  document.getElementById("modalOv").classList.remove("open");
+  renderStatus(); renderFiles(); renderDetail(); renderChat();
+}
+
+/* ---------- helpers ---------- */
+function toast(msg, kind){
+  const t=document.getElementById("toast"); t.textContent=msg; t.className="toast show "+(kind==="ok"?"":kind==="warn"?"warn":"err");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.className="toast "+(kind==="ok"?"":kind==="warn"?"warn":"err"), 2600);
+}
+function copyText(s){ if(navigator.clipboard) navigator.clipboard.writeText(s).catch(()=>{}); }
+function syncSwitcher(){ document.querySelectorAll("#stateSwitch button").forEach(b=>b.classList.toggle("on", b.dataset.s===state.status)); }
+
+/* ---------- demo controls ---------- */
+document.getElementById("stateSwitch").addEventListener("click", e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  state.status=b.dataset.s;
+  // keep decisions consistent with the demo state
+  if (state.status==="resolved"){ cur().files.forEach(f=>{ if(!state.decisions[f.id]) state.decisions[f.id]="suggestion"; }); }
+  if (state.status==="working" || state.status==="awaiting-user"){ /* leave as-is */ }
+  syncSwitcher(); render();
+});
+document.getElementById("repoSel").addEventListener("change", e=>{
+  state.repo=e.target.value;
+  // reset per-repo interactive state, re-seed narrative
+  state.decisions={}; state.edits={}; state.editing={};
+  state.selectedFile=null;
+  const r=REPOS[state.repo];
+  seedChat();
+  state.selectedFile = r.awaiting || r.files[0].id;
+  if (r.preResolve && Object.keys(r.preResolve).length && !r.awaiting) state.status="working";
+  else state.status="awaiting-user";
+  syncSwitcher(); render();
+});
+document.getElementById("modalCancel").onclick=closeAbandon;
+document.getElementById("modalConfirm").onclick=confirmAbandon;
+document.getElementById("modalOv").onclick=(e)=>{ if(e.target.id==="modalOv") closeAbandon(); };
+document.getElementById("chatSend").onclick=()=>{
+  const f=document.getElementById("chatField"); const v=f.value.trim();
+  if(!v) return;
+  state.chat.push({ role:"user", html: esc(v) });
+  f.value="";
+  setTimeout(()=>{ state.chat.push({ role:"agent", html:"Noted. I’ll keep that in mind as I work through the remaining hunks — I’ll come back to you only if I hit something I can’t decide." }); renderChat(); }, 350);
+  renderChat();
+};
+
+/* ---------- init ---------- */
+function init(){
+  seedChat();
+  state.selectedFile = (cur().awaiting) || cur().files[0].id;
+  render();
+}
+init();
+</script>
+</body>
+</html>
