@@ -217,6 +217,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 - **FR-021**: If the agent's working context cannot actually be written to, the operation MUST fail loudly (clear error + rollback tag); it MUST NOT silently claim success.
 - **FR-022**: An unresolvable conflict (e.g. binary) MUST be surfaced as requiring manual handling (rollback tag provided), NOT silently committed.
 - **FR-023** (regression): The existing BOS source-repo promote escalation MUST behave identically after this change.
+- **FR-024** (restart recovery): On BOS restart, the system MUST auto-detect persisted resolution sessions and recover them: a session in `working` whose agent run is dead MUST be re-launched (boot-time sweep); a session in `awaiting-user` MUST be restored without re-launching the agent (it resumes when the user answers). The `com.bos.gitops.conflict.escalated` event MUST be re-emitted on boot for any session still in a non-terminal state, so BS re-launches with the conflict pane (reusing the event system's existing `redispatchPendingOnBoot` mechanism). A browser refresh of an already-running BOS session MUST restore the conflict pane from the persisted session (no event re-emit needed — the pane re-queries the session store on load).
 
 ### Key Entities
 
