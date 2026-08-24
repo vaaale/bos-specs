@@ -252,7 +252,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 
 ## Assumptions
 
-- The **DevOps Agent** is the resolver for every repo type (source, user-specs, user-apps, VFS mounts) — not separate per-repo agents.
+- A **single, user-configurable conflict-resolution agent** (default: the DevOps Agent) is the resolver for every repo type (source, user-specs, user-apps, VFS mounts) — not separate per-repo agents (FR-025). The setting is one global value, not per-repo.
 - The 5-step pipeline structure (rollback tag → sync → strategy → rebase fallback → escalate) is sufficient; this feature **generalizes the escalation's working context**, adds the **resolution session** and the **agent↔user decision loop**, and converts the dead-end call sites — it does not invent a new pipeline shape.
 - **Autonomous-first** (PR-2) is confirmed (D2): the agent decides when it can and asks the user only on genuine ambiguity.
 - The **exact tooling** that realizes working-context file access (e.g. a repo-path-scoped agent tool, an extension to `run_command`'s sandbox, or a VFS-backed tool) is a **design decision** the `architect` makes against real source — but it MUST satisfy the generality and no-special-casing constraints (FR-003/FR-004) and the three-way-read + hunk-write capability (FR-005).
