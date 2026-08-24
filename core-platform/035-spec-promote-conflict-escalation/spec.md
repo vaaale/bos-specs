@@ -1,4 +1,4 @@
-# Feature Specification: Spec Promote Conflict Escalation
+# Feature Specification: Repo-Context Conflict Escalation
 
 **Feature Branch**: `035-spec-promote-conflict`
 
@@ -8,133 +8,185 @@
 
 **App Target**: bos-core
 
-**Input**: User description: "When the Supervisor promotes a feature branch and the user-specs store hits a merge conflict, the conflict currently dead-ends — no agent is triggered. The existing reconcile() pipeline in src/lib/gitops/reconcile.ts already has a 5-step escalation mechanism (rollback tag → sync → merge strategy → rebase fallback → DevOps Agent) that is wired for the BOS source repo but NOT for the user-specs store. This feature wires the user-specs promote path into that same escalation mechanism."
+**Input**: User description: "The automatic/deterministic conflict-resolution steps in the promote/pull pipeline (merge, rebase, etc.) often fail, and when they do, no agent is triggered — the operation dead-ends with a static 'resolve manually' error. When deterministic resolution fails, an agent must be triggered to resolve the conflict. The escalation mechanism must be designed so that any dependency (e.g. worktree access) is CONFIGURED AND PROVIDED UPON EXECUTION of the DevOps agent: if the conflict is in the main BOS source tree, the environment is configured for that; if it is in user-apps, the environment is configured for that; if it is in user-specs, the environment is configured for that; etc. Scope: solve ALL outstanding conflict-escalation gaps in this space — no follow-ups, no deferrals."
 
 ## Background
 
-The Supervisor's promote pipeline handles two separate git repos:
+The Supervisor's promote pipeline and the git sync/pull/push surfaces operate on **multiple git repos**, and they currently handle conflicts in two inconsistent ways:
 
-1. **BOS source repo** — already uses `reconcile()` via `/api/gitfs/reconcile`. On conflict, the DevOps Agent is triggered; the UI shows the live conversation (`state: "escalated"`, `devopsConversationId`). This works.
+**Path A — the escalation mechanism that works (BOS source repo only).**
+`src/lib/gitops/reconcile.ts` contains a shared 5-step reconciliation pipeline: rollback tag → remote sync (optional) → merge strategy → scripted rebase fallback → **escalate to the DevOps Agent**. The escalation creates a persisted, resumable Assistant conversation scoped to the DevOps Agent, kicks off a run, waits (default 25 min), and surfaces the conversation id to the caller. `VersionControls.tsx` already renders the `state: "escalated"` + `devopsConversationId` state. **But the agent's working context is hard-coded to the BOS source repo's feature-branch worktree** (via the `featureBranchForDelegate` field → `dev_delegate`). It does not generalize to other repos.
 
-2. **User-specs store** (`data/specs/`) — `src/lib/specs/promote.ts` → `promoteFeature()` does a bare `git merge --no-edit <base>` inside the feature worktree. On conflict it calls `merge --abort` and returns `{ kind: "conflict", files }`. No agent is triggered; the promote is blocked with a static error. This is the bug.
+**Path B — dead-ends (everywhere else).** These conflict paths re-implement a simplified inline rebase and, on conflict, stop with a static error and **no agent**:
 
-**Repro**: Branch `bos/034-event-notification-system` fails to promote with:
+| Call site | Repo | Current behavior on conflict |
+|---|---|---|
+| `src/lib/specs/promote.ts` → `promoteFeature` | user-specs store (`data/specs/`) | `git merge --no-edit <base>`; on conflict → `merge --abort`, returns `{ kind: "conflict", files }`. **The reported bug.** |
+| `src/app/api/git-remotes/route.ts` `case "fetch"` (the "Pull" action) | any managed repo (source or VFS mount) | inline `rebaseOntoRemote`; on conflict → `{ rebaseConflict: true, message: "…resolve manually, or force-push…" }` |
+| `src/app/api/git-remotes/route.ts` `case "push"` (recovery on non-FF rejection) | any managed repo | inline `rebaseOntoRemote`; on conflict → same static dead-end |
+| User-apps repo (app promote / user-apps git ops; partly in the Supervisor process `tools/supervisor/supervisor.mjs`) | user-apps repo | [architect to confirm exact call site(s)] — same dead-end class |
+
+**Repro (the reported bug):** branch `bos/034-event-notification-system` fails to promote with:
 ```
 promote blocked — user-specs: branch bos/034-event-notification-system conflicts with master:
 CONFLICT (add/add): Merge conflict in core-platform/034-event-notification-system/test-results.md
 ```
+No agent is triggered; the user must resolve it manually via CLI.
 
-**Known architectural gap**: `reconcile()`'s escalation hands the task to the DevOps Agent, whose `dev_delegate` tool is scoped to the BOS source repo's feature-branch worktree. The user-specs store is a separate git repo. The DevOps Agent's `run_command` tool is sandboxed to `/workspace` and `/tmp` and cannot reach the user-specs worktree path on the host filesystem. The exact mechanism by which the escalated agent gains the ability to resolve file-level conflicts in the user-specs worktree is the core design question for this feature. [NEEDS CLARIFICATION: mechanism — see Assumptions]
+**The core design principle (directed):** the escalation must be **repo-context-parameterized**. The working context — repo identity, worktree path, and the means by which the agent reads/writes within that repo — is a *parameter of the escalation*, configured at execution time to match whichever repo the conflict was detected in. There is no per-repo special-casing of the *access mechanism*; the context object is what varies. The BOS source path (Path A) is the first existing instance of this general pattern; this feature generalizes it.
 
 ## User Scenarios & Testing
 
-### User Story 1 — Promote a feature with a spec-store conflict; the agent resolves it (Priority: P1)
+### User Story 1 — The general escalation mechanism works, proven by the reported bug (Priority: P1)
 
-The user clicks Promote on a feature branch. The Supervisor's promote pipeline runs. The user-specs store hits a merge conflict (e.g. two branches both added `test-results.md`). Instead of the promote dead-ending with a static error, the system triggers the DevOps Agent to resolve the conflict. The user sees the escalate state appear in the UI and can open the live conversation to watch the agent work. When the agent finishes, the promote either completes (conflict resolved, main fast-forwarded) or reports a clear failure with the rollback tag for manual recovery.
+The reconciliation pipeline's escalation step configures the DevOps agent's working environment for whichever repo the conflict was detected in, and the agent can then read/write within that repo's working tree and resolve the conflict. This is proven end-to-end by the reported case: a user-specs promote conflict (the `034-event-notification-system` repro) no longer dead-ends — it escalates, the agent's environment is configured for the user-specs worktree, and the agent either resolves the conflict (promote then completes: main fast-forwarded, worktree pruned) or times out/fails with the rollback tag for manual recovery.
 
-**Why this priority**: This is the exact bug being reported. Without it, every spec-store conflict blocks promote indefinitely and requires manual CLI intervention.
+**Why this priority**: This is the architectural core and the reported bug. It is the MVP that delivers the most value: it directly fixes the repro *and* provides the substrate every other call site hangs off. Nothing else is useful without it.
 
-**Independent Test**: Create two feature branches that both add a file with the same path but different content to the user-specs store. Promote one while the other is on main. Verify: (a) the escalate state appears in the UI within seconds, (b) a DevOps Agent conversation is created and visible in the Assistant app, (c) the agent either resolves the conflict (promote completes) or times out with a clear error + rollback tag.
+**Independent Test**: Recreate the repro — two feature branches that both add a same-path file (e.g. `test-results.md`) with different content to the user-specs store; promote one while the other's content is on main. Verify: (a) the escalate state appears in the UI within the same request cycle, (b) a DevOps Agent conversation is created, visible in the Assistant app, and titled after the conflict, (c) the agent's working context targets the user-specs worktree (not the source repo), (d) the agent resolves the conflict → promote completes, **or** times out/fails → promote reports failure with the rollback tag and main is left untouched.
 
 **Acceptance Scenarios**:
 
-1. **Given** a feature branch whose user-specs changes conflict with main, **When** the user clicks Promote, **Then** the Supervisor's promote response includes `devopsConversationId` and the UI transitions to the escalated state within the same request cycle (no separate poll needed to discover the escalation).
+1. **Given** a user-specs feature branch whose changes conflict with main, **When** the user clicks Promote, **Then** the Supervisor's promote response includes `devopsConversationId` and the UI transitions to the escalated state within the same request cycle (no separate poll needed to discover the escalation).
 
-2. **Given** the DevOps Agent is actively resolving the conflict, **When** the user opens the conversation in the Assistant app, **Then** they see the agent's in-progress work (tool calls, file reads, merge attempts) in real time, and the conversation is titled after the conflict being resolved.
+2. **Given** the DevOps Agent is resolving the user-specs conflict, **When** its run starts, **Then** its working environment is configured for the user-specs worktree (at `data/specs/.worktrees/<encoded-branch>/`) — it can read the conflicting files and write the merge resolution in that repo, not in the BOS source tree.
 
-3. **Given** the DevOps Agent resolves the conflict successfully, **When** the run completes, **Then** the Supervisor's promote completes: main is fast-forwarded to the reconciled branch, the worktree is pruned, and the promote response reports success.
+3. **Given** the agent resolves the conflict successfully, **When** the run completes, **Then** the promote completes: main is fast-forwarded to the reconciled branch, the worktree is pruned, and the response reports success.
 
-4. **Given** the DevOps Agent times out (default 25 min) or errors, **When** the run reaches a terminal state, **Then** the promote reports failure with the rollback tag name and the conflicting files, and main is left untouched (never in a conflicted state).
+4. **Given** the agent times out (default 25 min) or errors, **When** the run reaches a terminal state, **Then** the promote reports failure with the rollback tag and the conflicting files, and user-specs `main` is never left in a conflicted state.
 
 ---
 
-### User Story 2 — The UI surfaces the escalated state for spec-store conflicts (Priority: P2)
+### User Story 2 — Every other dead-end conflict path routes through the mechanism (Priority: P1)
 
-The `ConflictResolutionDialog` (shown in VersionControls / VersionsTab when a promote hits a conflict) currently shows a static list of conflicting files with a message like "resolve manually or force-push." With this feature, when the conflict has been escalated to an agent, the dialog MUST reflect that: show the live conversation link, the agent's current state (working / completed / timed out), and the rollback tag. The user does not need to hunt for the conversation in the Assistant app — the dialog links to it directly.
+Every deterministic-conflict-resolution path that currently dead-ends is converted to route through the generalized pipeline, with the working context configured for the repo the operation is acting on:
 
-**Why this priority**: The P1 story is functionally complete without this, but the user experience is poor — they'd have to know to go look in the Assistant app. The existing source-repo promote path already does this (VersionControls.tsx line 343 handles `devopsConversationId`); this story makes the spec-store path match it.
+- **Pull from git** (`/api/git-remotes` `case "fetch"`): a diverged/conflicted pull no longer returns a static "resolve manually" error — it routes through the pipeline (strategy + rebase fallback + escalation) with the repo's working context.
+- **Push recovery** (`/api/git-remotes` `case "push"`): a non-fast-forward rejection that recovers into a conflicted rebase no longer dead-ends — it routes through the pipeline with the repo's working context.
+- **User-apps repo** operations: a conflict in the user-apps repo routes through the pipeline with the user-apps working context.
+- **Any other managed git repo** (e.g. VFS-mounted repos) that the architect confirms has a dead-end conflict path: same treatment.
 
-**Independent Test**: Trigger a spec-store promote conflict. Verify the ConflictResolutionDialog shows: (a) the "handed to the DevOps Agent" indicator, (b) a clickable link that opens the conversation in the Assistant app, (c) the conflicting file list, (d) the rollback tag name.
+**Why this priority**: The user directed that ALL outstanding conflict-escalation gaps in this space be solved now — no follow-ups, no deferrals. These are the remaining gaps beyond the reported repro.
+
+**Independent Test**: For each path, trigger a resolvable conflict (e.g. a same-path, different-content add/add) and verify it escalates (a DevOps conversation is created, the working context targets the correct repo) instead of returning a static "resolve manually" / `rebaseConflict` error.
 
 **Acceptance Scenarios**:
 
-1. **Given** a promote is in the escalated state (agent working), **When** the ConflictResolutionDialog is rendered, **Then** it shows an amber "handed to the DevOps Agent" indicator with a link to the live conversation, and the conflicting file list.
+1. **Given** a "Pull" on a managed repo where local and remote have diverged and the rebase conflicts, **When** the pull is processed, **Then** it escalates to the DevOps Agent with that repo's working context (not a static `rebaseConflict` error).
 
-2. **Given** the agent's run has completed (success or failure), **When** the user re-opens or refreshes the dialog, **Then** it shows the terminal state (resolved / timed out / error) and the rollback tag for manual recovery if needed.
+2. **Given** a "Push" that is rejected as non-fast-forward and whose recovery rebase conflicts, **When** the push is processed, **Then** it escalates to the DevOps Agent with that repo's working context.
+
+3. **Given** a conflict in the user-apps repo, **When** the user-apps operation is processed, **Then** it escalates to the DevOps Agent with the user-apps working context.
+
+4. **Given** any git conflict path in the system, **When** deterministic resolution fails, **Then** it routes through the pipeline and escalates — **no** git conflict path in the system returns a static "resolve manually" error with no agent.
 
 ---
 
-### User Story 3 — The source-repo promote path is unaffected (Priority: P3)
+### User Story 3 — The UI surfaces the escalated state uniformly (Priority: P2)
 
-The existing `reconcile()` escalation for the BOS source repo must continue to work identically. This feature changes `promoteFeature` (user-specs path) to call `reconcile()`; it does NOT change `reconcile()` itself in a way that alters the source-repo path's behavior. The `featureBranchForDelegate` field (already in `ReconcileOptions`) distinguishes the two cases: source-repo promotes pass it, user-specs promotes do not (or pass it with a value that tells the agent the worktree is the user-specs store, not the source repo).
+For a conflict escalated from **any** repo (not just the source repo), the relevant UI surface shows the live escalation: the "handed to the DevOps Agent" indicator, a link that opens the live conversation in the Assistant app, the conflicting file list, and the rollback tag. The surfaces in scope: `VersionControls.tsx` (topbar promote), `VersionsTab.tsx` (Settings → Versions), `ConflictResolutionDialog.tsx`, and `GitRemotesTab.tsx` (the Pull/Push surfaces). The user does not need to know to go look in the Assistant app — the surface they were already looking at links to the conversation.
 
-**Why this priority**: Regression protection. The source-repo path is the one that already works; it must not break.
+**Why this priority**: The mechanism (US1/US2) is functionally complete without this, but the user can't see or watch the agent, and the existing source-repo path already sets the bar (VersionControls already handles `devopsConversationId`) — every other surface should match it.
 
-**Independent Test**: Trigger a source-repo promote conflict (as before this feature). Verify the escalation behavior is unchanged: same conversation creation, same `devopsConversationId` in the response, same UI state.
+**Independent Test**: For each surface, trigger an escalated conflict for its repo and verify the surface shows: (a) the amber "handed to the DevOps Agent" indicator, (b) a clickable link opening the conversation, (c) the conflicting file list, (d) the rollback tag.
 
 **Acceptance Scenarios**:
 
-1. **Given** a source-repo promote conflict (as today), **When** the promote is escalated, **Then** the behavior is identical to before this feature (conversation created, `devopsConversationId` in response, UI shows escalated state).
+1. **Given** a promote is escalated (agent working), **When** `VersionControls` / `VersionsTab` / `ConflictResolutionDialog` is rendered, **Then** it shows the "handed to the DevOps Agent" indicator, a link to the live conversation, the file list, and the rollback tag.
 
-2. **Given** the `reconcile()` function, **When** called with `featureBranchForDelegate` set (source-repo path), **Then** the escalation task text tells the agent the worktree IS the Supervisor-tracked feature branch (existing behavior, unchanged).
+2. **Given** a Pull/Push on a managed repo is escalated, **When** `GitRemotesTab` is rendered, **Then** it shows the same escalated state (agent link + file list + rollback tag) instead of the static "resolve manually, or force-push" message.
 
-3. **Given** the `reconcile()` function, **When** called for the user-specs path (new), **Then** the escalation task text tells the agent the worktree is the user-specs store and `dev_delegate` does NOT apply — the agent must use whatever mechanism this feature provides to access the user-specs worktree.
+3. **Given** the agent's run has completed (success or failure), **When** the user refreshes the surface, **Then** it shows the terminal state (resolved / timed out / error) and the rollback tag for manual recovery if needed.
+
+---
+
+### User Story 4 — Regression: the source-repo escalate path is unchanged (Priority: P3)
+
+The existing BOS source-repo promote escalation must behave identically. This feature generalizes the mechanism that the source path already uses; the source path becomes the first *instance* of the general pattern but must not regress. The `featureBranchForDelegate` field remains the working-context value for the source case.
+
+**Why this priority**: Regression protection for the one path that already works.
+
+**Independent Test**: Trigger a source-repo promote conflict as before this feature. Verify the escalation is unchanged: same conversation creation, same `devopsConversationId` in the response, same UI state, same agent working context (source feature-branch worktree).
+
+**Acceptance Scenarios**:
+
+1. **Given** a source-repo promote conflict, **When** the promote is escalated, **Then** the behavior is identical to before this feature (conversation created, `devopsConversationId` in response, UI escalated state, agent targets the source feature-branch worktree).
+
+2. **Given** `reconcile()` called with the source-repo working context, **When** it escalates, **Then** the escalation task text still tells the agent the worktree IS the Supervisor-tracked feature branch and `dev_delegate` targets it directly (existing behavior, unchanged).
 
 ---
 
 ### Edge Cases
 
-- **Concurrent promotes**: Two promotes racing against the same user-specs branch. The existing `inFlightEscalations` map in `reconcile.ts` (keyed by `repoPath`) should prevent a second escalation from starting while one is in flight — verify this works for the user-specs repo path too.
-- **Agent resolves the conflict but the result still doesn't merge cleanly**: The agent's resolution commit is itself a valid merge; if it's wrong, the user can use the rollback tag to restore the pre-reconciliation state and retry.
-- **The user-specs worktree doesn't exist when promote starts**: `promoteFeature` already calls `ensureWorktree` — this is unchanged.
-- **The conflict is in a binary file**: The agent may not be able to resolve it intelligently. The fallback is the same as today: rollback tag + manual intervention.
-- **`main` is already up to date (no actual divergence)**: `promoteFeature`'s merge is a no-op; `reconcile()` handles this (the `hasStagedChanges` check in `attemptStrategy`).
+- **Concurrent operations on the same repo**: two escalations racing against the same repo. The existing `inFlightEscalations` map in `reconcile.ts` (keyed by `repoPath`) prevents a second escalation while one is in flight — this MUST hold for user-specs, user-apps, and VFS-mount repo paths too, not just the source repo.
+- **Agent's resolution doesn't merge cleanly / is wrong**: the agent's resolution is a valid commit; if it's wrong, the user uses the rollback tag to restore pre-reconciliation state and retry.
+- **Binary-file conflict**: the agent may not resolve it intelligently. Fallback is the same as today: rollback tag + manual intervention.
+- **No actual divergence (already up to date)**: the merge is a no-op; `reconcile()` already handles this (`hasStagedChanges` check).
+- **Worktree not materialized**: `promoteFeature` already calls `ensureWorktree`; the working context must reference the materialized worktree path.
+- **Agent has no suitable access for a given repo type** (e.g. a repo whose worktree the context can't grant write access to): the escalation must fail loudly with a clear error and the rollback tag, not silently pretend to have resolved it.
+- **User-apps path lives partly in the Supervisor process** (`tools/supervisor/supervisor.mjs`, a separate Node process): the escalation there must reach the same generalized mechanism (the `/api/gitfs/reconcile` job endpoint or an equivalent) so the working context is configured consistently.
 
 ## Requirements
 
 ### Functional Requirements
 
-- **FR-001**: When `promoteFeature` (in `src/lib/specs/promote.ts`) encounters a merge conflict during the base-into-branch merge, it MUST route the conflict through the `reconcile()` pipeline (in `src/lib/gitops/reconcile.ts`) instead of calling `merge --abort` and returning a static `{ kind: "conflict" }` result.
+**The general mechanism**
 
-- **FR-002**: The `reconcile()` call for the user-specs path MUST be a purely-local reconciliation (no remote sync step): `sourceRef` = the base branch name, `remote` omitted.
+- **FR-001**: The reconciliation pipeline's escalation step MUST configure the DevOps agent's working environment for the specific repo where the conflict was detected, **at the time the agent run is launched**. The working context — repo identity, worktree path, and the means by which the agent reads/writes within that repo — MUST be a parameter of the escalation, not a hard-coded assumption about the BOS source tree.
 
-- **FR-003**: When the `reconcile()` pipeline's automated steps (merge strategy + rebase fallback) both fail on the user-specs path, it MUST escalate to the DevOps Agent — same as the source-repo path.
+- **FR-002**: The mechanism MUST work uniformly for every git repo the system manages — the BOS source repo, the user-specs store, the user-apps repo, and VFS-mounted repos. The per-repo variation MUST be carried entirely in the working context; there MUST be no per-repo special-casing of the *access mechanism*.
 
-- **FR-004**: The escalated DevOps Agent run MUST have a working mechanism to read and write files in the user-specs worktree (at `data/specs/.worktrees/<encoded-branch>/`). [NEEDS CLARIFICATION: the exact mechanism — see Assumptions. Candidate options: (a) a new agent tool that operates on a specified repo path, (b) extending `run_command`'s sandbox to include the data directory, (c) a dedicated "spec-conflict" tool that performs targeted file merges programmatically, (d) the DevOps Agent uses an existing tool that can reach VFS paths.]
+- **FR-003**: Given the working context, the DevOps agent MUST be able to read and write files within the conflicting repo's working tree and complete the merge (resolve the conflict and commit) without any CLI intervention by the user.
 
-- **FR-005**: The Supervisor's promote response (the `PostResult` returned to the UI) MUST include `devopsConversationId` when a user-specs conflict is escalated, so the UI can surface the live conversation — same shape as the source-repo path already uses.
+**Call-site conversions (all in scope — no deferrals)**
 
-- **FR-006**: The `main` branch of the user-specs store MUST never be left in a conflicted state. The existing invariant in `promoteFeature` (main only fast-forwards; conflicts surface on the feature branch) MUST be preserved.
+- **FR-004**: `promoteFeature` (`src/lib/specs/promote.ts`) MUST route its base-into-branch merge conflict through the pipeline with the **user-specs** working context, instead of `merge --abort` + a static `{ kind: "conflict" }` result. (The reported bug.)
 
-- **FR-007**: A rollback tag MUST be created in the user-specs repo before any merge/rebase attempt (the `reconcile()` pipeline already does this — FR-001 inherits it).
+- **FR-005**: The "Pull" action (`src/app/api/git-remotes/route.ts` `case "fetch"`) MUST route a diverged/conflicted pull through the pipeline (strategy + rebase fallback + escalation) with the **target repo's** working context, instead of the inline `rebaseOntoRemote` + static `rebaseConflict` error.
 
-- **FR-008**: The `ConflictResolutionDialog` (or equivalent UI in VersionControls / VersionsTab) MUST display the escalated state for user-specs conflicts: the "handed to the DevOps Agent" indicator, a link to the conversation, the conflicting file list, and the rollback tag. This matches the behavior the source-repo path already has in `VersionControls.tsx`.
+- **FR-006**: The push-recovery path (`src/app/api/git-remotes/route.ts` `case "push"`, on non-fast-forward rejection) MUST route a conflicted recovery rebase through the pipeline with the **target repo's** working context, instead of the inline `rebaseOntoRemote` + static error.
 
-- **FR-009**: The source-repo promote path's escalation behavior MUST be unchanged. The `reconcile()` function's behavior when called with `featureBranchForDelegate` set (source-repo case) MUST be identical to before this feature.
+- **FR-007**: Conflicts in the **user-apps** repo (app promote / any user-apps git operation, including those originating in the Supervisor process) MUST route through the pipeline with the **user-apps** working context. [architect to confirm the exact call site(s) — the Supervisor-process side in particular.]
 
-- **FR-010**: The `promoteFeature` result type MUST be extended (or the Supervisor's promote logic updated) to distinguish between "escalated, agent working" (the promote is still in progress — not yet a terminal failure) and "escalated, agent failed/timed out" (terminal failure, rollback tag available). The UI needs this distinction to show the right state.
+- **FR-008** (completeness invariant): Every deterministic-conflict-resolution path in the system MUST end by routing through the pipeline (which escalates when deterministic steps fail). There MUST be **no** git conflict path that dead-ends with a static "resolve manually" / `rebaseConflict` error and no agent. The `design` step MUST sweep the source to enumerate the complete set of such paths; all of them are in scope for this feature.
+
+**Invariants, response shape, and UI**
+
+- **FR-009**: For any repo with a linear-main invariant (user-specs `main` fast-forward-only; the source repo's base branch), that invariant MUST be preserved: the conflict surfaces on the feature/working branch, `main` is never left in a conflicted state, and a rollback tag is always created before any merge/rebase attempt.
+
+- **FR-010**: The response returned to the caller MUST include `devopsConversationId` (and the state needed to render escalation) when a conflict is escalated — the Supervisor promote response, the git-remotes fetch response, and the git-remotes push response — matching the shape the source-repo path already uses.
+
+- **FR-011**: The UI surfaces (`VersionControls.tsx`, `VersionsTab.tsx`, `ConflictResolutionDialog.tsx`, `GitRemotesTab.tsx`) MUST display the escalated state — "handed to the DevOps Agent" indicator, a link to the live conversation, the conflicting file list, and the rollback tag — for a conflict escalated from **any** repo, not only the source repo.
+
+- **FR-012**: The operation response MUST distinguish "escalated, agent still working" (non-terminal, in progress) from "escalated, agent failed/timed out" (terminal, rollback tag available) so the UI shows the correct state.
+
+- **FR-013** (regression): The existing BOS source-repo promote escalation MUST behave identically after this change. The source path is the first instance of the general mechanism and MUST NOT regress.
 
 ### Key Entities
 
-- **User-specs promote conflict**: A merge conflict in the user-specs git store (at `data/specs/`) between a feature branch and the base branch, detected during `promoteFeature`. Key attributes: conflicting file paths, the feature branch name, the rollback tag.
-- **DevOps Agent conversation**: A persisted, resumable Assistant conversation scoped to the DevOps Agent, created by `reconcile()`'s escalation step. Key attributes: conversation ID, title (titled after the conflict), `activeFeatureBranch` (for source-repo case; absent for user-specs case), agent ID (`devops`).
+- **Working context**: The per-repo bundle the escalation provides to the DevOps agent at execution time — repo identity (source / user-specs / user-apps / VFS mount / generic), the absolute worktree path, the base/branch being reconciled, and the means by which the agent reads/writes within that repo. The single parameter that makes the mechanism repo-agnostic.
+- **User-specs / user-apps / managed-repo conflict**: A merge conflict in a managed git store, detected during promote/pull/push. Key attributes: conflicting file paths, the feature/working branch, the base ref, the rollback tag, and the repo it belongs to.
+- **DevOps Agent conversation**: A persisted, resumable Assistant conversation scoped to the DevOps Agent, created by the pipeline's escalation step. Key attributes: conversation id, title (titled after the conflict), the working context it was launched with, and (source case only) `activeFeatureBranch` for `dev_delegate`.
 
 ## Success Criteria
 
 ### Measurable Outcomes
 
-- **SC-001**: A user-specs promote conflict that previously dead-ended (static "promote blocked" error, no agent) now triggers a DevOps Agent conversation within the same request cycle, and the UI shows the escalated state without requiring a manual refresh.
+- **SC-001**: The reported repro (user-specs promote conflict on `034-event-notification-system`) escalates to the DevOps Agent within the same request cycle, the agent's working context targets the user-specs worktree, and the conflict is resolved (or the promote times out/fails cleanly with the rollback tag) — with **no** manual git CLI.
 
-- **SC-002**: The user can resolve a spec-store promote conflict end-to-end (promote → escalate → agent resolves → promote completes) without opening a terminal or running any git commands manually, for at least text-file conflicts (e.g. two branches adding the same Markdown file with different content).
+- **SC-002**: Zero managed-repo conflict paths dead-end with a static "resolve manually" / `rebaseConflict` error. Every known dead-end (user-specs promote, Pull, push-recovery, user-apps) and any additional one found by the design source-sweep escalates instead.
 
-- **SC-003**: The source-repo promote conflict escalation path is unchanged — a source-repo promote conflict produces the same UI state, conversation, and response shape as before this feature (no regression).
+- **SC-003**: For a text-file conflict in any managed repo, the user can resolve it end-to-end (operation → escalate → agent resolves → operation completes) without opening a terminal.
 
-- **SC-004**: When the agent times out or fails, the promote reports a clear error including the rollback tag name, and `git log --oneline` on the user-specs `main` branch shows it was never in a conflicted state (the fast-forward invariant held).
+- **SC-004**: The source-repo promote escalation is unchanged (no regression) — same conversation, same response shape, same UI state, same agent working context as before this feature.
+
+- **SC-005**: For a conflict escalated from any repo, the relevant UI surface shows the escalated state (agent link, conflicting file list, rollback tag) and the user can open the live conversation from that surface.
 
 ## Assumptions
 
-- The `reconcile()` pipeline's 5-step structure (rollback tag → sync → merge strategy → rebase fallback → agent escalation) is the correct and sufficient mechanism for the user-specs path. No new pipeline steps are needed; the existing escalation is what the user wants.
-- The DevOps Agent is the right agent for this (not a new, purpose-built agent). The same agent that resolves source-repo conflicts should resolve user-specs conflicts.
-- The user-specs worktree path (`data/specs/.worktrees/<encoded-branch>/`) is accessible to the agent via SOME mechanism — the exact mechanism is the core design question and is marked [NEEDS CLARIFICATION] in FR-004. The Developer (via the `design` step) must resolve this before `plan`.
-- The "pull from git" path (`/api/git-remotes/route.ts` `case "fetch"`) also has the same dead-end pattern (inline rebase, no escalation), but is OUT OF SCOPE for this spec. It should be a follow-up feature that reuses the same mechanism.
-- The UI changes (FR-008) are an enhancement to the existing `ConflictResolutionDialog` / `VersionControls.tsx` — no new window or app is needed. The existing "handed to the DevOps Agent" UI pattern (already used for source-repo conflicts) is the model.
+- The **DevOps Agent** is the correct agent for conflicts in every repo type (source, user-specs, user-apps, VFS mounts) — not a separate per-repo agent.
+- The 5-step pipeline structure (rollback tag → sync → strategy → rebase fallback → escalate) is sufficient; this feature **generalizes the escalation's working context**, it does not add new pipeline steps.
+- The **exact tooling** that realizes the working-context file access (e.g. a repo-path-scoped agent tool, an extension to `run_command`'s sandbox, or a VFS-backed tool) is a **design decision** the `architect` makes against real source — but it MUST satisfy the generality and no-special-casing constraints in FR-002. This is the one genuinely-open design question; its *shape* (per-repo, parameterized, configured at execution) is fixed by FR-001/FR-002.
+- **All in scope, no follow-ups**: the completeness invariant (FR-008) means any dead-end conflict path the architect discovers in source during `design` is covered by this feature, not deferred.
+- The user-apps promote path partly lives in the Supervisor process (`tools/supervisor/supervisor.mjs`); the architect MUST confirm its exact conflict call site(s) and how the escalation there reaches the generalized mechanism (likely the `/api/gitfs/reconcile` job endpoint or an equivalent).
+- The `inFlightEscalations` guard, the rollback-tag step, and the linear-main invariant already exist in `reconcile.ts`; this feature inherits them rather than reimplementing them.
