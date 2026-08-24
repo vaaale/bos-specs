@@ -101,6 +101,11 @@ Only real paths. (Existing files the design *calls into* but does not create are
 - `src/instrumentation.ts` (or the equivalent boot hook) — boot-time session-recovery sweep (FR-024).
 - The `devops` agent definition (seeded agent under `data/agents/` or the subagents store) — add the `conflict_*` tools to its tool allowlist so it can call them (FR-025, §11).
 - `src/lib/gitops/reconcile-jobs.ts` — thread `sessionId` through `ReconcileJob` so the Supervisor's poller can see it (FR-018).
+- **FR-019/020 surfaces (US4, P2) — session-aware state, replacing the static error strings:**
+  - `src/components/desktop/VersionControls.tsx` — replace the static "escalated to DevOps Agent" text (current line ~343) with a session-aware indicator: read `session.status` from the session API, show the status badge (working/awaiting-user/resolved/failed/timed-out), the conflicting file count, the rollback tag, and an "Open resolution" button that calls `launch("build-studio", { pane: "conflict", sessionId })`.
+  - `src/components/apps/settings/VersionsTab.tsx` — same treatment: when a promote response carries `sessionId` (new field per FR-018), show the session state in the tab.
+  - `src/components/apps/settings/versions/ConflictResolutionDialog.tsx` — replace the static conflict list with a session-aware version: live session status, the file list, and a link into the Build Studio conflict pane.
+  - `src/components/apps/settings/versions/GitRemotesTab.tsx` — replace the static `rebaseConflict: true` message (line ~693) with the session state: when the fetch/push response carries `sessionId`, show the session status + "Open resolution" button instead of "resolve manually, or force-push."
 
 ---
 
@@ -133,6 +138,16 @@ interface WorkingContext {
   mode: "working-tree" | "plumbing";
   /** Optional Supervisor feature branch, for the source path (dev_delegate parity, FR-023 regression). */
   featureBranchForDelegate?: string;
+}
+
+/** The three refs the conflict snapshot is derived from (refs-based — see the note after this schema). */
+interface ConflictSnapshot {
+  /** merge-base commit sha of `ours` vs `theirs` (re-derivable after a restart). */
+  base: string;
+  /** "ours" side — the branch being reconciled onto (e.g. `main`). */
+  ours: string;
+  /** "theirs" side — the ref being merged in (e.g. a feature branch). */
+  theirs: string;
 }
 
 interface ConflictHunk {
@@ -170,6 +185,8 @@ interface ResolutionSession {
   createdAt: number;
   updatedAt: number;
   workingContext: WorkingContext;
+  /** The three refs the per-file 3-way content is read from (`git show <ref>:<rel>`, §4.2 note). */
+  snapshot: ConflictSnapshot;
   rollbackTag: string;                    // FR-017 — always set before any merge
   conversationId: string;                 // the DevOps/conflict-agent conversation
   agentId: string;                        // the conflictAgent read at escalation (FR-025)
@@ -189,6 +206,15 @@ interface ResolutionSession {
 ```
 
 `status` is the state machine from the spec: `working → awaiting-user → (working | resolved | failed | timed-out)`; `abandoned` is a terminal the user triggers. `awaiting-user` is **non-terminal** and parks **indefinitely** (D3) — only the *working* phases have the 25-min budget.
+
+**Snapshot derivation — refs, not live merge-index stages (M1).** The snapshot is derived from the three *refs*, never from `:1:`/`:2:`/`:3:` merge-index stages. This is a hard constraint: `reconcile.ts` **aborts** the merge/rebase (steps 3–4: `merge --abort` / `rebase --abort` + rebase-state cleanup) *before* step 5 `escalate()` runs, so by the time `escalate()` captures anything the merge-index stages no longer exist — `git show :1:`/`:2:`/`:3:` would all fail. Refs, however, always exist:
+
+- `base` = `git merge-base <ours> <theirs>` (a commit sha); `ours` = `<branch>`; `theirs` = `<sourceRef>` (all recorded on `session.snapshot`).
+- Per conflicting file `rel`: `base_content = git show <base>:<rel>`, `ours_content = git show <ours>:<rel>`, `theirs_content = git show <theirs>:<rel>`.
+- **add/add**: `git merge-base` returns a valid fork-point commit, but the file is absent there — `git show <base>:<rel>` **throws**; catch it and set `base_content = undefined` (`ConflictHunk.base?` is already optional; the mockup renders it as "base: (empty)").
+- **Conflicting-file list**: `git diff --name-only --diff-filter=U` on the working-tree path (what `promoteFeature` already uses), or parse `git merge-tree --write-tree` output on the dry-run/pre-check path (the Supervisor's `coupledConflicts` already does this).
+
+This is **uniform** across working-tree and plumbing (plumbing has no worktree — refs are the *only* source), **restart-safe** (refs + the recorded `sourceRef` re-derive identical content after a restart, satisfying FR-002's "restore the conflict snapshot"), and correct for add/add. The read helper is a small new `readFileAtRef(repoPath, ref, rel)` in `src/lib/gitops/git-ops.ts` (or a new module) wrapping `runGitCommand(["show", `${ref}:${rel}`], { cwd: repoPath })` and catching the "file not found" error → empty content for the add/add base side. This is **not** `store-git.ts`'s `readFileAtRef` (that one is tied to the spec store).
 
 ### 4.3 API routes
 
@@ -214,9 +240,9 @@ The 5-step pipeline (rollback tag → sync → strategy → rebase fallback → 
 
 **After**: step 5 calls a new `escalate()` that:
 1. **Reads the configured agent** — `const agentId = await getConfigValue("build-studio","conflictAgent") ?? "devops"` (FR-025), replacing the `DEVOPS_AGENT_ID` constant. (Source-repo regression, FR-023: default is still `"devops"` and the conversation still pre-sets `activeFeatureBranch` = `featureBranchForDelegate`, so the source path behaves identically.)
-2. **Captures the conflict snapshot** from the *live conflicted state* (see §4.2 note) → `files[]`.
+2. **Derives the conflict snapshot from refs** — `base`/`ours`/`theirs` → per-file `git show <ref>:<rel>` content (see §4.2 note; *not* live `:1/:2/:3` stages, which are gone by the time `escalate()` runs) → `files[]`.
 3. **Creates the session** (`workingContext` built from the repo — §7.1), `rollbackTag` from step 1, `conversationId` from a new conflict-agent conversation (generalized `createDevOpsConversation` to take `agentId`).
-4. **Tags the conversation** with `conflictSessionId` (conversation metadata, analogous to the existing `activeFeatureBranch`) so the conflict tools can find the session by `ctx.conversationId` (§7.2).
+4. **Tags the conversation** with `conflictSessionId` — written as a **top-level field on the conversation JSON file** (`/Documents/Chats/<id>.json`), exactly like the existing `activeFeatureBranch` (which `createDevOpsConversation` already persists the same way, and which survives the park→rewake boundary because `saveConversationMessages` preserves top-level fields). The conflict tools read it back via a new **`getConversationConflictSessionId(conversationId)`** getter in `src/lib/agent/conversations-server.ts` (mirroring `getConversationActiveFeatureBranch`), called with `ctx.conversationId` (§7.2).
 5. **Emits `com.bos.gitops.conflict.escalated`** with `{ sessionId, repo, branch, conversationId, summary }` (§8).
 6. **Launches the run** via `startAssistantRun({ conversationId, agentId, message: task })` — the task now says *"a resolution session `<id>` is open; use the conflict_* tools against your working context; resolve what you can, call `conflict_decision` when you need the user, call `conflict_complete` when done."*
 7. Returns to the caller **non-blocking** with `ReconcileOutcome = { status: "escalated", rollbackTag, devopsConversationId, sessionId }` (FR-018 — the response carries the session id *and* the conversation id).
@@ -265,8 +291,8 @@ Because completion is owned by the session store (in the Next.js process), it ru
 - **`runAgentLoop`** (`agent-loop.ts`) — the loop the agent runs in. Unchanged.
 - **`getConfigValue("build-studio", …)`** (`src/lib/config/registry.ts`) — read the `conflictAgent` at escalation (FR-025). The namespace already exists; only `load()` gains the field.
 - **The event system** (`src/lib/events/*`): `api.emit` (in-process) to emit `com.bos.gitops.conflict.escalated`; `registerAllUiHandlers`/`registerAppUiHandlers` (`register-ui-handlers.ts`) surfaces the BS manifest handler; the **NDJSON stream** (`/api/events/stream`, client `subscribeEventStream`) is what the auto-launcher and the pane subscribe to; `ownsNamespace`/`eventNamespaces` grant (see §8). No core dispatch changes.
-- **`runGitCommand`** (`src/lib/gitops/git-ops.ts`) — the generic raw-git escape hatch the conflict tools and snapshot capture use (`git show :1/:2/:3:`, `git merge`, `git add`, `git commit`, `git merge --continue`, `git commit-tree`, `git update-ref`).
-- **`gitLock()`** (`src/lib/gitops/lock.ts`) — every session mutation that touches a repo takes the per-`repoPath` lock (the existing `inFlightEscalations` guard, generalized to all repo paths — the concurrency invariant, US5).
+- **`runGitCommand`** (`src/lib/gitops/git-ops.ts`) — the generic raw-git escape hatch the conflict tools and snapshot capture use (`git show <ref>:<rel>` for the 3-way snapshot, `git merge`, `git add`, `git commit`, `git merge --continue`, `git commit-tree`, `git update-ref`). A small new `readFileAtRef(repoPath, ref, rel)` helper wraps `git show <ref>:<rel>` here (see §4.2 note).
+- **`gitLock()`** (`src/lib/gitops/lock.ts`) — every session mutation that touches a repo takes the per-`repoPath` lock (the concurrency invariant, US5). The existing `inFlightEscalations` guard is **already** keyed by `repoPath` (`Map<repoPath, devopsConversationId>` in `reconcile.ts`) — it is *not* source-repo-only, so there is no keying generalization to do. What changes (S3): the value grows to carry a `sessionId`, and the guard must handle a **parked `awaiting-user`** (non-terminal) session in addition to an active `working` one (Risk #6).
 - **`getGitFsInstance` / `getSourceRepoRoot`** (`src/lib/gitops/filesystems.ts`) — resolve a repo id to its absolute root for the working context, so the Supervisor's loopback caller and the in-process callers agree on paths (the Supervisor never hard-codes a BOS path).
 - **The Build Studio app + `AssistantChatV2` + `openConversation`/`attachToRun`** (`run-client.ts`) — the pane reuses the existing chat bound to the DevOps conversation, and re-attaches to a live run on (re)load. Unchanged; the pane drives it.
 - **`launch(appId, params)`** (`src/store/os-store.ts`) — the auto-launcher launches/focuses the singleton BS window with `params` (merged on an existing window). Unchanged.
@@ -293,7 +319,7 @@ There is **no per-repo special-casing of the access mechanism**: the tools below
 
 Tools are process-global (`assistantTools()`); the per-repo context is *not* in the tool schema. Instead the escalation **tags the conversation with `conflictSessionId`** (conversation metadata, exactly analogous to the existing `activeFeatureBranch` that `featureBranchHook` in `start-run.ts` reads). Each conflict tool:
 1. takes a `repo_path` argument,
-2. looks up `session = getSession(conversation.conflictSessionId)`,
+2. reads `conflictSessionId = getConversationConflictSessionId(ctx.conversationId)` (new getter in `src/lib/agent/conversations-server.ts`, mirroring `getConversationActiveFeatureBranch` — `ToolContext` exposes only `conversationId`, a string, not a conversation object), then `session = getSession(conflictSessionId)`,
 3. **validates `repo_path === session.workingContext.worktreePath`** — this is the access-control guard (FR-021's precondition) and the "no per-repo special-casing" guarantee: the agent can only operate on *this* session's repo, nothing else. A mismatch → the tool returns a loud error.
 
 ### 7.3 The tools (names + schemas) — `conflict-resolve.ts`
@@ -303,7 +329,7 @@ All are `serverTool(...)` (`src/lib/assistant/tools/server/util.ts`), registered
 - **`conflict_read`** — FR-005 three-way READ.
   - Input: `{ repo_path, path }`.
   - Reads the file's three-way content from the **session snapshot** (so it works on a resumed session even if the live tree was cleaned): returns `{ path, binary, conflictType, hunks: [{ base, ours, theirs }] }`. If the file is `binary`, returns `{ binary: true }` (FR-022 — the agent surfaces it, does not try to resolve).
-  - (Internally the snapshot was captured from the live conflicted state via `git show :1:<path>` / `:2:<path>` / `:3:<path>` — base/ours/theirs stages — and hunk boundaries from `git diff --cc` / `git merge-file`; see §4.2 note. `readFileAtRef`'s `git show <ref>:<rel>` in `store-git.ts` is the same primitive for the non-conflicted refs.)
+  - (Internally the snapshot is read from **refs**, not merge-index stages: `git show <base>:<rel>` / `<ours>:<rel>` / `<theirs>:<rel>` via a small new `readFileAtRef(repoPath, ref, rel)` helper (`runGitCommand(["show", `${ref}:${rel}`], { cwd: repoPath })`, catching "file not found" → empty for the add/add base side) in `src/lib/gitops/git-ops.ts`; the conflicting-file list comes from `git diff --name-only --diff-filter=U` or `git merge-tree --write-tree` output (see §4.2 note). This is **not** `store-git.ts`'s `readFileAtRef` — that one is tied to the spec store.)
 - **`conflict_write`** — FR-005 hunk-level WRITE.
   - Input: `{ repo_path, path, content, hunkIndex? }`.
   - `working-tree` mode: writes the resolved content to `worktreePath/<path>` (full-file or the one hunk), and records `files[path].resolvedContent`, `resolvedBy = "agent"`.
@@ -391,7 +417,7 @@ A new `recoverSessions()` in `conflict-session.ts`, called from the boot hook (`
 
 ### 9.2 Honest note on `redispatchPendingOnBoot` (flagged)
 
-The spec says restart re-emit "reuses `redispatchPendingOnBoot`." **It does not, and cannot, do the whole job**: `redispatchPendingOnBoot` (`dispatch.ts`) re-enqueues *pending* events to *active headless handlers*. `com.bos.gitops.conflict.escalated` has **no headless handler** → it is `processed/no-active-handlers` at emit time, so it is **not** "pending" and `redispatchPendingOnBoot` will never re-fire it. The actual re-emit is the explicit step in §9.1(3), and the **UI** re-opens because the pane re-queries the session store on load (FR-024's own wording: "the pane re-queries the session store on load, so a browser refresh restores it without re-emitting the event"). I am flagging this so `plan.md`/`tasks.md` don't wire the wrong hook. (If you want the 034 redispatch to *also* participate, the only way would be to give the event a no-op headless handler so it stays `pending` — not worth it; the explicit re-emit is cleaner and correct.)
+The spec says restart re-emit "reuses `redispatchPendingOnBoot`." **It does not, and cannot, do the whole job**: `redispatchPendingOnBoot` (`dispatch.ts`) re-enqueues *pending* events to *active headless handlers*. `com.bos.gitops.conflict.escalated` has **no headless handler** → it is `processed/no-active-handlers` at emit time, so it is **not** "pending" and `redispatchPendingOnBoot` will never re-fire it. The actual re-emit is the explicit step in §9.1(3), and the **UI** re-opens because the pane re-queries the session store on load (FR-024's own wording: "the pane re-queries the session store on load, so a browser refresh restores it without re-emitting the event"). I am flagging this so `plan.md`/`tasks.md` don't wire the wrong hook. (If you want the 034 redispatch to *also* participate, the only way would be to give the event a no-op headless handler so it stays `pending` — not worth it; the explicit re-emit is cleaner and correct.) **Benign double-emit (S2):** the boot re-emit is a *new* `EventRecord` (per-type sequence increments), so for a session created just before a restart whose original emit already delivered, the auto-launch subscriber fires `launch("build-studio", {pane, sessionId})` **twice**. This is harmless — `launch` on the `singleton: true` BS window focuses + merges `params`, so a second call is idempotent. No dedup is needed (a `sessionId`-keyed guard in the subscriber is optional, not required).
 
 ### 9.3 The timeout, and why park-and-rewake makes it tractable (D3)
 
@@ -405,7 +431,7 @@ The 25-min budget applies to **working phases only**, never to a parked `awaitin
 
 | # | Call site | File / function | Repo / working context | Current dead-end → new |
 |---|---|---|---|---|
-| 1 | **The reported bug** — feature-promote coupled-repo **pre-check** | `tools/supervisor/lib/coupled-repos.mjs` `coupledConflicts` (called from `promote.mjs` `promote()`) | **each spec store AND user-apps**, via the coupled worktree | `throw new Error(\`promote blocked — ${conflict}\`)` (the exact string in the spec's repro) → create a session + route through `/api/gitfs/reconcile` (loopback); on escalation, report `{ sessionId, devopsConversationId }` instead of throwing. |
+| 1 | **FR-012a (1) — the reported bug** — feature-promote coupled-repo **pre-check** | `tools/supervisor/lib/coupled-repos.mjs` `coupledConflicts` (called from `promote.mjs` `promote()`) | **each spec store AND user-apps**, via the coupled worktree | `throw new Error(\`promote blocked — ${conflict}\`)` (the exact string in the spec's repro) → **create a session + escalate instead of throwing**: the conflicting-file list comes from the existing `git merge-tree --write-tree` dry-run output; the 3-way content is then read from refs (`git show <merge-base\|branch\|sourceRef>:<rel>`, §4.2 note) and routed through `/api/gitfs/reconcile` (loopback). On escalation `promote()` **no longer throws** — it returns the session id, which flows through to the promote response per FR-018. |
 | 2 | Feature-promote coupled-repo **merge** | `tools/supervisor/lib/coupled-repos.mjs` `promoteCoupled` | spec stores + user-apps | `catch { merge --abort; warnings.push("… merge manually in <root>") }` (working-tree) and the **plumbing** path (no live tree) → route through the pipeline; working-tree → `mode:"working-tree"`, plumbing → `mode:"plumbing"` (agent resolves from snapshot; completion via `commit-tree`+`update-ref`, §5.3). |
 | 3 | **App-candidate promote** (user-apps global draft) | `tools/supervisor/lib/app-candidate.mjs` `appPromote` | user-apps, `mode` = `working-tree` if the primary checkout is free else `plumbing` | raw `git merge --no-edit APP_CANDIDATE_BRANCH` (throws on conflict) → route through `/api/gitfs/reconcile` with `repoPath = APPS_REPO`, `sourceRef = APP_CANDIDATE_BRANCH`. |
 | 4 | **Build-Studio promote** (user-specs worktree) | `src/lib/specs/promote.ts` `promoteFeature` | user-specs, `mode:"working-tree"`, `worktreePath = <dataDir>/specs/.worktrees/<encodeBranchDir(branch)>` | `merge --no-edit <base>` → `catch { merge --abort; return {kind:"conflict",files} }` → route through `reconcile({ workingContext })`; return the session/conversation ids on escalation. |
@@ -442,8 +468,8 @@ The spec named four; the source sweep found the real set. **All** are covered ab
 
 1. **The reported bug's true site is the Supervisor, not `promoteFeature`.** The spec's repro string (`"promote blocked — user-specs: branch … conflicts with master"`) is emitted by `coupledConflicts` in `tools/supervisor/lib/coupled-repos.mjs`, called from `promote()`. `promoteFeature` (`src/lib/specs/promote.ts`) is a *separate* (Build-Studio-driven) path with a *different* error shape (`{kind:"conflict",files}`). Fixing only FR-012 would NOT fix the reported repro. **Both** (rows 1/4) are in scope. *(Flagged so implementation doesn't "fix" the wrong one.)*
 2. **Plumbing conflicts have no live working tree.** `promoteCoupled`'s busy-checkout path merges via `merge-tree`/`commit-tree`/`update-ref` without touching a checkout. There is no tree for the agent to edit. The design handles this with `mode:"plumbing"` — the agent resolves from the snapshot into `files[].resolvedContent`, and completion builds the tree (§5.3). This is the least-tested branch; it needs explicit test coverage (the mockup's user-apps scenario exercises it).
-3. **The conflict snapshot must be captured from a *live* conflicted state, but `reconcile` currently aborts on conflict.** The design requires `escalate()` to snapshot `:1/:2/:3:` *before* any `merge --abort`/rebase-state cleanup (or to keep the tree conflicted until snapshot is done). `promoteCoupled`'s plumbing path has no working tree at all — snapshot there comes from the `merge-tree` output. This is a real sequencing constraint; getting the snapshot *after* abort yields empty stages. *(Implementation detail that must be pinned in `plan.md`/`tasks.md`.)*
-4. **The `devops` agent must be given the `conflict_*` tools.** `gateFor`/`gateFromAgent` (`gate.ts`) gate tools by the agent's `tools` allowlist; a run only sees tools the agent lists. The seeded `devops` agent (and any user-selected `conflictAgent`) must have the `conflict_*` tool ids added, else the agent can't act. FR-025's "agents without git capability simply fail" is the *intended* behavior for agents lacking these tools — but the **default** `devops` agent must have them. *(Open: exactly where the devops agent's tool list is seeded — `data/agents/` vs. the subagents store — to be confirmed in `plan.md`.)*
+3. **add/add base-side `git show` throws (refs-based snapshot).** The snapshot is now derived from refs (§4.2 note), so the old "capture the live stages before the abort" sequencing problem is gone — refs survive the abort and re-derive after a restart. The remaining, narrower risk is the **add/add base side**: `git show <base>:<rel>` throws when the file is absent at the merge-base, so the `readFileAtRef` helper must catch "file not found" and return empty (base `undefined`). The repro *is* an add/add, so this catch is on the critical path — it needs a direct test. *(Pinned: §4.2 note, §7.3.)*
+4. **The `devops` agent must be given the `conflict_*` tools.** `gateFor`/`gateFromAgent` (`src/lib/assistant/gate.ts`) gate tools by the agent's `tools` allowlist; a run only sees tools the agent lists. The seeded `devops` agent (and any user-selected `conflictAgent`) must have the `conflict_*` tool ids added, else the agent can't act. FR-025's "agents without git capability simply fail" is the *intended* behavior for agents lacking these tools — but the **default** `devops` agent must have them. **Seeding location (S4, pinned):** the `devops` agent's definition is `seed/agents/devops/AGENT.md` — its YAML frontmatter has `tools: [dev_delegate, dev_git_status, bos_source_read, bos_source_search]`. Add `conflict_read`, `conflict_write`, `conflict_decision`, `conflict_status`, `conflict_complete`, `conflict_abandon` to that `tools` array. `seed/agents/<id>/AGENT.md` is copied additively into `data/agents/devops/AGENT.md` at boot by `applySeedAgent` (`src/lib/agent/subagents/store.ts`) — so editing the seed is the durable fix. Caveat: `applySeedAgent` copies only when the destination is *missing* (`fs.access(dst)` returns early), so a pre-existing `data/agents/devops/AGENT.md` from a prior install will not auto-pick-up the new tools — confirm the migration/backfill path in `store.ts` handles the tool-array update in `plan.md`, or backfill the field explicitly.
 5. **`redispatchPendingOnBoot` does not re-emit the conflict event** (it's UI-only → `processed`, not `pending`). Boot recovery re-emits explicitly (§9.2). The spec's wording should be read as "re-emit on boot," implemented by the sweep, not by the 034 redispatch. *(Flagged; see §9.2.)*
 6. **`awaiting-user` is indefinite (D3)** — a parked session can outlive the run forever. The in-flight guard (`inFlightEscalations`, generalized) is keyed by `repoPath` and cleared on terminal; a long-parked `awaiting-user` session must not block a *new* conflict on the same repo from being detected — it should re-point to the existing session (US5 AS2). Confirm the guard's semantics for `awaiting-user` vs `working` in `plan.md`.
 7. **Auto-launch when no browser is open.** The event + subscriber are in-process/client; if no BOS browser tab is connected, the auto-launch has nothing to launch into (the pane re-queries on next open instead). This is acceptable (the user is in the app when they trigger a promote — the spec says so), but the `working` run still runs headlessly and the session is resumable on next open.
@@ -461,6 +487,7 @@ The spec named four; the source sweep found the real set. **All** are covered ab
 | FR-007/007a | §8 manifest handler + topbar auto-launcher + `launch(params)`; pane reuses the existing chat via `openConversation`. |
 | FR-008/009/010/011 | §8.3 pane (`ConflictPane`) renders the session (3-way from snapshot), chat decision cards, per-hunk controls (all → `/decision`), status + abandon. |
 | FR-012/013/014 | §10 rows 4, 5, 6. |
+| FR-012a | §10 rows 1–2 (pre-check `coupledConflicts` + merge `promoteCoupled`); row 1 escalates instead of throwing and returns the session id (FR-018). |
 | FR-015/016 | §10 rows 1–3 + completeness sweep; user-apps pinned (D4). |
 | FR-017 | §5.3 (rollback tag from step 1; conflict on the feature branch; main `--ff-only`); never left conflicted. |
 | FR-018 | §5.1 — `ReconcileOutcome.sessionId` + `devopsConversationId` flow to every caller (incl. the Supervisor job via `reconcile-jobs.ts`). |
