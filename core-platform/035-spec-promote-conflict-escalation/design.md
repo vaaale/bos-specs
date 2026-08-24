@@ -437,10 +437,11 @@ The 25-min budget applies to **working phases only**, never to a parked `awaitin
 | 4 | **Build-Studio promote** (user-specs worktree) | `src/lib/specs/promote.ts` `promoteFeature` | user-specs, `mode:"working-tree"`, `worktreePath = <dataDir>/specs/.worktrees/<encodeBranchDir(branch)>` | `merge --no-edit <base>` → `catch { merge --abort; return {kind:"conflict",files} }` → route through `reconcile({ workingContext })`; return the session/conversation ids on escalation. |
 | 5 | **Pull** | `src/app/api/git-remotes/route.ts` `case "fetch"` | target repo (resolved by `resolveRepoPath(filesystem)`) | inline `rebaseOntoRemote` → `rebaseConflict:true, "resolve manually, or force-push"` → on rebase conflict, route through `reconcile({ workingContext: { repoKind: fsId, worktreePath: repoPath, mode:"working-tree" } })`; respond with the session/conversation ids. |
 | 6 | **Push-recovery** (non-FF) | `src/app/api/git-remotes/route.ts` `case "push"` | target repo | inline `rebaseOntoRemote` → `rebaseConflict:true` → same as #5. |
+| 7 | **VFS-mounted repo — resolve** | `src/app/api/git-sync/route.ts` `case "resolve"` | any VFS-mounted repo (`repoKind: "vfs-mount"`) | inline `git merge` / `rebase` → `MERGE_CONFLICT` "Resolve manually" → route through `reconcile({ workingContext: mountWorkContext(mount) })` using `reconcileWithSession` + the existing `getSession()` lookup. *(Found by the FR-016 completeness sweep at implementation time (task T040) — not in the original design; added here to keep the design authoritative.)* |
 
 ### FR-016 completeness sweep — the *complete* set of dead-end conflict paths
 
-The spec named four; the source sweep found the real set. **All** are covered above (rows 1–6). Enumerated by searching for conflict-tolerance in the git paths:
+The spec named four; the design sweep found six; the implementation sweep (T040) found one more. **All seven** are covered above (rows 1–7). Enumerated by searching for conflict-tolerance in the git paths:
 
 - `promoteFeature` (`src/lib/specs/promote.ts`) — row 4. ✔
 - `git-remotes` `fetch` + `push` (`src/app/api/git-remotes/route.ts`) — rows 5–6. ✔
