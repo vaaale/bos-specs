@@ -232,7 +232,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 
 ### Key Entities
 
-- **Resolution session**: The first-class, persisted, resumable source of truth for one conflict resolution. Key attributes: id, working context, conflict snapshot (per file/hunk ours/theirs/base), rollback tag, linked agent conversation id, status (`working`/`awaiting-user`/`resolved`/`failed`/`timed-out`), decision timeline.
+- **Resolution session**: The first-class, persisted, resumable source of truth for one conflict resolution. Key attributes: id, working context, conflict snapshot (per file/hunk ours/theirs/base), rollback tag, linked agent conversation id, status (`working`/`awaiting-user`/`resolved`/`failed`/`timed-out`/`abandoned`), decision timeline.
 - **Working context**: The per-repo bundle the escalation provides to the agent at execution time — repo identity (source / user-specs / user-apps / VFS mount / generic), absolute worktree path, the base/branch being reconciled, and the means to read/write within that repo. The single parameter that makes the mechanism repo-agnostic (PR-1).
 - **Decision request**: A typed question the agent issues to the user for one file/hunk — options among accept-theirs / accept-ours / keep-both / manual-per-hunk (+ the agent's suggested resolution). Answered by the user through the UI; recorded in the decision timeline.
 - **Conflict snapshot**: The captured state of the conflict at detection time — the conflicting file list and, per file/hunk, the ours/theirs/base content — so the 3-way view renders and the session resumes without re-deriving it.
