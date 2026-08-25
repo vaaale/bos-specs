@@ -108,6 +108,7 @@ The agent is told, by the tool's own description, that it can preview images and
 - **Unsupported video codec** (file is a valid container but the browser lacks the decoder): the player MUST surface a load/decode error clearly.
 - **Inline media in `html`**: when the agent embeds an `<img>` or `<video>` inside an `html` document, it is rendered as HTML (existing behavior); the media presentation mode applies to direct image/video targets, not to embedded HTML.
 - **Inline data URIs**: an image or video provided as a `url`/`filePath` that is a data URI MUST render like any other media target.
+- **Virtual media endpoints** (e.g. `http://server:8188/view?filename=clip.mp4&...`): the URL path has no media extension; the classifier MUST fall back to the query string to detect the media type, and the window title MUST default to the filename from the query param (not the endpoint path).
 - **Very large video**: the player MUST be usable (seek/play) via streaming; MUST NOT hang the window during initial load.
 - **Autoplay with audio**: MUST NOT be forced against browser policy; unmuted autoplay MAY be blocked by the browser and that is acceptable behavior (player simply waits for interaction).
 - **Image/video target + `update=true`**: MUST refresh the existing preview window to the new media, reusing the same window lifecycle.
@@ -116,7 +117,7 @@ The agent is told, by the tool's own description, that it can preview images and
 ## Assumptions
 
 - **A-1**: Media is previewed by pointing the existing sandboxed preview iframe at the raw-file route (which already streams correct media `Content-Type`s); no new server media-serving route is required.
-- **A-2**: The set of "image" and "video" extensions is derived from the raw-file route's MIME map (images: png, jpg, jpeg, gif, webp, svg, avif; videos: mp4, ogv, webm, mov) plus sensible additions (e.g. `.m4v`, `.avi`); anything unmapped is treated as non-media and falls back to current behavior. For external URLs (not served by the raw-file route), detection relies on the URL path's file extension.
+- **A-2**: The set of "image" and "video" extensions is derived from the raw-file route's MIME map (images: png, jpg, jpeg, gif, webp, svg, avif; videos: mp4, ogv, webm, mov) plus sensible additions (e.g. `.m4v`, `.avi`); anything unmapped is treated as non-media and falls back to current behavior. For external URLs (not served by the raw-file route), detection relies on the URL path's file extension. When the path has no media extension (e.g. a virtual endpoint like `/view`), the classifier falls back to inspecting the query string: it checks common filename-bearing parameter names (`filename`, `file`, `path`, `name`) and any query parameter whose value ends in a known media extension, using that value's extension for classification.
 - **A-3**: Media options are additive parameters with sensible defaults (no autoplay, controls shown, not muted, no poster) when omitted.
 - **A-4**: This is a `bos-core` change spanning the `web_view` tool handler, the tool declarations the model sees (capabilities registry / frontend declarations / OS actions), and the built-in `html-viewer` app renderer.
 - **A-5**: Browser-native media codecs (what Chromium supports) are the supported set; server-side transcoding is out of scope.
