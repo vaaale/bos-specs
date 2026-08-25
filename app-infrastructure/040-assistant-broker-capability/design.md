@@ -128,29 +128,37 @@ New/changed modules, and what each owns:
 3. **`src/components/apps/settings/AppsTab.tsx`** — `ALL_CAPABILITIES`: add one row
    `{ id: "assistant", label: "Assistant", description: "…" }`, mirroring the existing
    checkbox rows. No new mockup; it reuses the exact `toggleCap`/row pattern.
-4. **`src/components/apps/assistant-broker.ts`** (NEW, client-side) — the stream owner.
-   Owns, per app window (one instance per `IframeApp`):
+4. **`src/components/apps/assistant-broker.ts`** (NEW, client-side) — the stream owner,
+   held as a **module-level registry** `Map<appId, AppBroker>` so it survives `IframeApp`
+   effect re-runs (capability changes) and iframe reloads; `IframeApp` only *references*
+   it via `getBroker(appId)` and disposes it on window unmount, not on cap change. Each
+   `AppBroker` owns, for that one app:
    - a **run table** `Map<runId, RunSession>` where `RunSession = { events: RunEvent[],
      lowWater, highWater, finished, abort }`;
    - **one live server tail per run** (a `fetch(.../events?since=N)` + `ReadableStream`
      reader loop, the same shape as `run-client.ts attachToRun`) that appends each parsed
-     event to the session's buffer and pushes it to the child;
+     event to the session's buffer and pushes it to the child iframe it came from;
    - **replay from the buffer** on (re)attach: serve every buffered event with
      `seq > childCursor`, then continue live;
    - **authoritative fallback**: if the child's cursor is below the buffer's
      `lowWater` (missed more than the cache holds), tear down the current tail and re-open
      the server stream at `?since=cursor` (the server replays the gap — `run.events`
      is the source of truth);
-   - **cross-app isolation map** `Map<runId, appId>` at **module level** (survives iframe
-     reload, unlike in-iframe state) populated on `startRun`; used to refuse a child
-     reading/driving a run it did not start (see ADR-5).
-   Methods: `listAgents`, `startRun`, `attach(runId, since)`, `postToolResult(runId,
-   callId, result)`, `activeRun(conversationId)`, `cancelRun(runId)`, `dispose()`.
+   - an **owned-run set** (the `runId`s this app started via `startRun`) — cross-app
+     isolation falls out of per-app scoping: a child may only read/drive a run its own
+     `AppBroker` records as owned (see ADR-3).
+   Methods (each takes the target `windowId`/`iframe` it pushes to, since a window is
+   the unit of a child): `listAgents`, `startRun`, `attach(runId, since, windowId)`,
+   `postToolResult(runId, callId, result)`, `activeRun(conversationId)`, `cancelRun(runId)`,
+   `dispose(appId)`.
 5. **`src/components/apps/IframeApp.tsx`** — (a) add `assistant:*` entries to
    `CAP_FOR_METHOD` (all → `"assistant"`); (b) in `handleMessage`, after the existing
-   synchronous cap gate, route `assistant:*` methods to the broker instance instead of
-   the stateless `dispatch()`; (c) instantiate the broker in the effect and
-   `dispose()` on cleanup (abort tails).
+   synchronous cap gate, route `assistant:*` methods to `getBroker(appId)` (passing
+   `windowId` as the push target) instead of the stateless `dispatch()`; (c) dispose that
+   app's broker on *unmount* only. Because the registry is decoupled from the effect, a
+   mid-run capability revoke (which re-registers the manifest and re-runs the effect) does
+   NOT tear down the live tail — the per-call `capSet` closure keeps rejecting new calls
+   while in-flight deliveries continue (spec edge "capability revoked mid-run").
 6. **`src/lib/iframe-sdk/index.ts`** — add `window.__bos.assistant.*` wrappers (the 5th
    "place") so an app gets promise/callback parity with `run-client.ts`:
    `listAgents()`, `startRun({conversationId, agentId, message, surfaceTools?})`,
@@ -255,8 +263,8 @@ same-origin app that does *not* declare `assistant` and uses direct `fetch` is u
 | `src/os/types.ts` | modify | Add `"assistant"` to the `AppCapability` union (with a comment, mirroring `services:read`). |
 | `src/app/api/apps/[id]/capabilities/route.ts` | modify | Add `"assistant"` to `VALID_CAPS`. |
 | `src/components/apps/settings/AppsTab.tsx` | modify | Add one `ALL_CAPABILITIES` row for `assistant`. |
-| `src/components/apps/assistant-broker.ts` | **create** | Client-side stream owner: per-run tails, bounded ring buffer + low-water, per-cursor replay, authoritative re-fetch, `runId→appId` isolation map, the six method implementations. No server-only imports. |
-| `src/components/apps/IframeApp.tsx` | modify | Add `assistant:*` → `"assistant"` to `CAP_FOR_METHOD`; route those methods to a per-instance broker in `handleMessage` (post cap-gate); construct/dispose the broker in the effect. |
+| `src/components/apps/assistant-broker.ts` | **create** | Client-side stream owner as a module-level `Map<appId, AppBroker>` registry: per-run tails, bounded ring buffer + low-water, per-cursor replay, authoritative re-fetch, per-app owned-run set (isolation), the six method implementations. No server-only imports. |
+| `src/components/apps/IframeApp.tsx` | modify | Add `assistant:*` → `"assistant"` to `CAP_FOR_METHOD`; route those methods to `getBroker(appId)` in `handleMessage` (post cap-gate); dispose that app's broker on window unmount (not on cap change). |
 | `src/lib/iframe-sdk/index.ts` | modify | Add `assistant` group to `BosApi` + a `__bos_event` listener (returns unsubscribe) + wrappers; keep dependency-free. |
 | `docs/dev/assistant/assistant-broker.md` | **create** | Dev doc: the capability, the broker methods, the parent-push + buffer model, the four(+SDK) places, reconnect semantics, isolation rule. (Constitution VI.) |
 
@@ -367,25 +375,32 @@ there is always server-side headroom for a stale cursor.
   history — the same behavior as any viewer. − A child that falls behind its buffer by a
   lot incurs one server round-trip (acceptable; reconnect is not the steady-state path).
 
-### ADR-3 — Per-iframe broker isolation, with a module-level `runId→appId` map
+### ADR-3 — Broker state in a module-level per-app registry, with per-app run ownership
 
 **Context.** Multiple app windows run concurrently; a child iframe reloads and loses
-in-iframe state; and a malicious/buggy app should not be able to read or drive *another*
-app's runs by guessing a `runId`.
+in-iframe state; a mid-run capability revoke re-runs the `IframeApp` effect; and a
+malicious/buggy app should not be able to read or drive *another* app's runs by guessing
+a `runId`.
 
-**Decision.** Each `IframeApp` instance owns one broker instance bound to its iframe
-(per-window isolation, matching the existing per-iframe `capSet`/`appId`). Ownership of
-runs is tracked in a **module-level** `Map<runId, appId>` (parent-side, survives iframe
-reload) populated on `startRun`. `events-attach`/`tool-result`/`cancel`/`active-run`
-only proceed for runs whose recorded owner matches the requesting app.
+**Decision.** Broker state lives in a **module-level registry** `Map<appId, AppBroker>`
+(parent-side — survives iframe reload and effect re-runs). Run ownership is scoped
+*per app broker*: each `AppBroker` records the `runId`s its own app started. So
+`events-attach`/`tool-result`/`cancel` only proceed for runs the requesting app's broker
+owns — app A's broker has no record of app B's run, so it can't be read or driven even
+with the correct `runId`. (Per-app scoping is stronger and simpler than a global
+`runId→appId` map: isolation falls out of the registry shape.) `IframeApp` only
+references/disposes the registry entry, so a capability change (effect re-run) does not
+tear down an in-flight tail.
 
-**Consequences.** + Cross-app isolation: app A cannot read/drive app B's run even with a
-  valid `runId` (it needs the runId *and* to be the app that started it). Matches the
-  `storage` capability's trust model (app id comes from the parent, never the iframe). +
-  Survives iframe reload (the map is parent-side). − Slight extra bookkeeping. − Runs
-  started via *direct* HTTP by a same-origin app are not in the map (they bypass the
-  broker); that's harmless because such an app already has direct-HTTP access and no
-  isolation is being violated.
+**Consequences.** + Cross-app isolation by construction; no cross-app `runId` leakage. +
+  Survives iframe reload and mid-run capability revokes (registry is parent-side and
+  decoupled from the `capSet` closure). + Matches the `storage` capability's trust model
+  (app identity comes from the parent's `appId`, never the iframe). − `active-run` is
+  *not* app-scoped (it queries the server by `conversationId`), so an app can learn the
+  active runId of a conversation it knows the id of — but this is no wider than the
+  direct-HTTP path already exposes, and a marketplace app can't guess another app's opaque
+  `conversationId`, so it is not a new leak (noted, not over-engineered). − Slight extra
+  bookkeeping (a registry + a per-app owned-run set).
 
 ### ADR-4 — `list-agents` relays the full body, not a trimmed `agents` subset
 
