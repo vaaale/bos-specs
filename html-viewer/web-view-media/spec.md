@@ -94,6 +94,8 @@ The agent is told, by the tool's own description, that it can preview images and
 - **FR-007**: When a media target does not exist or cannot be loaded, the tool MUST return a failure message (not report success), and the preview window MUST display a clear in-window error rather than a silent blank page.
 - **FR-008**: Media preview MUST NOT grant previewed content access to BrowserOS APIs on the parent origin. The `sandbox="allow-scripts"` iframe boundary is preserved for **document** content (HTML/URL mode); media is rendered via native `<img>`/`<video>` elements, which carry no executable code and therefore satisfy the same security property without an iframe (see design.md ADR-1).
 - **FR-009**: The `update=true` behavior (reuse/refresh the existing preview window) MUST work for media targets as it does for HTML.
+- **FR-010**: External media URLs (absolute `http://` or `https://` that are not same-origin) MUST be proxied through a BOS server-side media route so that the rendered `<img>`/`<video>` element is same-origin. The proxy MUST support `Range` request pass-through (for video seeking), preserve the upstream `Content-Type`, and stream the response (not buffer the whole file in memory). This ensures media renders correctly regardless of whether the BOS page itself is served over HTTP or HTTPS (no mixed-content blocking).
+- **FR-011**: The media proxy MUST handle errors gracefully — if the upstream fetch fails (DNS, connection refused, 404, timeout), the proxy returns an appropriate HTTP error status so the `<video>`/`<img>` element's `onError` fires and the in-window error card is shown.
 
 ### Non-Functional Requirements
 
@@ -116,12 +118,14 @@ The agent is told, by the tool's own description, that it can preview images and
 
 ## Assumptions
 
-- **A-1**: Media is previewed by pointing the existing sandboxed preview iframe at the raw-file route (which already streams correct media `Content-Type`s); no new server media-serving route is required.
+- **A-1**: VFS media is previewed by pointing the preview at the raw-file route (which already streams correct media `Content-Type`s). External media (absolute `http(s)://` URLs) is proxied through a BOS server-side media proxy route to ensure same-origin rendering, avoiding mixed-content and CORS restrictions that would block the native `<video>`/`<img>` elements when the BOS page is served over HTTPS.
 - **A-2**: The set of "image" and "video" extensions is derived from the raw-file route's MIME map (images: png, jpg, jpeg, gif, webp, svg, avif; videos: mp4, ogv, webm, mov) plus sensible additions (e.g. `.m4v`, `.avi`); anything unmapped is treated as non-media and falls back to current behavior. For external URLs (not served by the raw-file route), detection relies on the URL path's file extension. When the path has no media extension (e.g. a virtual endpoint like `/view`), the classifier falls back to inspecting the query string: it checks common filename-bearing parameter names (`filename`, `file`, `path`, `name`) and any query parameter whose value ends in a known media extension, using that value's extension for classification.
 - **A-3**: Media options are additive parameters with sensible defaults (no autoplay, controls shown, not muted, no poster) when omitted.
 - **A-4**: This is a `bos-core` change spanning the `web_view` tool handler, the tool declarations the model sees (capabilities registry / frontend declarations / OS actions), and the built-in `html-viewer` app renderer.
 - **A-5**: Browser-native media codecs (what Chromium supports) are the supported set; server-side transcoding is out of scope.
-- **A-6**: The existing raw-file route's branch-scoping and its client-side "verify the target resolves" check apply to media paths unchanged.
+- **A-6**: The existing raw-file route's branch-scoping and its client-side "verify the target resolves" check apply to VFS media paths unchanged.
+- **A-7**: The media proxy is a new server-side route (`/api/media-proxy?src=…`) that streams from the upstream URL. It is same-origin to the BOS page, so no CORS headers are needed on the response. It supports `Range` by forwarding the `Range` header to the upstream and relaying the `206` response with `Content-Range`.
+- **A-8**: The proxy is used ONLY for external media URLs (absolute `http(s)://` that are not same-origin). VFS paths (same-origin `/api/fs/raw`) and data URIs are NOT proxied — they are already same-origin or inline.
 
 ## Success Criteria
 
@@ -130,6 +134,7 @@ The agent is told, by the tool's own description, that it can preview images and
 - **SC-003**: A developer reading the `web_view` tool description knows that images and video are supported and sees the `poster`/`autoplay`/`loop`/`muted` parameters documented.
 - **SC-004**: A missing or unrenderable media target produces a clear in-window error and a non-success tool return in 100% of such cases (no silent blank pages).
 - **SC-005**: Existing HTML-preview behavior (documents, mockups, branch-scoped `/Specs` paths) is unchanged after the feature ships.
+- **SC-006**: An external `http://` video URL (e.g. a LAN ComfyUI server) renders and plays in `web_view` when the BOS page is served over HTTPS — no mixed-content blocking.
 
 ## Key Entities
 
