@@ -92,7 +92,7 @@ The agent is told, by the tool's own description, that it can preview images and
 - **FR-005**: `web_view` MUST accept a `poster` parameter (image path/URL) that sets the video player's poster frame.
 - **FR-006**: `web_view` MUST accept `autoplay`, `loop`, and `muted` boolean parameters that map to the video element's corresponding attributes; `muted` + `autoplay` MUST be allowed to start without user interaction, while unmuted `autoplay` MUST respect browser autoplay restrictions.
 - **FR-007**: When a media target does not exist or cannot be loaded, the tool MUST return a failure message (not report success), and the preview window MUST display a clear in-window error rather than a silent blank page.
-- **FR-008**: Media preview MUST remain sandboxed exactly like HTML preview — previewed media content MUST NOT gain access to BrowserOS APIs on the parent origin (the current `sandbox="allow-scripts"` iframe boundary is preserved).
+- **FR-008**: Media preview MUST NOT grant previewed content access to BrowserOS APIs on the parent origin. The `sandbox="allow-scripts"` iframe boundary is preserved for **document** content (HTML/URL mode); media is rendered via native `<img>`/`<video>` elements, which carry no executable code and therefore satisfy the same security property without an iframe (see design.md ADR-1).
 - **FR-009**: The `update=true` behavior (reuse/refresh the existing preview window) MUST work for media targets as it does for HTML.
 
 ### Non-Functional Requirements
