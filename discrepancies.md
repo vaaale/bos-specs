@@ -4,7 +4,7 @@ Spec/code drift and post-converge findings. Newest first. Per project convention
 
 ---
 
-## 035-spec-promote-conflict-escalation — post-converge (2026-08-24)
+## core-platform/035-spec-promote-conflict-escalation — post-converge (2026-08-24)
 
 **Converge verdict: CONVERGED (docs aligned to code).** All 25 FRs (FR-001…FR-025) + 5 NFRs met by the implemented code; no functional drift. The `abandoned` terminal state and the 7th call site (below) were *spec/design under-specifications* — the code and the binding mockup were already correct, so converge updated the docs toward the code, not the other way around. **E2E: 13/13 passing** (isolated `/tmp` checkout). **Unit: 256/256** in `tests/gitops` (39 new). `tsc --noEmit` + `lint` clean.
 
