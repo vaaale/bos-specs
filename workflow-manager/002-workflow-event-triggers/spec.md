@@ -16,7 +16,7 @@ This is an incremental scope-add to the already-installed Workflow Manager marke
 
 BOS's event system (spec 034, `event-notification-system`, implemented) publishes durable events (type + JSON payload) onto an event bus and supports **headless handlers** that a background service registers at runtime over worker IPC — the same runtime-declaration channel the workflow service already uses to declare its 039 tools. When a published event matches a registered headless handler's event type, the event kernel invokes that handler in the service; the service then decides what to do.
 
-Today a workflow can only be started manually (via the app or a `workflow_run` tool call). This feature adds **event triggers**: a workflow may be configured with one or more event triggers, each naming a specific event type (optionally with a payload filter); the service subscribes to the distinct event types its workflows reference, and when a matching event is published it fires the workflow's run automatically — no user or assistant action in the loop.
+Today a workflow can only be started manually (via the app or a `workflow_run` tool call). This feature adds **event triggers**: a workflow may be configured with one or more event triggers, each naming a specific event type; the service subscribes to the distinct event types its workflows reference, and when a matching event is published it fires the workflow's run automatically — no user or assistant action in the loop. The triggering event's full payload is injected into the run as input context, so the workflow can react to *what* happened, not merely *that* it happened.
 
 The trigger is a **configuration of the workflow** (a declarative `triggers` list on the workflow), not a separate entity. It composes with everything the baseline already does: an event-triggered run is an ordinary workflow run — it streams step events, persists a run log, supports cancellation, and is inspectable in history — with the added provenance of *which event started it*.
 
@@ -52,7 +52,7 @@ Because the trigger is part of a workflow's authorable configuration, the servic
 **Acceptance Scenarios**:
 
 1. **Given** the workflow tools, **When** a caller creates or modifies a workflow with an event trigger, **Then** the trigger is persisted with the workflow and survives a service restart.
-2. **Given** a workflow with an event trigger, **When** a caller inspects it via tools, **Then** the trigger(s) are returned with their event type (and filter, if set).
+2. **Given** a workflow with an event trigger, **When** a caller inspects it via tools, **Then** the trigger(s) are returned with their event type.
 3. **Given** a workflow's trigger event type is changed via a tool, **When** the change is persisted, **Then** the service reflects the new subscription (subscribes to the new type, and no longer to the old type if it is no longer referenced by any of that workflow's triggers).
 4. **Given** a caller removes all triggers from a workflow, **When** the change persists, **Then** the workflow no longer runs automatically on any event.
 
@@ -62,14 +62,14 @@ Because the trigger is part of a workflow's authorable configuration, the servic
 
 The Workflow Manager app's workflow detail view lets the user add, edit, and remove event triggers on a workflow, and shows the workflow's current triggers — so event automation is manageable from the UI alongside the graph.
 
-**Why this priority**: The baseline established the app as a parallel surface to the tools. Trigger management is a first-class authoring task users will do visually (pick an event type, optionally a filter), and the run list already exists to show what ran — so the UI surface completes the loop.
+**Why this priority**: The baseline established the app as a parallel surface to the tools. Trigger management is a first-class authoring task users will do visually (pick an event type), and the run list already exists to show what ran — so the UI surface completes the loop.
 
 **Independent Test**: Open a workflow in the app; add an event trigger for a type; confirm it appears in the trigger list and persists on reload; emit a matching event; confirm the run shows up in the workflow's run history.
 
 **Acceptance Scenarios**:
 
 1. **Given** the workflow detail view, **When** the user adds an event trigger, **Then** it is shown in the workflow's trigger list and persisted.
-2. **Given** a workflow with a trigger, **When** the user edits its event type or filter and saves, **Then** the persisted trigger is updated.
+2. **Given** a workflow with a trigger, **When** the user edits its event type and saves, **Then** the persisted trigger is updated.
 3. **Given** a workflow with a trigger, **When** the user removes it, **Then** the workflow no longer triggers on that event.
 4. **Given** the user views the workflow's run history after an event-triggered run, **Then** the run is listed (as in the baseline) and identifiable as event-triggered.
 
@@ -143,7 +143,7 @@ The trigger's match semantics and the behavior when a trigger event arrives whil
 
 ### Measurable Outcomes
 
-- **SC-001**: A workflow configured with an event trigger runs automatically when a matching event is published, with zero manual intervention — 100% of correctly-typed published events that match a live trigger (and pass any filter) start a run.
+- **SC-001**: A workflow configured with an event trigger runs automatically when a matching event is published, with zero manual intervention — 100% of correctly-typed published events that match a live trigger start a run.
 - **SC-002**: Events whose type matches no active workflow trigger cause zero workflow runs (no false positives).
 - **SC-003**: A workflow's trigger set is fully authorable via the workflow tools (create/modify/read) — 100% of trigger operations are achievable without the UI, and changes persist across a service restart.
 - **SC-004**: An event-triggered run is indistinguishable in capability from a manual run (streams, persists, cancellable, inspectable) and is additionally marked with its triggering event's id + type.
