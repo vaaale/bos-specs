@@ -92,7 +92,7 @@ Apps that are served same-origin (`origin: "local"`) and use direct `fetch` to t
 - **FR-001**: System MUST provide an `assistant` app capability that, when granted to an app, allows that app to invoke the assistant run API through the broker.
 - **FR-002**: System MUST expose broker methods for: listing available agents, starting a run (with conversation, agent, message, and optional surface tools), reading run events (with a since-cursor), posting frontend tool results, querying the active run for a conversation, and cancelling a run.
 - **FR-003**: System MUST deliver run events to the requesting app in strict order, preserving the sequence numbers assigned by the run.
-- **FR-004**: System MUST support resuming event delivery from a given sequence number (since-cursor), so an app that missed a batch can request events from its last-acknowledged position.
+- **FR-004**: System MUST support resuming event delivery after a transient interruption, so an app that missed events (a poll gap, an iframe reload, a network blip) receives the missed events in order — no loss, no duplication — before continuing with new events.
 - **FR-005**: System MUST deliver frontend tool call events (tool name, call ID, arguments) to the app through the event stream, enabling the app to execute the tool and post the result back.
 - **FR-006**: System MUST return broker method results with the same semantic content as the equivalent direct HTTP API response (success returns the API response body; errors return the API error message and status).
 - **FR-007**: System MUST validate the `assistant` capability against the app's granted capabilities before processing any assistant broker method call, rejecting with a capability-denied error if not granted.
@@ -110,7 +110,7 @@ Apps that are served same-origin (`origin: "local"`) and use direct `fetch` to t
 ### Key Entities
 
 - **Assistant Capability Grant**: A per-app permission record (capability name `assistant`, granted/revoked state, timestamp) stored alongside existing app capability grants.
-- **Broker Assistant Session**: The runtime association between a sandboxed app's iframe and its active assistant run(s) — tracks the since-cursor, buffers undelivered events, and maps call IDs for tool results.
+- **Broker Assistant Session**: The runtime association between a sandboxed app's iframe and its active assistant run(s) — holds the per-run event buffer, tracks the replay position (last-acknowledged sequence number) per app, and correlates frontend tool calls to their results.
 
 ## Success Criteria *(mandatory)*
 
@@ -126,8 +126,8 @@ Apps that are served same-origin (`origin: "local"`) and use direct `fetch` to t
 
 - The assistant run API (`/api/assistant/runs` and its sub-routes) is the stable, server-owned contract. This feature proxies it; it does not change the API itself.
 - The broker's postMessage transport (parent frame ↔ iframe) is the correct mechanism — not a WebSocket side-channel or a fetch-through-parent HTTP proxy. The parent frame already owns the same-origin context.
-- Event delivery uses a request/response poll model (app asks "give me events since seq N", parent answers with buffered events + a done flag) rather than a push model, because a `ReadableStream` cannot cross postMessage and the parent cannot initiate postMessage to a child that has not yet requested.
-- The since-cursor is monotonic per run. The parent retains events from the last-acknowledged cursor until the run finishes, then retains the final batch briefly for reconnection.
+- The exact event-delivery transport — **parent-push** (the parent frame streams the run's events into the child as they arrive) versus **child-poll** (the child requests "events since seq N" on a timer/long-poll) — is a design-stage decision, not fixed here. Both satisfy the requirements, and both require the parent to hold a per-run event buffer so a child can replay from its last-acknowledged sequence number after a gap or reload. (A raw NDJSON stream cannot cross postMessage, so the parent must be the stream owner in either model.)
+- Sequence numbers are monotonic per run and are the unit of resumption. The parent retains the run's events (at least from the lowest still-undelivered sequence) until the run finishes, then briefly afterward for reconnection (NFR-002).
 - The `assistant` capability is declared in the app's manifest (`app.json` capabilities array), following the same pattern as `fs:read`, `storage`, etc.
 - This feature does not change the assistant's model, tool execution semantics, conversation storage, or run lifecycle — it only adds a transport path to reach the existing API from a sandboxed origin.
 - The Agentic Text Editor item will be updated separately (as a follow-up) to use the new broker methods when running opaque-origin; this spec covers only the BOS-side capability.
