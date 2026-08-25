@@ -183,7 +183,7 @@
 
 **Purpose**: End-to-end validation and final integration.
 
-- [ ] T017 [P] E2E test: create a workflow with a trigger via `workflow_create` (tool), emit a matching event via `emit_event`, verify the run starts with `startSource:"event"` + `trigger` + `input.event`, verify `workflow_run_get` returns the provenance, verify `workflow_run_list` shows the ⚡/event distinction. Use a real or test-emitted event type (NOT `com.bos.assistant.task.done` which is illustrative only — use `com.bos.gitops.conflict.escalated` or emit a custom test type within the `com.bos.*` grant).
+- [ ] T017 [P] E2E test: create a workflow with a trigger via `workflow_create` (tool), emit a matching event via `emit_event`, verify the run starts with `startSource:"event"` + `trigger` + `input.event`, verify `workflow_run_get` returns the provenance, verify `workflow_run_list` shows the ⚡/event distinction. **Negative path (SC-002):** also emit an event of a *different* type that no trigger references and verify zero runs start (no false positives). Use a real or test-emitted event type (NOT `com.bos.assistant.task.done` which is illustrative only — use `com.bos.gitops.conflict.escalated` or emit a custom test type within the `com.bos.*` grant).
 - [ ] T018 [P] E2E test: modify a workflow's trigger event type via `workflow_modify`, verify the service re-subscribes (new type fires, old type doesn't). Verify `workflow_read` returns the updated triggers.
 - [ ] T019 [P] E2E test: stop the service, emit a matching event, verify no run starts. Restart the service, verify it re-subscribes from persisted config. Emit again, verify the run starts.
 - [ ] T020 Verify the app UI renders the Triggers panel and ⚡ provenance correctly (visual check against the mockup).
