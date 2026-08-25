@@ -29,7 +29,7 @@ An agent has produced or located an image (a generated chart, a screenshot, a mo
 **Acceptance Scenarios**:
 
 1. **Given** an image exists at a VFS path, **When** the agent calls `web_view` with that `filePath`, **Then** the preview window displays the image centered and scaled to fit within the frame.
-2. **Given** the agent calls `web_view` with any URL (external, same-origin, or data URI) that resolves to an image, **When** the window opens, **Then** the image is displayed using the same centered, fit-to-frame media treatment.
+2. **Given** the agent calls `web_view` with any URL (external `http://` or `https://`, same-origin, or data URI) that resolves to an image, **When** the window opens, **Then** the image is displayed using the same centered, fit-to-frame media treatment.
 3. **Given** the image is larger than the window, **When** the preview renders, **Then** the image is scaled down to fit (not clipped, not forcing a scrollable overflow on the outer window).
 
 ---
@@ -46,7 +46,7 @@ An agent has produced or located a video and wants to play it back for the user.
 
 1. **Given** a video exists at a VFS path, **When** the agent calls `web_view` with that `filePath`, **Then** the preview window displays a video player with native controls.
 2. **Given** a video preview is open, **When** the user clicks play, **Then** the video plays within the window.
-4. **Given** the agent calls `web_view` with an external video URL (e.g. `https://cdn.example.com/clip.mp4`), **When** the window opens, **Then** the video player loads and plays from that URL.
+4. **Given** the agent calls `web_view` with an external video URL (e.g. `https://cdn.example.com/clip.mp4` or `http://cdn.example.com/clip.mp4`), **When** the window opens, **Then** the video player loads and plays from that URL.
 3. **Given** the video is larger than the window, **When** the preview renders, **Then** the player is scaled to fit the frame.
 
 ---
@@ -86,7 +86,7 @@ The agent is told, by the tool's own description, that it can preview images and
 ### Functional Requirements
 
 - **FR-001**: The `web_view` tool contract (the description text the agent sees, and its parameter documentation) MUST state that images and video can be previewed, and MUST document the media-related parameters (`poster`, `autoplay`, `loop`, `muted`) introduced by this feature.
-- **FR-002**: `web_view` MUST detect, from a VFS `filePath` or a `url` (any absolute or same-origin URL, including external `https://…` endpoints and data URIs), that the target is an image or a video and render it using a media presentation mode (not the default top-left, white-background document framing). Detection is based on the file extension or MIME type of the target.
+- **FR-002**: `web_view` MUST detect, from a VFS `filePath` or a `url` (any absolute or same-origin URL, including external `http://` and `https://` endpoints and data URIs), that the target is an image or a video and render it using a media presentation mode (not the default top-left, white-background document framing). Detection is based on the file extension or MIME type of the target.
 - **FR-003**: In image mode, the preview MUST display the image centered in the frame and scaled to fit (fit-to-viewport, no cropping), on a neutral background.
 - **FR-004**: In video mode, the preview MUST display the video with native playback controls and scaled to fit the frame.
 - **FR-005**: `web_view` MUST accept a `poster` parameter (image path/URL) that sets the video player's poster frame.
