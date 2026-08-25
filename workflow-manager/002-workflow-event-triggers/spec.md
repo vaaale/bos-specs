@@ -161,6 +161,11 @@ The trigger's match semantics and the behavior when a trigger event arrives whil
 - Match granularity is exact event type only (user-confirmed): no payload-field filtering in this increment. The triggering event's full payload (type + JSON body) is injected into the run as input context (user-confirmed, FR-006).
 - Re-entrancy is always-start-a-new-run (user-confirmed): concurrent runs of the same workflow are valid; each persists its own run log independently.
 
+## Design Sign-offs (architect-reviewer, 2026-08-25)
+
+- **FR-010 literal-vs-functional**: The spec says handlers "MUST be unregistered" on stop. The design satisfies this **functionally** (034's active-set rule deactivates all handlers for a non-running service, guaranteeing no stale dispatch) rather than **literally** (an explicit unregister call). This is the correct behavior because it preserves the user's per-handler `enabled` toggle across stop/start cycles. Build Studio sign-off: the spec's intent ("no stale dispatch to a stopped service") is met.
+- **`com.bos.*` grant breadth (ADR-1)**: The item's `service.json` declares `eventNamespaces: ["com.bos.*"]` so the service can subscribe to any well-formed BOS event type. This is a permission-surface decision on the item's own manifest (not a BOS change), trivially narrowable by editing the grant list. Build Studio sign-off: approved — the workflow service's purpose is reacting to arbitrary BOS events, and a scoped list would silently block legitimate triggers.
+
 ## Clarifications (resolved at specify step boundary, 2026-08-25)
 
 - **Q1 — Payload-filter granularity**: Resolved to **exact event type only** (Option A). No payload-field filtering in this increment. FR-001 updated accordingly.
