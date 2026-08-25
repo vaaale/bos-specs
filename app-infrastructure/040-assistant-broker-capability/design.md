@@ -124,10 +124,14 @@ New/changed modules, and what each owns:
 1. **`src/os/types.ts`** — `AppCapability` union: add `"assistant"`.
 2. **`src/app/api/apps/[id]/capabilities/route.ts`** — `VALID_CAPS`: add `"assistant"`.
    (Server-side allowlist that silently drops unlisted caps on `PUT` — must include it
-   or the Settings toggle is a no-op.)
-3. **`src/components/apps/settings/AppsTab.tsx`** — `ALL_CAPABILITIES`: add one row
-   `{ id: "assistant", label: "Assistant", description: "…" }`, mirroring the existing
-   checkbox rows. No new mockup; it reuses the exact `toggleCap`/row pattern.
+   or the Settings toggle is a no-op.) Additionally, on `PUT`, reject `assistant` if the
+   app's manifest does not declare it (declaration-gating per ADR-6). This is enforced
+   server-side so a direct API call cannot bypass the Settings UI.
+3. **`src/components/apps/settings/AppsTab.tsx`** — add the `assistant` row to
+   `ALL_CAPABILITIES`, but render it **conditionally**: only for apps whose manifest
+   (`app.json` → `capabilities`) includes `"assistant"`. This is a deliberate deviation
+   from the sibling caps (which render unconditionally) — see ADR-6. The row mirrors the
+   existing `toggleCap`/checkbox pattern; no new mockup.
 4. **`src/components/apps/assistant-broker.ts`** (NEW, client-side) — the stream owner,
    held as a **module-level registry** `Map<appId, AppBroker>` so it survives `IframeApp`
    effect re-runs (capability changes) and iframe reloads; `IframeApp` only *references*
@@ -147,6 +151,12 @@ New/changed modules, and what each owns:
    - an **owned-run set** (the `runId`s this app started via `startRun`) — cross-app
      isolation falls out of per-app scoping: a child may only read/drive a run its own
      `AppBroker` records as owned (see ADR-3).
+   **Refcounted window tracking:** the registry is keyed by `appId`, but `IframeApp`
+   is one instance per *window*. For non-`singleton` apps with multiple windows, the
+   registry entry must survive until the app's *last* window unmounts. Each `AppBroker`
+   holds a `windowCount` (incremented on `getBroker` when a window registers, decremented
+   on unmount); `dispose(appId)` is only called when `windowCount` reaches 0. This
+   prevents one window's unmount from tearing down a sibling window's live tail.
    Methods (each takes the target `windowId`/`iframe` it pushes to, since a window is
    the unit of a child): `listAgents`, `startRun`, `attach(runId, since, windowId)`,
    `postToolResult(runId, callId, result)`, `activeRun(conversationId)`, `cancelRun(runId)`,
@@ -173,15 +183,21 @@ into the child over `postMessage` as it arrives), with a **bounded per-run ring 
 and a **per-child cursor**, falling back to an authoritative server re-fetch for stale
 cursors. See ADR-1 for the full parent-push vs child-poll analysis.
 
-**Why a buffer is needed even with a single child:** on an iframe reload the child loses
-its JS state but the parent's live tail is still open. To replay the gap *without* a
-server round-trip and *without* opening a second (out-of-order) subscription, the parent
-keeps the recent events in memory. The buffer's `lowWater` = the minimum cursor across
-attached children for that run; events at or below `lowWater` are dropped (NFR-002:
-already-delivered-and-acked events may be discarded). The buffer is capped
-(`MAX_BROKER_BUFFER`, default ~2000 events / ~1 MB — well below the server's 50k
-`MAX_EVENTS`); a child cursor older than `lowWater` triggers the authoritative
-re-fetch, so the cache is a fast path, never a correctness dependency.
+**Why a buffer is needed even with a single child:** the buffer serves two reconnection
+cases differently:
+- *Transient drop (cursor preserved):* the child's event listener drops (a postMessage
+  hiccup, a tab backgrounding) but the SDK's `lastSeq` for that run is intact. On
+  re-attach the child requests from `lastSeq`, which is above `lowWater` → the parent
+  replays from its in-memory buffer with **no server round-trip**.
+- *Full iframe reload (cursor reset):* the child's JS state is wiped; the SDK's `lastSeq`
+  resets to 0, which is below `lowWater` for any run longer than the buffer. The parent
+  takes the **authoritative re-fetch** path (re-open the server stream at `?since=0`).
+
+In both cases the buffer is a fast path, never a correctness dependency — the server's
+`run.events` (50k cap, 5-min post-finish retention) is the source of truth. The buffer's
+`lowWater` = the minimum cursor across attached children for that run; events at or
+below `lowWater` are dropped (NFR-002). The buffer is capped (`MAX_BROKER_BUFFER`,
+default ~2000 events / ~1 MB — well below the server's 50k `MAX_EVENTS`).
 
 **Ordering (FR-003):** the parent's reader loop is single-threaded per run; it replays
 buffer events in `seq` order and appends/ pushes live events in increasing `seq`.
@@ -262,9 +278,10 @@ same-origin app that does *not* declare `assistant` and uses direct `fetch` is u
 |---|---|---|
 | `src/os/types.ts` | modify | Add `"assistant"` to the `AppCapability` union (with a comment, mirroring `services:read`). |
 | `src/app/api/apps/[id]/capabilities/route.ts` | modify | Add `"assistant"` to `VALID_CAPS`. |
-| `src/components/apps/settings/AppsTab.tsx` | modify | Add one `ALL_CAPABILITIES` row for `assistant`. |
-| `src/components/apps/assistant-broker.ts` | **create** | Client-side stream owner as a module-level `Map<appId, AppBroker>` registry: per-run tails, bounded ring buffer + low-water, per-cursor replay, authoritative re-fetch, per-app owned-run set (isolation), the six method implementations. No server-only imports. |
-| `src/components/apps/IframeApp.tsx` | modify | Add `assistant:*` → `"assistant"` to `CAP_FOR_METHOD`; route those methods to `getBroker(appId)` in `handleMessage` (post cap-gate); dispose that app's broker on window unmount (not on cap change). |
+| `src/components/apps/settings/AppsTab.tsx` | modify | Add the `assistant` row to `ALL_CAPABILITIES`, rendered conditionally (only for apps whose manifest declares it — ADR-6). |
+| `src/components/apps/assistant-broker.ts` | **create** | Client-side stream owner as a module-level `Map<appId, AppBroker>` registry with refcounted window tracking: per-run tails, bounded ring buffer + low-water, per-cursor replay, authoritative re-fetch, per-app owned-run set (isolation), the six method implementations. No server-only imports. |
+| `src/components/apps/IframeApp.tsx` | modify | Add `assistant:*` → `"assistant"` to `CAP_FOR_METHOD`; route those methods to `getBroker(appId)` in `handleMessage` (post cap-gate); increment/decrement the broker's window count on mount/unmount; dispose the broker only when the last window unmounts (not on cap change). |
+| `src/app/api/apps/[id]/capabilities/route.ts` | modify | Add `"assistant"` to `VALID_CAPS`; on `PUT`, reject `assistant` if the app's manifest does not declare it (ADR-6). |
 | `src/lib/iframe-sdk/index.ts` | modify | Add `assistant` group to `BosApi` + a `__bos_event` listener (returns unsubscribe) + wrappers; keep dependency-free. |
 | `docs/dev/assistant/assistant-broker.md` | **create** | Dev doc: the capability, the broker methods, the parent-push + buffer model, the four(+SDK) places, reconnect semantics, isolation rule. (Constitution VI.) |
 
@@ -428,6 +445,33 @@ service, no new npm dependency.
   (avoids the "limitation → new container" classification trap). + The events route
   already supports long-lived viewer connections (`maxDuration=3600`, keepalive). − The
   parent holds a browser fetch connection per run (see Risks).
+
+### ADR-6 — Declaration-gated grant (deviation from sibling-cap pattern)
+
+**Context.** The existing capabilities (`fs:read`, `storage`, `window:title`, etc.) render
+their Settings checkboxes unconditionally for every app and are grantable regardless of
+whether the manifest declared them. This is a flat trust model: any app can be given any
+capability. The `assistant` capability is more sensitive — it lets the app drive the
+BOS assistant (access to the user's conversations, tools, and agent surface), so granting
+it to an app that never requested it is a stronger trust jump.
+
+**Decision.** The `assistant` capability is **declaration-gated**: it is grantable only
+if the app's manifest (`app.json` → `capabilities`) includes `"assistant"`. Concretely:
+- `AppsTab.tsx` renders the `assistant` checkbox row **only** for apps whose manifest
+  declares it (the other cap rows remain unconditional).
+- The `PUT /api/apps/[id]/capabilities` route **rejects** `assistant` (drops it from the
+  grant set with a warning in the response) if the app's manifest does not declare it.
+  This is enforced server-side so a direct API call cannot bypass the UI.
+- The `IframeApp` cap gate is unchanged: if `assistant` is not in the app's resolved
+  cap set, the broker methods reject. Declaration without grant = same as no grant.
+
+**Consequences.** + Tighter access control: an app must opt in to the capability in its
+  manifest before the user can grant it, making the trust intent explicit. + The Settings
+  UI is less cluttered (the row appears only where relevant). + Aligns with the spec's
+  US-3 scenario 3 ("no grant possible without declaration"). − Deviates from the sibling-
+caps pattern (which is flat); the deviation is documented and scoped to `assistant` only.
+  − Slightly more work: the `PUT` route needs to read the manifest to validate
+  declaration (a small addition; the manifest is already available in the store).
 
 ---
 
