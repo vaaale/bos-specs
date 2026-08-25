@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-25
 
-**Status**: Draft
+**Status**: Implemented (2026-08-25) — preview on app-candidate branch; pending user Promote/Discard
 
 **App Target**: marketplace-item
 
