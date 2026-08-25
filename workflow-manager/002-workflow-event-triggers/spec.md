@@ -101,28 +101,28 @@ The trigger's match semantics and the behavior when a trigger event arrives whil
 
 **Acceptance Scenarios**:
 
-1. **Given** a workflow trigger for type `T`, **When** multiple events of type `T` are published in succession, **Then** the run-firing behavior follows the defined re-entrancy policy (see Q3), with no crash and no lost/duplicated run beyond the policy.
-2. **Given** a trigger with a payload filter, **When** an event of the right type but a non-matching payload is published, **Then** the workflow does not run.
-3. **Given** a trigger with a payload filter, **When** an event of the right type and a matching payload is published, **Then** the workflow runs.
-4. **Given** an event of type `T` that matches the trigger, **When** the service starts the run, **Then** the run is fire-and-poll (consistent with the baseline: `runId` returned, progress polled) and the trigger does not block on the run's completion.
+1. **Given** a workflow trigger for type `T`, **When** multiple events of type `T` are published in succession, **Then** each one starts a new, independent run (no coalescing); no crash, and each run persists its own run log.
+2. **Given** a workflow trigger for type `T`, **When** an event of type `T` arrives while a run of that workflow is already executing, **Then** a new run starts concurrently — both runs proceed independently.
+3. **Given** an event of type `T` that matches the trigger, **When** the service starts the run, **Then** the run is fire-and-poll (consistent with the baseline: `runId` returned, progress polled) and the trigger does not block on the run's completion.
+4. **Given** an event-triggered run, **When** a workflow node accesses the run's input context, **Then** the triggering event's payload (type + JSON body) is available.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: A workflow's configuration MUST support a list of zero or more **event triggers**; each trigger MUST name exactly one event type from the event system (and MAY carry an optional payload filter, per FR-006).
+- **FR-001**: A workflow's configuration MUST support a list of zero or more **event triggers**; each trigger MUST name exactly one event type from the event system. Match granularity is **exact event type only** — no payload-field filtering in this increment (a future increment may add filters).
 - **FR-002**: The service MUST subscribe (via the event system's headless-handler runtime-declaration channel) to the **union** of event types referenced by the triggers of all workflows at service start, and MUST keep that subscription set current as workflows and their triggers are created, modified, or deleted.
 - **FR-003**: When a published event's type matches a workflow trigger's event type, the service MUST automatically start a run of that workflow, with no manual `workflow_run` call required.
 - **FR-004**: An event-triggered run MUST be an ordinary workflow run: it MUST stream step events, persist a run log, support cancellation, and be inspectable in history, exactly as a manually started run does.
 - **FR-005**: The service MUST reflect changes to trigger subscriptions promptly: when a workflow's trigger event type is changed or removed, the service MUST stop subscribing to the now-unreferenced type and subscribe to the newly referenced type, without requiring a service restart.
-- **FR-006**: [NEEDS CLARIFICATION: payload-filter granularity — is the trigger match on exact event type only (P1 default), or does it also support matching/filtering on the event's JSON payload fields (e.g. only fire when `payload.kind === "error"`)? See Q1.]
+- **FR-006**: The triggering event's payload MUST be made available to the triggered run as **input context**: the run MUST be able to access the full event payload (type + JSON body) so the workflow can react to *what* happened, not merely *that* it happened. The exact injection point (a named input binding, a seeded variable, or a tool-call argument) is an implementation detail for design.md.
 - **FR-007**: A run started by an event trigger MUST record its **trigger provenance**: the triggering event's id and type, and a start-source marker distinguishing it from a manually started run.
 - **FR-008**: The workflow tools MUST support authoring event triggers: `workflow_create`/`workflow_modify` MUST accept triggers in the workflow config, and a read/inspection tool MUST return a workflow's triggers. (Consistent with the baseline's tool-surface control-plane requirement.)
 - **FR-009**: The app's workflow detail view MUST allow the user to add, edit, and remove event triggers on a workflow, and MUST display the workflow's current triggers.
 - **FR-010**: When the service is stopped, its event handlers MUST be unregistered such that no event-triggered run can start (no stale dispatch to a stopped service), consistent with the baseline's tool-removal-on-stop guarantee.
 - **FR-011**: The run-list/run-get tools and the app run history MUST expose each run's start source (event-triggered vs. manual) so event-triggered runs are distinguishable.
 - **FR-012**: An event trigger MUST NOT block the event's delivery path: the service's response to a triggering event MUST be fast (start the run and return), deferring the long run to the existing asynchronous fire-and-poll execution model — a long-running workflow MUST NOT delay or hold the event dispatch.
-- **FR-013**: [NEEDS CLARIFICATION: re-entrancy policy — when a trigger event arrives while a run of the same workflow is already executing, what happens? Options: (a) always start a new run regardless (default), (b) coalesce/skip if a run for that trigger is already active, (c) queue. See Q3.]
+- **FR-013**: Re-entrancy policy is **always start a new run**: when a trigger event arrives while a run of the same workflow is already executing, the service MUST start a new, independent run — no coalescing, no queuing, no skip. Multiple concurrent runs of the same workflow are valid and each persists its own run log.
 - **FR-014**: Trigger configuration MUST be validated: a trigger MUST reference a well-formed event type; a trigger with an empty/invalid event type MUST be rejected by the create/modify tools with a clear error.
 
 ### Non-Functional Requirements
@@ -134,7 +134,7 @@ The trigger's match semantics and the behavior when a trigger event arrives whil
 
 ### Key Entities
 
-- **EventTrigger**: A declarative trigger on a workflow — an event type (required), an optional payload filter (FR-006), and identity metadata. Part of the workflow's configuration, persisted with the workflow.
+- **EventTrigger**: A declarative trigger on a workflow — an event type (required) and identity metadata. Part of the workflow's configuration, persisted with the workflow. (No payload filter in this increment; FR-006 governs how the payload is used at trigger time, not at match time.)
 - **Workflow**: (baseline) A user-authored multi-step graph persisted as JSON at the real VFS `/Workflows/<id>-workflow.json`. This feature extends its config with a `triggers` list of EventTrigger.
 - **Run**: (baseline) A single execution of a workflow, persisted to the real VFS. This feature extends it with a start-source marker and, when event-triggered, the triggering event's id + type.
 - **Event**: (event system, spec 034) A durable published record — a type and a JSON payload — delivered to matching registered handlers.
@@ -155,11 +155,14 @@ The trigger's match semantics and the behavior when a trigger event arrives whil
 
 - The event system's **headless-handler runtime-declaration + dispatch** mechanism (spec 034, implemented) is the transport by which the service subscribes to and is invoked on event types — the same worker-IPC runtime-declaration channel the service already uses for its 039 `tool_declare`. The exact wire message type (e.g. a `handler_declare`/`handler_undeclare` emission) is an implementation detail for design.md; the spec only requires the capability.
 - No BOS-source change is required: both the headless-handler machinery and the service tool/IPC channel already exist. This feature is entirely within the `workflows` item (service facet subscribes/matches/fires; app facet configures/views; tool surface authors/reads triggers).
-- An event trigger only functions while the service is running (it is the execution authority, per the baseline). Events published while the service is stopped are not consumed by the workflow (the handler is unregistered on stop); they remain durable in the event store but do not retroactively start runs on restart (no replay/catch-up triggering — see Q3 note if the user wants catch-up).
+- An event trigger only functions while the service is running (it is the execution authority, per the baseline). Events published while the service is stopped are not consumed by the workflow (the handler is unregistered on stop); they remain durable in the event store but do not retroactively start runs on restart (no replay/catch-up triggering).
 - A run started by a trigger is fire-and-poll (baseline FR-008): the trigger handler starts the run, obtains a `runId`, and returns promptly; it does not wait for the run to finish.
 - Trigger configuration is per-workflow (a `triggers` array in the workflow JSON), not a separate global entity. Multiple triggers per workflow are allowed (FR-001); multiple workflows may trigger on the same event type (fan-out to several workflows is allowed).
-- The triggering event's payload is available to the trigger handler at dispatch time (the event system delivers the event's type + payload to the matched handler); whether that payload is passed into the run as input/seed context is a Q2 decision.
+- Match granularity is exact event type only (user-confirmed): no payload-field filtering in this increment. The triggering event's full payload (type + JSON body) is injected into the run as input context (user-confirmed, FR-006).
+- Re-entrancy is always-start-a-new-run (user-confirmed): concurrent runs of the same workflow are valid; each persists its own run log independently.
 
-## Open Questions
+## Clarifications (resolved at specify step boundary, 2026-08-25)
 
-<!-- Surfaced at the specify step boundary; resolve during clarify. Max 3. -->
+- **Q1 — Payload-filter granularity**: Resolved to **exact event type only** (Option A). No payload-field filtering in this increment. FR-001 updated accordingly.
+- **Q2 — Payload injection**: Resolved to **yes** — the triggering event's payload MUST be made available to the run as input context (Option B). FR-006 updated accordingly.
+- **Q3 — Re-entrancy**: Resolved to **always start a new run** (Option A). No coalescing or queuing. FR-013 updated accordingly.
