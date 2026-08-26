@@ -4,6 +4,29 @@ Spec/code drift and post-converge findings. Newest first. Per project convention
 
 ---
 
+## app-infrastructure/040-assistant-broker-capability — implementation-time finding (2026-08-26)
+
+**Pre-existing drift, deliberately NOT fixed here** (design.md §8, task T053; recorded to keep this feature's blast radius minimal).
+
+### `storage` is grantable at install but not from Settings
+The `storage` capability is present in `AppCapability` (`src/os/types.ts`) and in `CAP_FOR_METHOD` (`src/components/apps/IframeApp.tsx`), so the broker honours it — but it is in **neither** of the two places a *user-driven* grant needs:
+
+- `VALID_CAPS` in `src/app/api/apps/[id]/capabilities/route.ts` — a `PUT` **silently drops** any capability not listed there, with no error;
+- `ALL_CAPABILITIES` in `src/components/apps/settings/AppsTab.tsx` — no checkbox row.
+
+Net effect: `storage` can only be granted at install time (a manifest declaration migrated by `resolveCapabilities`, or an explicit `installItem({capabilities})`). A user can neither grant nor revoke it from Settings → Apps, and an attempt to do so via the API fails silently.
+
+*Why it matters beyond `storage`:* the silent-drop behaviour makes a missing `VALID_CAPS` entry look like a working toggle that just doesn't stick. This feature added `assistant` to **both** places (plus the ADR-6 declaration gate) precisely so as not to replicate the gap. **Action (optional, separate change):** add `storage` to both lists, or state in the docs that it is install-time-only by design.
+
+### Deviation from the flat capability model (intentional, ADR-6)
+`assistant` is the first **declaration-gated** capability: its Settings row renders only for apps whose `app.json` declares it, and `PUT /api/apps/[id]/capabilities` drops it (returning `{rejected, warning}`) otherwise. Every sibling capability remains flat — grantable to any app regardless of declaration. This asymmetry is deliberate and scoped to `assistant`, whose grant reaches the user's conversations, tools and agents; it is documented in `docs/dev/assistant/assistant-broker.md`. **Not** a drift to fix, but worth knowing before adding the next capability: copy the flat pattern unless the new capability is comparably sensitive.
+
+### Deferred by design (no FR affected)
+- **No mid-run `assistant:push-surface-tools`.** `run-client.ts` has one because every open BOS window auto-contributes its tools; a sandboxed app declares its own on the run start, which `startAssistantRun` merges into `run.tools` — so FR-009 is met without it. Add it only when a real app opens sub-panes mid-run.
+- **An expired run (past the server's 5-minute post-finish retention) gives an attached app no terminal event.** The events route 404s, the broker marks the session finished/expired, and — per the spec's own edge-case note ("same as any viewer; document it, don't solve it here") — the app is expected to fall back to conversation history. There is no conversation-history broker method, so an app currently discovers this via `assistant:active-run` returning `{runId: null}`. Worth a follow-up if apps need transcript access through the broker.
+
+---
+
 ## core-platform/035-spec-promote-conflict-escalation — post-converge (2026-08-24)
 
 **Converge verdict: CONVERGED (docs aligned to code).** All 25 FRs (FR-001…FR-025) + 5 NFRs met by the implemented code; no functional drift. The `abandoned` terminal state and the 7th call site (below) were *spec/design under-specifications* — the code and the binding mockup were already correct, so converge updated the docs toward the code, not the other way around. **E2E: 13/13 passing** (isolated `/tmp` checkout). **Unit: 256/256** in `tests/gitops` (39 new). `tsc --noEmit` + `lint` clean.
