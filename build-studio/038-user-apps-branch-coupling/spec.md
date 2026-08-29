@@ -93,6 +93,7 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **FR-011**: A user MUST be able to remain on BASE for the whole of a piece of work — authoring specs and building apps — switching to the branch's preview only to test the built candidate.
 - **FR-012**: Resolving a branch's data root MUST NOT be inferred from which version is running. Which preview is being VIEWED (the pin) and which feature branch is ACTIVE (the conversation) are independent, so a running preview asking for a different branch MUST get that branch's root, not its own.
 - **FR-013**: An install that landed on a feature branch MUST report that fact, and the installing version MUST NOT register or launch the item: it has no install record for it and cannot serve it. The user MUST be told to build and preview that branch instead of being shown a window that cannot load.
+- **FR-014**: Whether an install is branch-scoped MUST NOT be a client-supplied flag. Any endpoint that authors item content MUST require the active feature branch unconditionally, resolved server-side.
 
 ## Success Criteria *(mandatory)*
 
@@ -103,6 +104,7 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **SC-005**: A user performing the same task on a BOS-core spec and on an item's spec encounters the same branch elicitation, with no additional per-item activation step.
 - **SC-006**: Creating an app, building an app, and editing an item's spec are all possible without leaving BASE, and all land on the same feature branch.
 - **SC-007**: No version ever shows a dock entry for an item installed into a different version's data root.
+- **SC-008**: No request to an item-authoring endpoint can install to the live root by omitting or falsifying a flag.
 
 ## Assumptions
 
