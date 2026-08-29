@@ -73,6 +73,7 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **`user-apps` is a different repo from the spec-store mounts.** A coupled spec store mounts at `<codeWorktree>/specs/<storeId>`; `user-apps` mounts at `<previewDataDir>/user-apps`. Item stores therefore need their own path resolver. This is a path difference only — the branch policy is identical.
 - **Drafting an install from BASE.** A preview process's own `user-apps` IS the branch-coupled worktree, so installs there ride the feature branch. BASE's own root is the live one, so an install belonging to a branch is redirected into that branch's data clone. `dataDir()` remains a per-process constant (base and each preview have fixed roots); the redirect is an explicit resolved root threaded through the install, never an ambient override — an ambient one would also relocate the VFS, memory and skills.
 - **A branch install must not half-land.** Item files, the install symlink, seeded config and bundled assets all derive from the SAME resolved root. Splitting them — content on the branch, symlink in the live directory — would make base advertise an item it cannot serve.
+- **Viewing one preview while another branch is active.** The pin and the active feature branch are independent, so this is a normal state, not an error — and resolving the data root from `BOS_VERSION_LABEL` alone silently commits the active branch's work onto the viewed branch. The root must always come from the branch itself.
 - **Services on a branch install.** The manifest is validated (so a broken service still fails the install immediately) but NOT registered or started: the content belongs to a branch, and it is that branch's PREVIEW that must run it, which its own boot already does. Registering it in base would run a preview's service against base's registry and ports.
 - **Sibling items share the repo.** A feature branch over `user-apps` covers every item in it, exactly as it covers every file in the BOS source repo. Per-item branches would require a worktree per item plus an item→worktree registry consulted by store discovery, the path resolver, and the install scanner, and would still collide on the repo-root `marketplace.json`; this was evaluated and rejected as disproportionate.
 - **Item stores have no Projects.** The "write must target a file inside a Project" rule (`037` FR-001) continues not to apply to them; only the branch rule does.
@@ -90,6 +91,8 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **FR-009**: A draft install MUST require an active feature branch and MUST land its content on that branch, from BASE as well as from a preview. Item files, install symlink, seeded config and bundled assets MUST all resolve from one data root, and the branch MUST be resolved server-side from the conversation rather than accepted from the client.
 - **FR-010**: A service facet installed for a feature branch MUST be validated but MUST NOT be registered or started in the installing process; the branch's preview starts it on boot.
 - **FR-011**: A user MUST be able to remain on BASE for the whole of a piece of work — authoring specs and building apps — switching to the branch's preview only to test the built candidate.
+- **FR-012**: Resolving a branch's data root MUST NOT be inferred from which version is running. Which preview is being VIEWED (the pin) and which feature branch is ACTIVE (the conversation) are independent, so a running preview asking for a different branch MUST get that branch's root, not its own.
+- **FR-013**: An install that landed on a feature branch MUST report that fact, and the installing version MUST NOT register or launch the item: it has no install record for it and cannot serve it. The user MUST be told to build and preview that branch instead of being shown a window that cannot load.
 
 ## Success Criteria *(mandatory)*
 
@@ -99,6 +102,7 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **SC-004**: File history for an item's spec lists every commit touching it, and each listed version's content is retrievable.
 - **SC-005**: A user performing the same task on a BOS-core spec and on an item's spec encounters the same branch elicitation, with no additional per-item activation step.
 - **SC-006**: Creating an app, building an app, and editing an item's spec are all possible without leaving BASE, and all land on the same feature branch.
+- **SC-007**: No version ever shows a dock entry for an item installed into a different version's data root.
 
 ## Assumptions
 
