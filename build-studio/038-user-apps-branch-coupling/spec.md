@@ -71,7 +71,9 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 
 - **An item's spec folder is not a repo root.** It is a subdirectory of the shared `user-apps` repo. Any operation that addresses git *by repository* — listing history, or reading a blob at a ref (`git show <ref>:<path>` resolves its path against the repo root, not the working directory) — must use the owning repo and a repo-relative path. Using the store root yields silence, not an error: history lists nothing and the blob read fails as "path does not exist".
 - **`user-apps` is a different repo from the spec-store mounts.** A coupled spec store mounts at `<codeWorktree>/specs/<storeId>`; `user-apps` mounts at `<previewDataDir>/user-apps`. Item stores therefore need their own path resolver. This is a path difference only — the branch policy is identical.
-- **Drafting an install from BASE.** A preview process's own `user-apps` IS the branch-coupled worktree, so installs there ride the feature branch. BASE has no such worktree, so a draft install has nowhere to go; it is refused explicitly rather than installing live, which is the one outcome the caller asked to avoid.
+- **Drafting an install from BASE.** A preview process's own `user-apps` IS the branch-coupled worktree, so installs there ride the feature branch. BASE's own root is the live one, so an install belonging to a branch is redirected into that branch's data clone. `dataDir()` remains a per-process constant (base and each preview have fixed roots); the redirect is an explicit resolved root threaded through the install, never an ambient override — an ambient one would also relocate the VFS, memory and skills.
+- **A branch install must not half-land.** Item files, the install symlink, seeded config and bundled assets all derive from the SAME resolved root. Splitting them — content on the branch, symlink in the live directory — would make base advertise an item it cannot serve.
+- **Services on a branch install.** The manifest is validated (so a broken service still fails the install immediately) but NOT registered or started: the content belongs to a branch, and it is that branch's PREVIEW that must run it, which its own boot already does. Registering it in base would run a preview's service against base's registry and ports.
 - **Sibling items share the repo.** A feature branch over `user-apps` covers every item in it, exactly as it covers every file in the BOS source repo. Per-item branches would require a worktree per item plus an item→worktree registry consulted by store discovery, the path resolver, and the install scanner, and would still collide on the repo-root `marketplace.json`; this was evaluated and rejected as disproportionate.
 - **Item stores have no Projects.** The "write must target a file inside a Project" rule (`037` FR-001) continues not to apply to them; only the branch rule does.
 
@@ -85,7 +87,9 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **FR-006**: The `app-candidate` branch mechanism MUST be removed in full: Supervisor module, control endpoints, published state, the live-checkout-owner registry it required, and every UI affordance for it.
 - **FR-007**: A spec store MUST expose the git repository that versions its content, distinctly from its content root. All history listing and read-at-ref operations MUST use that repository together with a repository-relative path.
 - **FR-008**: An item store's spec tree MUST include sub-directories and their contents, not only top-level files.
-- **FR-009**: A draft install MUST be refused when no branch-coupled `user-apps` worktree exists to receive it, rather than installing live.
+- **FR-009**: A draft install MUST require an active feature branch and MUST land its content on that branch, from BASE as well as from a preview. Item files, install symlink, seeded config and bundled assets MUST all resolve from one data root, and the branch MUST be resolved server-side from the conversation rather than accepted from the client.
+- **FR-010**: A service facet installed for a feature branch MUST be validated but MUST NOT be registered or started in the installing process; the branch's preview starts it on boot.
+- **FR-011**: A user MUST be able to remain on BASE for the whole of a piece of work — authoring specs and building apps — switching to the branch's preview only to test the built candidate.
 
 ## Success Criteria *(mandatory)*
 
@@ -94,6 +98,7 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **SC-003**: No Supervisor endpoint, published state field, or UI control refers to an app-only candidate.
 - **SC-004**: File history for an item's spec lists every commit touching it, and each listed version's content is retrievable.
 - **SC-005**: A user performing the same task on a BOS-core spec and on an item's spec encounters the same branch elicitation, with no additional per-item activation step.
+- **SC-006**: Creating an app, building an app, and editing an item's spec are all possible without leaving BASE, and all land on the same feature branch.
 
 ## Assumptions
 
