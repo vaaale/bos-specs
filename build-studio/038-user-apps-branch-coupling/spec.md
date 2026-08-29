@@ -94,6 +94,8 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **FR-012**: Resolving a branch's data root MUST NOT be inferred from which version is running. Which preview is being VIEWED (the pin) and which feature branch is ACTIVE (the conversation) are independent, so a running preview asking for a different branch MUST get that branch's root, not its own.
 - **FR-013**: An install that landed on a feature branch MUST report that fact, and the installing version MUST NOT register or launch the item: it has no install record for it and cannot serve it. The user MUST be told to build and preview that branch instead of being shown a window that cannot load.
 - **FR-014**: Whether an install is branch-scoped MUST NOT be a client-supplied flag. Any endpoint that authors item content MUST require the active feature branch unconditionally, resolved server-side.
+- **FR-015**: READS of a store MUST resolve through the same branch as its WRITES — every surface: the agent's read/list tools, the spec tree, and the derived specification list. A read path that resolves differently from the write path is a correctness bug, not a display nicety: an agent that cannot observe its own writes concludes they failed and retries, and any find/replace it derives from the stale text is matched against a different file than the one it read.
+- **FR-016**: A UI showing branch-resolved content MUST re-read it when the active branch changes, since the branch is typically activated mid-session by the agent's own elicitation rather than chosen up front.
 
 ## Success Criteria *(mandatory)*
 
@@ -105,6 +107,7 @@ The requirement is unconditional. It does not depend on the Supervisor being pre
 - **SC-006**: Creating an app, building an app, and editing an item's spec are all possible without leaving BASE, and all land on the same feature branch.
 - **SC-007**: No version ever shows a dock entry for an item installed into a different version's data root.
 - **SC-008**: No request to an item-authoring endpoint can install to the live root by omitting or falsifying a flag.
+- **SC-009**: After any write to an item's spec, a read of that same path through the same conversation returns the written content — no surface reports a pre-write version.
 
 ## Assumptions
 
