@@ -129,7 +129,7 @@ Because a store is just an independent git repo dropped into the specs root, add
 - **Store manifest** — the self-describing file at a store's root declaring `{ label, owner, writable, requiresPromote }`; the source of a store's role/policy (discovery, not a central registry).
 - **System spec store** — the store whose manifest is `owner: system`; seeded + updated from the shipped bundle; changes require promote.
 - **User spec store** — the store whose manifest is `owner: user`; freely writable (commit-on-save); default target for new user specs.
-- **Spec candidate branch** — the build-free preview/promote unit within a store (mirrors `app-candidate`).
+- **Spec candidate branch** — the build-free preview/promote unit within a store (mirrored the since-retired `app-candidate`; see `038-user-apps-branch-coupling`).
 - **Read-only store mount** — the spec store exposed to the developer worktree at implement time.
 
 ## Success Criteria *(mandatory)*

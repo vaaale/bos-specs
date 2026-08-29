@@ -47,7 +47,7 @@ App candidates are git branches (branch-live preview), orthogonal to BOS-code ca
 - **FR-003**: A server-only GitFS module MUST expose `ensureRepo` (init via the `<root>/.git` check + seed an initial commit), `commitAll` (no-op when clean, with a local committer identity), and `history`; filesystem mutations are followed by `commitAll`.
 - **FR-004**: Content MUST be discovered by listing the directory — each item a self-contained, self-describing folder; there MUST be NO central registry file (the merge hazard GitFS exists to avoid).
 - **FR-005**: Apps MUST be GitFS content: `<appsDir>/<id>/` with the app's files plus an `app.json` manifest (`name, icon, createdAt, status, uninstalledAt?`), served at `/apps/<id>/` with a path-escape jail and an injected `<base href="/apps/<id>/">`; lifecycle `installApp` / `uninstallApp` (soft, keeps files) / `restoreApp` / `purgeApp`, each committed.
-- **FR-006**: App candidates MUST be git branches (`app-candidate`) in the content repo — branch-live preview with no extra port — orthogonal to BOS-code candidates; begin/promote(merge)/discard via Supervisor endpoints.
+- **FR-006**: ~~App candidates MUST be git branches (`app-candidate`) in the content repo — branch-live preview with no extra port — orthogonal to BOS-code candidates; begin/promote(merge)/discard via Supervisor endpoints.~~ **RETIRED by `build-studio/038-user-apps-branch-coupling`.** App/item content is NOT orthogonal to BOS-code candidates: `user-apps` is a branch-coupled repo (`020-branch-coupled-specs`) mounted on the active `bos/*` feature branch and promoted or discarded with that branch's code and specs. There is exactly ONE branch scheme over the content repo, and no app-only begin/promote/discard endpoints.
 - **FR-007**: The Developer building app content MUST be delegated with `contentOnly: true` so it does NOT provision a BOS-code candidate worktree; the result is installed via `installApp` onto the candidate branch.
 
 ### Key Entities
@@ -55,7 +55,7 @@ App candidates are git branches (branch-live preview), orthogonal to BOS-code ca
 - **GitFS module** — server-only git operations over a content root.
 - **Content repo** — the independent apps git repo (`BOS_APPS_DIR`).
 - **App folder + `app.json`** — a self-contained, self-describing content item.
-- **`app-candidate` branch** — branch-live preview unit.
+- ~~**`app-candidate` branch** — branch-live preview unit.~~ Retired; see `build-studio/038-user-apps-branch-coupling`. The preview unit for content is the feature branch's coupled `user-apps` worktree.
 
 ## Success Criteria *(mandatory)*
 
