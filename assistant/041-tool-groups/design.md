@@ -114,7 +114,12 @@ Six clusters, in dependency order.
 Owns `ToolGroup { id, name, description, aliases, origin }`, the built-in group
 table (moved out of `capabilities-registry.ts`'s `GROUP_DEFINITIONS`), and a
 `globalThis`-backed dynamic layer with `registerToolGroups()` /
-`unregisterToolGroups()` / `listToolGroups()` / `resolveGroup(query)`. The dynamic
+`unregisterToolGroups()` / `listToolGroups()` / `resolveGroup(query)`. `resolveGroup`
+implements FR-030's tolerance with a **fixed precedence** — exact id, then
+case/whitespace-normalized display name, then alias — returning the first match and
+never guessing between two candidates; an alias that collides with another group's id
+therefore loses, deterministically, and a collision at registration time is itself an
+error (FR-041). The dynamic
 layer mirrors `registerAdditionalCapabilities()`
 (`capabilities-registry.ts`, the `__bos_dynamic_capabilities__` pattern) so it
 survives HMR the same way. This module imports nothing from
@@ -157,17 +162,26 @@ unconditional.
 4. `search(query, {caps, groups, index, threshold})` — filter by threshold, sort by
    `(score desc, groupOrder, id)` for total determinism (FR-022).
 
+**Group-level fields need no special weighting, and must not be given any.** Because a
+group's name and description repeat across every member, IDF discounts those terms
+automatically — a term appearing on all 13 Gmail tools is, correctly, weak evidence
+for any one of them, while still lifting the whole group above unrelated tools. That
+is the desired behaviour and it falls out of step 2 for free. An implementer who reads
+the dilution as a bug and "fixes" it by boosting group fields will reintroduce exactly
+the group-level flooding the old flat `+1`/`+2` rules produced.
+
 `scoreAgent` stays as-is and moves across unchanged — `find_agent` is out of scope.
 
 **(d) Discovery tools — `src/lib/assistant/tools/server/discovery.ts` (modify).**
 `find_tools` gains an optional `group` parameter and a response envelope
 `{ results, totalMatches, withheld, alreadyVisible?, groups? }` replacing the bare
-array. Modes:
+array. **Each result carries `{ id, description, group, reasons }` and no schema
+(FR-024a) — see ADR-7.** Modes:
 
 | Input | Behavior |
 |---|---|
 | `query` only | Ranked free-text search over granted deferred tools (FR-016–FR-023). Free-text that names a group also surfaces that group's members (FR-034), because group name/description/aliases are indexed fields. |
-| `group` only | Every granted deferred tool of the resolved group (FR-029). |
+| `group` only | Every granted deferred tool of the resolved group, **uncapped** (FR-029/FR-024b). |
 | both | Free-text ranking restricted to the resolved group. |
 | unresolved `group` | Error naming the groups available to this agent (FR-032). |
 | resolved group, no granted deferred members | Explicit "nothing hidden here" (FR-033). |
@@ -241,6 +255,18 @@ additionally renders the per-group description/alias editor, reusing `useAutoSav
 (`src/components/apps/settings/hooks/useAutoSave.ts`) + `AutoSaveStatus`
 (`src/components/apps/settings/AutoSaveStatus.tsx`) exactly as `ToolRow` does, and a
 filter box (FR-047).
+
+**No fallback bucket survives this change (FR-041).** Both existing helpers coerce a
+missing group into a placeholder — `ToolsTab.tsx:327` and `ToolAccordions.tsx:181`
+each do `t.group?.trim() || "General"`. Once `group` is an id, that would quietly
+collect every capability whose group failed to resolve into a phantom group, which is
+exactly the generic bucket FR-041 forbids, relocated from the registry into the UI.
+The shared component MUST NOT carry the fallback forward: an unresolvable group id is
+an error, surfaced to the user (Settings → Services for a service-declared tool,
+Settings → Tools for a built-in). The same applies in the registry —
+`groupDescription()` (`capabilities-registry.ts:257`) today synthesizes
+`Capabilities in the "<name>" group.` for an unknown group; it is removed with
+`GROUP_DEFINITIONS` rather than reimplemented against the new table.
 
 A third consumer surfaced during this design and is folded in:
 `src/lib/agent/tool-manifest.ts` builds `ASSISTANT_TOOLS` from `actionCapabilities()`,
@@ -330,7 +356,7 @@ plan should treat it as created.
 | `src/core/service/ServiceManager.ts` | Resolve a declaration's group before registering |
 | `seed/agents/default_agent/AGENT.md` | Trim `# Tools` to agent-specific guidance (FR-052) |
 | `seed/agents/assistant/AGENT.md` | Same; move delegation line to the delegation section (FR-052) |
-| `docs/dev/assistant/actions-and-tools.md` | Group model, discovery modes |
+| `docs/dev/assistant/actions-and-tools.md` | Group model, discovery modes. **Rewrite, don't patch:** the file opens with a "Stale (v1 CopilotKit path)" banner and its tool tables describe the retired `*Actions.tsx` registration path, so appending current group content would bolt truth onto a doc that is wrong above the fold |
 | `docs/dev/apps/services.md` §15 | `toolGroups` declaration contract |
 | `docs/usage/settings/overview.md` | Link the new Tools page |
 | `docs/dev/architecture-overview.md` §8.2/§8.3 | Group model; §8.2's group list and "80+ capabilities, 20+ groups" figures; drop the §8.3 reference to the deleted module |
@@ -367,8 +393,9 @@ Existing mechanisms this design calls into and does **not** create or modify:
 - **Provider tool field** — `model-turn.ts`'s three provider paths, unchanged. Visible
   tools keep flowing natively; the block never restates them (FR-015).
 - **Config namespace `tools`** — `getMaxFindResults()` (`src/lib/config/registry.ts`,
-  clamped 5–25, default 10) stays the free-text cap; the group mode reports against it
-  rather than replacing it.
+  clamped 5–25, default 10) governs **free-text search only**. Group mode is uncapped
+  (FR-024b) — bounded by the group's own declaration, and affordable because ADR-7
+  removed schemas from the response.
 - **Worker IPC** — the `tool_declare` message and `ServiceManager`'s dispatcher
   (`docs/dev/apps/services.md` §15). The message gains a field; the transport does not
   change.
@@ -466,6 +493,11 @@ parsers to accept either shape.
 `results`, indefinitely — not as a migration window, because old conversations are
 replayed from disk forever and a transcript is never rewritten.
 
+`results` is the **only** reveal source. `alreadyVisible` and `groups` carry ids too,
+and neither may be read as a reveal: `alreadyVisible` is harmless today (those tools
+are visible by definition) but would become a gate bypass the moment it ever carries
+something the agent is not granted, and `groups` is an index, not a grant.
+
 **Consequences.** Two parsers must change together; a test must cover a transcript
 containing both shapes. This is the single highest-risk edit in the feature: a miss
 here does not throw — it silently stops revealing tools.
@@ -499,6 +531,55 @@ the whole block is omitted when the agent has no granted registry tools (FR-014)
 
 **Consequences.** Two agents with identical tools but different deferral get
 different prompts, which is correct and must be asserted in tests.
+
+### ADR-7 — Revealing IS the schema-delivery mechanism; the response carries none
+
+**Context.** `find_tools` returns each hit's full JSON schema
+(`discovery.ts:47`, `schema: tool.parameters`). That is what made an uncapped group
+mode look expensive: 35 `okf_*` schemas would enter the transcript permanently and be
+replayed on every later step.
+
+**The observation that dissolves it.** BOS *already* un-gates a discovered tool into
+the provider's native tool field. `agent-loop.ts:294-295` re-derives visibility every
+step —
+
+```ts
+const revealed = deriveRevealedIds(messages);
+const declarations = visibleTools(deps.tools, deps.gate, revealed);
+```
+
+— and `deriveRevealedIds` (`src/lib/assistant/messages.ts:123`) reads **`id` only**;
+it never touches `schema`. `visibleTools` then builds the declaration from
+`deps.tools[name].parameters`, the live registry. So on the next step the model
+receives the tool's real schema natively, from the provider. The copy in the tool
+result is dead weight that no code path reads back.
+
+**Options.** (a) Keep schemas and cap group mode (breaks SC-001, needs pagination).
+(b) Keep schemas, add a two-step list-then-schema protocol (a round trip to rebuild
+something the provider already does). (c) Drop schemas; let the existing reveal
+deliver them.
+
+**Decision.** (c). Results carry identity and relevance only. A whole 35-tool group
+becomes a few hundred tokens, so FR-024b's uncapped group mode is affordable and
+SC-001 holds with no pagination. `description` is still returned, deliberately: the
+model must judge relevance at *find* time, before the native declaration exists.
+
+**Consequences.**
+- The reveal is **sticky for the conversation**, and must be — the model calls the
+  tool on the step *after* `find_tools`, so a same-request-only un-gating would make
+  it unreachable. Reveals are transcript-derived, so they also persist across runs in
+  the same conversation.
+- Cost moves rather than vanishing: revealed tools stay in the tools array for every
+  later step. Cheaper than the transcript (the array is re-sent but not accumulated;
+  the transcript grows monotonically), not free.
+- **Each reveal invalidates the prompt cache.** Anthropic's cacheable prefix is
+  ordered tools → system → messages and BOS marks only the `system` block
+  (`model-turn.ts:191`), so any change to the tools array evicts it. Already true
+  today. It argues for revealing a whole group in one call rather than trickling tools
+  in — an argument *for* uncapped group mode.
+- Rejected: expiring reveals (after K steps or first use). It would pull a tool out
+  from under a multi-step plan, re-bust the cache on every change, and make behaviour
+  depend on step counting.
 
 ## 7. Risks / open questions
 
@@ -536,6 +617,15 @@ The query set should be written before the ranking is tuned.
 items live in `bos-marketplace`; locally `data/user-apps/items/` is empty and
 `data/system/okf-knowledge-base` is a dangling symlink, so the live item state is in
 the Dokploy deployment. Verify against production, not this checkout.
+
+**R8 — Rollout order is load-bearing, because FR-040 fails loudly.** Ship BOS first
+and every pre-feature item's tools are rejected at service start until its manifest
+catches up — 12 `workflow_*` and ~35 `okf_*` tools offline in production. The safe
+order is **items first, BOS second**, and it is available: `manifestValidator.ts`
+reads named fields off a `Record` and performs no unknown-key rejection, so adding
+`toolGroups` to a manifest is inert on today's BOS and active the moment BOS ships.
+`plan` must sequence it that way rather than treating the item edits as follow-up
+work.
 
 **R7 — D2's accepted limitation.** A group whose owning service is stopped vanishes
 from the block rather than showing as unavailable, because groups are scoped to their

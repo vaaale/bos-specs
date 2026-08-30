@@ -287,6 +287,16 @@ replacement.
   model can judge relevance rather than trusting an opaque number.
 - **FR-024**: Results MUST NOT be silently truncated in any mode. When a cap applies,
   the response MUST state how many matches were withheld and how to retrieve them.
+- **FR-024a**: A discovery response MUST NOT carry tool input schemas. A returned tool
+  is un-gated for subsequent steps and its schema is delivered by the provider's
+  native tool field; duplicating it into the transcript is redundant data that is
+  never read back. Responses carry identity and relevance only: id, description,
+  group, and why it matched.
+- **FR-024b**: Group-scoped results MUST NOT be capped. The free-text result cap
+  (`tools.maxFindResults`) applies to free-text search only. A group's size is bounded
+  by its own declaration, and FR-024a makes a whole group cheap to return, so
+  SC-001 ("the group index plus one group-scoped call reaches any granted tool") holds
+  without pagination.
 - **FR-025**: A search matching nothing MUST return the groups available to the
   calling agent, with their descriptions, instead of an empty result.
 - **FR-026**: When a query's best matches include tools the agent already has visible,
@@ -330,7 +340,14 @@ replacement.
 - **FR-040**: A service tool that does not resolve to a declared group MUST be rejected
   at registration with a reason, surfaced as a service-level error in the Settings UI,
   not only in logs.
-- **FR-041**: Service-declared tools MUST NOT be assigned to a generic fallback group.
+- **FR-041**: There MUST be no generic, default, or fallback group anywhere in the
+  system — not in the registry, not in the prompt block, not in the Settings UI, and
+  not in search. A capability whose group id does not resolve is an error, and that
+  error MUST be surfaced to the user (Settings → Services for a service-declared tool,
+  Settings → Tools for a built-in), never absorbed by a placeholder bucket or an
+  invented description. This retires three existing fallbacks: the `"General"` bucket
+  in `ToolsTab` and in `ToolAccordions`, and `groupDescription()`'s synthesized
+  `Capabilities in the "<name>" group.` text for an unknown group.
 - **FR-042**: Every marketplace item, built-in app, and bundled agent affected by this
   change MUST be migrated within this feature — including their manifests, their
   bundled specs and docs, and any prompt text of theirs that names tools or describes
