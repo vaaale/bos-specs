@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>web_view media — UI mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  html, body { color-scheme: dark; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(1200px 700px at 50% 8%, #1a1e28 0%, #12151d 45%, #0d0f15 100%);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* The media stage: the "neutral background" from the spec. */
+  .stage { background: #1a1a1a; }
+  /* object-contain + max dims = fit-to-frame, no crop, no outer scroll. */
+  .fit { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+</style>
+</head>
+<body>
+<div class="flex min-h-screen flex-col items-center justify-center gap-5 p-6">
+
+  <!-- Mockup device (NOT a feature control): switches between the two presentation states. -->
+  <div class="flex items-center gap-3">
+    <span class="text-xs font-medium uppercase tracking-wide text-white/40">web_view media · mockup</span>
+    <div class="flex items-center gap-0.5 rounded-lg border border-white/10 bg-black/30 p-0.5">
+      <button data-mode="image" class="rounded-md px-3 py-1 text-xs font-medium text-white transition-colors bg-white/15">Image</button>
+      <button data-mode="video" class="rounded-md px-3 py-1 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white">Video</button>
+    </div>
+  </div>
+
+  <!-- The html-viewer window (900 x 640). Shell + titlebar copied verbatim from Window.tsx. -->
+  <div
+    id="window"
+    class="relative flex h-[640px] w-[900px] flex-col overflow-hidden rounded-xl border border-white/20 bg-[#15171e]/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-md"
+  >
+    <!-- Titlebar: h-9 (36px), three traffic lights, centered title, pin mode -->
+    <div class="flex h-9 shrink-0 cursor-grab select-none items-center gap-2 border-b border-white/10 bg-white/5 px-3">
+      <div class="flex items-center gap-2">
+        <button aria-label="Close"    class="h-3 w-3 rounded-full bg-[#ff5f57] transition-opacity hover:opacity-80"></button>
+        <button aria-label="Minimize" class="h-3 w-3 rounded-full bg-[#febc2e] transition-opacity hover:opacity-80"></button>
+        <button aria-label="Maximize" class="h-3 w-3 rounded-full bg-[#28c840] transition-opacity hover:opacity-80"></button>
+      </div>
+      <span id="win-title" class="pointer-events-none flex-1 truncate text-center text-xs font-medium text-white/70">chart.png</span>
+      <div class="flex w-12 justify-end">
+        <button aria-label="Pin window on top" title="Keep this window on top" class="rounded p-1 text-white/25 transition-colors hover:bg-white/10 hover:text-white/60">
+          <i data-lucide="pin-off" class="h-3 w-3"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Body: the media presentation stage (replaces the current bare bg-white iframe) -->
+    <div class="relative min-h-0 flex-1 overflow-hidden">
+
+      <!-- STATE 1 — Image preview: centered, fit-to-frame, neutral bg -->
+      <div id="stage-image" class="stage absolute inset-0 flex items-center justify-center overflow-hidden p-4">
+        <img id="image-el" class="fit rounded-lg shadow-2xl" alt="Generated chart preview" />
+      </div>
+
+      <!-- STATE 2 — Video preview: native <video controls>, centered, fit-to-frame, same bg -->
+      <div id="stage-video" class="stage absolute inset-0 hidden items-center justify-center overflow-hidden p-4">
+        <video id="video-el" controls playsinline preload="metadata" class="fit rounded-lg shadow-2xl">
+          <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="max-w-[900px] text-center text-xs text-white/35">
+    Both states live in the existing <span class="font-mono text-white/50">html-viewer</span> window shell —
+    only the body swaps from a bare iframe to a fit-to-frame media stage on a neutral <span class="font-mono text-white/50">#1a1a1a</span> background.
+  </p>
+</div>
+
+<script>
+  // --- Image asset: a self-contained "generated chart" SVG (the most common agent-produced image). ---
+  const chartSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity="0.45"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="gB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34d399" stop-opacity="0.35"/><stop offset="1" stop-color="#34d399" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1000" height="620" rx="18" fill="#15171e"/>
+  <rect x="0.5" y="0.5" width="999" height="619" rx="17.5" fill="none" stroke="#ffffff" stroke-opacity="0.10"/>
+  <text x="48" y="64" fill="#ffffff" fill-opacity="0.92" font-size="26" font-weight="600">Weekly throughput</text>
+  <text x="48" y="92" fill="#ffffff" fill-opacity="0.45" font-size="15">requests / minute · generated 2026-08-25</text>
+  <g font-size="14" fill="#ffffff" fill-opacity="0.7">
+    <circle cx="772" cy="58" r="5" fill="#a78bfa"/><text x="784" y="63">Throughput</text>
+    <circle cx="900" cy="58" r="5" fill="#34d399"/><text x="912" y="63">p95</text>
+  </g>
+  <g stroke="#ffffff" stroke-opacity="0.08" stroke-width="1">
+    <line x1="48" y1="160" x2="952" y2="160"/><line x1="48" y1="260" x2="952" y2="260"/>
+    <line x1="48" y1="360" x2="952" y2="360"/><line x1="48" y1="460" x2="952" y2="460"/>
+  </g>
+  <g font-size="13" fill="#ffffff" fill-opacity="0.4" text-anchor="middle">
+    <text x="48" y="496">Mon</text><text x="199" y="496">Tue</text><text x="350" y="496">Wed</text>
+    <text x="501" y="496">Thu</text><text x="652" y="496">Fri</text><text x="803" y="496">Sat</text>
+    <text x="952" y="496">Sun</text>
+  </g>
+  <path d="M48,430 L199,360 L350,392 L501,250 L652,300 L803,180 L952,210 L952,460 L48,460 Z" fill="url(#gA)"/>
+  <polyline points="48,430 199,360 350,392 501,250 652,300 803,180 952,210" fill="none" stroke="#a78bfa" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M48,300 L199,320 L350,250 L501,300 L652,180 L803,240 L952,150 L952,460 L48,460 Z" fill="url(#gB)"/>
+  <polyline points="48,300 199,320 350,250 501,300 652,180 803,240 952,150" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+  document.getElementById('image-el').src =
+    "data:image/svg+xml;utf8," + encodeURIComponent(chartSvg);
+
+  // --- Mockup toggle: swap the two presentation states + reflect the title (filename) ---
+  const titles = { image: 'chart.png', video: 'clip.mp4' };
+  function setMode(mode) {
+    document.getElementById('stage-image').classList.toggle('hidden', mode !== 'image');
+    document.getElementById('stage-image').classList.toggle('flex',   mode === 'image');
+    document.getElementById('stage-video').classList.toggle('hidden', mode !== 'video');
+    document.getElementById('stage-video').classList.toggle('flex',   mode === 'video');
+    document.getElementById('win-title').textContent = titles[mode];
+    document.querySelectorAll('[data-mode]').forEach(b => {
+      const on = b.dataset.mode === mode;
+      b.classList.toggle('bg-white/15', on);
+      b.classList.toggle('text-white', on);
+      b.classList.toggle('text-white/60', !on);
+    });
+    // pause the video when we leave it, so switching back starts clean
+    if (mode !== 'video') document.getElementById('video-el').pause();
+  }
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  setMode('image');
+
+  lucide.createIcons();
+</script>
+</body>
+</html>

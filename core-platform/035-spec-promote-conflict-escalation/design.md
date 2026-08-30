@@ -437,16 +437,18 @@ The 25-min budget applies to **working phases only**, never to a parked `awaitin
 | 4 | **Build-Studio promote** (user-specs worktree) | `src/lib/specs/promote.ts` `promoteFeature` | user-specs, `mode:"working-tree"`, `worktreePath = <dataDir>/specs/.worktrees/<encodeBranchDir(branch)>` | `merge --no-edit <base>` → `catch { merge --abort; return {kind:"conflict",files} }` → route through `reconcile({ workingContext })`; return the session/conversation ids on escalation. |
 | 5 | **Pull** | `src/app/api/git-remotes/route.ts` `case "fetch"` | target repo (resolved by `resolveRepoPath(filesystem)`) | inline `rebaseOntoRemote` → `rebaseConflict:true, "resolve manually, or force-push"` → on rebase conflict, route through `reconcile({ workingContext: { repoKind: fsId, worktreePath: repoPath, mode:"working-tree" } })`; respond with the session/conversation ids. |
 | 6 | **Push-recovery** (non-FF) | `src/app/api/git-remotes/route.ts` `case "push"` | target repo | inline `rebaseOntoRemote` → `rebaseConflict:true` → same as #5. |
+| 7 | **VFS-mounted repo — resolve** | `src/app/api/git-sync/route.ts` `case "resolve"` | any VFS-mounted repo (`repoKind: "vfs-mount"`) | inline `git merge` / `rebase` → `MERGE_CONFLICT` "Resolve manually" → route through `reconcile({ workingContext: mountWorkContext(mount) })` using `reconcileWithSession` + the existing `getSession()` lookup. *(Found by the FR-016 completeness sweep at implementation time (task T040) — not in the original design; added here to keep the design authoritative.)* |
 
 ### FR-016 completeness sweep — the *complete* set of dead-end conflict paths
 
-The spec named four; the source sweep found the real set. **All** are covered above (rows 1–6). Enumerated by searching for conflict-tolerance in the git paths:
+The spec named four; the design sweep found six; the implementation sweep (T040) found one more. **All seven** are covered above (rows 1–7). Enumerated by searching for conflict-tolerance in the git paths:
 
 - `promoteFeature` (`src/lib/specs/promote.ts`) — row 4. ✔
 - `git-remotes` `fetch` + `push` (`src/app/api/git-remotes/route.ts`) — rows 5–6. ✔
 - **`coupledConflicts` + `promoteCoupled`** (`tools/supervisor/lib/coupled-repos.mjs`) — rows 1–2. ✔ *(the reported bug's site; not named in the spec's table — "partly in the Supervisor," which this pins.)*
 - **`appPromote`** (`tools/supervisor/lib/app-candidate.mjs`) — row 3. ✔
-- `git-ops.ts` `mergeBranch` / `rebaseOntoRemote` / `merge-tree`-style helpers: these *throw* `MERGE_CONFLICT`/return `{status:"conflict"}` — they are **leaves**, not call sites; their callers are the six rows above (or the `reconcile` pipeline, which already escalates). No *other* caller tolerates a conflict and dead-ends. **Invariant satisfied: no git conflict path returns a static "resolve manually" with no agent.**
+- **`/api/git-sync` `case "resolve"`** (VFS-mounted repo) — row 7. ✔ *(added at implementation by the T040 sweep.)*
+- `git-ops.ts` `mergeBranch` / `rebaseOntoRemote` / `merge-tree`-style helpers: these *throw* `MERGE_CONFLICT`/return `{status:"conflict"}` — they are **leaves**, not call sites; their callers are the seven rows above (or the `reconcile` pipeline, which already escalates). No *other* caller tolerates a conflict and dead-ends. **Invariant satisfied: no git conflict path returns a static "resolve manually" with no agent.**
 
 > **FR-015 (user-apps) pinned (D4):** the user-apps conflict paths are exactly row 3 (`appPromote`) and row 2 (the user-apps entry in `promoteCoupled`, both `working-tree` and `plumbing`). They reach the generalized mechanism by the Supervisor's existing **loopback** call to `/api/gitfs/reconcile` (`reconcile-client.mjs` `reconcileViaApi`), passing `repoPath` (from `APPS_REPO`/`getGitFsInstance("user-apps").root`) and the working context — the Supervisor never imports BOS source and never hard-codes a BOS path.
 
@@ -488,7 +490,7 @@ The spec named four; the source sweep found the real set. **All** are covered ab
 | FR-008/009/010/011 | §8.3 pane (`ConflictPane`) renders the session (3-way from snapshot), chat decision cards, per-hunk controls (all → `/decision`), status + abandon. |
 | FR-012/013/014 | §10 rows 4, 5, 6. |
 | FR-012a | §10 rows 1–2 (pre-check `coupledConflicts` + merge `promoteCoupled`); row 1 escalates instead of throwing and returns the session id (FR-018). |
-| FR-015/016 | §10 rows 1–3 + completeness sweep; user-apps pinned (D4). |
+| FR-015/016 | §10 rows 1–3 + 7 (VFS-mount resolve, added at implementation) + completeness sweep; user-apps pinned (D4). |
 | FR-017 | §5.3 (rollback tag from step 1; conflict on the feature branch; main `--ff-only`); never left conflicted. |
 | FR-018 | §5.1 — `ReconcileOutcome.sessionId` + `devopsConversationId` flow to every caller (incl. the Supervisor job via `reconcile-jobs.ts`). |
 | FR-019/020 | the four surfaces read `session.status` (distinguishing `awaiting-user` from terminal) via the session API. |

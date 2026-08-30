@@ -1,8 +1,8 @@
-# Specification Quality Checklist: Workflow Manager Service Tools
+# Specification Quality Checklist: Assistant Broker Capability
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-08-18
-**Feature**: [Link to spec.md](../spec.md)
+**Created**: 2026-08-25
+**Feature**: [spec.md](../spec.md)
 
 ## Content Quality
 
@@ -31,4 +31,5 @@
 
 ## Notes
 
-- Items marked incomplete require spec updates before `__SPECKIT_COMMAND_CLARIFY__` or `__SPECKIT_COMMAND_PLAN__`.
+- Event-delivery transport (parent-push vs. child-poll) was deliberately left to the design stage; spec.md states both are valid and both require a per-run buffer. This is a HOW decision, not a WHAT one.
+- The Agentic Text Editor item update is scoped as a separate follow-up (see Assumptions), keeping this spec strictly to the BOS-side capability.

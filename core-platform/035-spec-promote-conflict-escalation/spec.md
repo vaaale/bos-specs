@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-24
 
-**Status**: Draft
+**Status**: Complete — implemented, promoted, converged (2026-08-24). See `discrepancies.md` for the converge outcome.
 
 **App Target**: bos-core  *(the feature is a cross-cutting system capability — core plumbing in `src/lib/` + API routes + a new interactive resolution surface. The surface's exact form factor (dedicated window vs desktop panel vs embedded Assistant view) is a design decision, captured in Open Questions; the spec target remains bos-core.)*
 
@@ -27,6 +27,7 @@ The BOS system operates on **multiple git repos** — the BOS source repo, the u
 | `src/app/api/git-remotes/route.ts` `case "fetch"` (the "Pull" action) | any managed repo | inline `rebaseOntoRemote`; on conflict → `{ rebaseConflict: true, message: "…resolve manually, or force-push…" }` |
 | `src/app/api/git-remotes/route.ts` `case "push"` (recovery on non-FF rejection) | any managed repo | inline `rebaseOntoRemote`; on conflict → same static dead-end |
 | **Supervisor app-candidate promote** (`tools/supervisor/lib/app-candidate.mjs` `appPromote`) | user-apps repo | raw `git merge --no-edit APP_CANDIDATE_BRANCH`; on conflict → throws (no conflict handling). |
+| **VFS-mounted repo — resolve** (`src/app/api/git-sync/route.ts` `case "resolve"`) | any VFS-mounted repo | inline `git merge` / `rebase`; on conflict → `MERGE_CONFLICT` "Resolve manually" (found by the FR-016 completeness sweep, task T040 — not in the original design). |
 
 **Repro (the reported bug):** branch `bos/034-event-notification-system` fails to promote. The Supervisor's feature-promote pre-check (`coupledConflicts` in `tools/supervisor/lib/coupled-repos.mjs`) detects the conflict via a `git merge-tree --write-tree` dry-run and throws:
 ```
@@ -45,7 +46,7 @@ No agent is triggered; the user must resolve it manually via CLI. (Note: this is
 ## System overview (the six layers)
 
 1. **Detection** — every conflict-capable operation (promote, pull, push-recovery, user-apps ops, any VFS mount) reports a conflict through a single canonical entry point. That entry point creates a **resolution session** (layer 2) and is the one trigger for both the agent run (layer 3) and the auto-launching UI (layer 4).
-2. **Resolution session** — a first-class, **persisted, resumable** object that is the source of truth the UI renders and the system resumes: the working context (layer 3), a **conflict snapshot** (conflicting files, and per file/hunk the ours/theirs/base content), the rollback tag, the linked DevOps Agent conversation id, a **status state machine** (`working → awaiting-user → resolved | failed | timed-out`), and a **decision timeline** (each agent decision-request and user answer). Survives a process restart mid-resolution.
+2. **Resolution session** — a first-class, **persisted, resumable** object that is the source of truth the UI renders and the system resumes: the working context (layer 3), a **conflict snapshot** (conflicting files, and per file/hunk the ours/theirs/base content), the rollback tag, the linked DevOps Agent conversation id, a **status state machine** (`working → awaiting-user → resolved | failed | timed-out | abandoned`), and a **decision timeline** (each agent decision-request and user answer). `abandoned` is the user-initiated rollback; `failed` covers agent-initiated abandonment and genuine errors — both roll back to the pre-reconciliation state. Survives a process restart mid-resolution.
 3. **Agent** — the **conflict-resolution agent** (user-configurable in Settings → Build Studio; default the DevOps Agent, FR-025), launched with the session's working context. It reads the three-way versions of each conflicting file, attempts autonomous resolution, and **writes hunk-level merges** back. On ambiguity it issues a typed decision request (the session → `awaiting-user`), receives the user's answer through the UI, and continues.
 4. **Interaction / UI** — a conflict-resolution surface that **launches automatically when a conflict is detected** (not merely a passive state shown in an existing dialog). It renders the session, provides the 3-way diff / content comparison, the **agent↔user message channel**, per-file/per-hunk **decision controls**, manual editing, live status, and rollback/abandon. Resolving a conflict here completes the underlying operation.
 5. **Safety** — base/main never left conflicted; rollback tag always created; one in-flight escalation per repo (the existing `inFlightEscalations` guard, extended to all repo paths); loud failure if the agent has no working context it can actually write to; no silent success on an unresolvable (e.g. binary) conflict.
@@ -98,7 +99,7 @@ When a conflict is detected, the conflict-resolution UI **launches automatically
 
 5. **Given** the session is `resolved`, **When** the user confirms (or the agent completes), **Then** the underlying operation completes and the UI shows success (or the rollback tag if the user chose to abandon instead).
 
-6. **Given** the user clicks Abandon/Roll back at any point, **When** they confirm, **Then** the working tree is restored to the pre-reconciliation state via the rollback tag and the session is closed as `failed`(abandoned).
+6. **Given** the user clicks Abandon/Roll back at any point, **When** they confirm, **Then** the working tree is restored to the pre-reconciliation state via the rollback tag and the session is closed as `abandoned`.
 
 ---
 
@@ -187,7 +188,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 
 - **FR-001**: Every conflict-capable operation (promote, pull, push-recovery, user-apps ops, VFS-mounted repos) MUST report a detected conflict through a single canonical entry point that creates a resolution session — so the agent run and the auto-launching UI are triggered consistently regardless of which surface detected the conflict.
 
-- **FR-002**: A **resolution session** MUST be a first-class, persisted, resumable object containing: the working context (FR-003), a conflict snapshot (conflicting files, and per file/hunk the ours/theirs/base content), the rollback tag, the linked DevOps Agent conversation id, a status state machine (`working → awaiting-user → resolved | failed | timed-out`), and a decision timeline. The session MUST survive a process restart and be resumable.
+- **FR-002**: A **resolution session** MUST be a first-class, persisted, resumable object containing: the working context (FR-003), a conflict snapshot (conflicting files, and per file/hunk the ours/theirs/base content), the rollback tag, the linked DevOps Agent conversation id, a status state machine (`working → awaiting-user → resolved | failed | timed-out | abandoned`), and a decision timeline. The session MUST survive a process restart and be resumable.
 
 **Working context & agent (layer 3)**
 
@@ -206,7 +207,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 - **FR-008**: The UI MUST render the session: conflicting files, a 3-way (ours/theirs/base) view at hunk granularity for code and a content comparison for text, and the agent's live status.
 - **FR-009**: The UI MUST provide an **agent↔user message channel**: the agent's decision questions are visible, the user can answer them and proactively give direction, and the session reflects each exchange in the decision timeline.
 - **FR-010**: The UI MUST provide per-file/per-hunk **decision controls**: accept theirs, accept ours, keep both, edit the hunk manually, and accept the agent's suggested resolution.
-- **FR-011**: The UI MUST show the session status (`working` / `awaiting-you` / `resolved` / `failed` / `timed-out`) and a rollback/abandon affordance; resolving the session MUST complete the underlying operation, and abandoning MUST restore the pre-reconciliation state via the rollback tag.
+- **FR-011**: The UI MUST show the session status (`working` / `awaiting-user` / `resolved` / `failed` / `timed-out` / `abandoned`) and a rollback/abandon affordance; resolving the session MUST complete the underlying operation, and abandoning MUST restore the pre-reconciliation state via the rollback tag.
 
 **Call-site conversions (layer 6 — all in scope, no deferrals)**
 
@@ -222,7 +223,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 - **FR-017**: For any repo with a linear-main invariant (user-specs `main` fast-forward-only; the source base branch), the invariant MUST hold: the conflict surfaces on the working/feature branch, main is never left conflicted, and a rollback tag is always created before any merge/rebase.
 - **FR-018**: The response returned to the caller MUST include the session id (and the agent conversation id) when a conflict is escalated — the Supervisor promote response, the git-remotes fetch response, and the git-remotes push response — so the UI can link into the session.
 - **FR-019**: The UI surfaces (`VersionControls.tsx`, `VersionsTab.tsx`, `ConflictResolutionDialog.tsx`, `GitRemotesTab.tsx`) MUST show the session state (agent indicator, link into the resolution UI, conflicting file list, rollback tag) for a conflict escalated from **any** repo.
-- **FR-020**: The operation/session response MUST distinguish `awaiting-user` (non-terminal, parked for the user) from `failed`/`timed-out` (terminal, rollback tag available).
+- **FR-020**: The operation/session response MUST distinguish `awaiting-user` (non-terminal, parked for the user) from `failed`/`timed-out`/`abandoned` (terminal, rollback tag available).
 - **FR-021**: If the agent's working context cannot actually be written to, the operation MUST fail loudly (clear error + rollback tag); it MUST NOT silently claim success.
 - **FR-022**: An unresolvable conflict (e.g. binary) MUST be surfaced as requiring manual handling (rollback tag provided), NOT silently committed.
 - **FR-023** (regression): The existing BOS source-repo promote escalation MUST behave identically after this change.
@@ -231,7 +232,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 
 ### Key Entities
 
-- **Resolution session**: The first-class, persisted, resumable source of truth for one conflict resolution. Key attributes: id, working context, conflict snapshot (per file/hunk ours/theirs/base), rollback tag, linked agent conversation id, status (`working`/`awaiting-user`/`resolved`/`failed`/`timed-out`), decision timeline.
+- **Resolution session**: The first-class, persisted, resumable source of truth for one conflict resolution. Key attributes: id, working context, conflict snapshot (per file/hunk ours/theirs/base), rollback tag, linked agent conversation id, status (`working`/`awaiting-user`/`resolved`/`failed`/`timed-out`/`abandoned`), decision timeline.
 - **Working context**: The per-repo bundle the escalation provides to the agent at execution time — repo identity (source / user-specs / user-apps / VFS mount / generic), absolute worktree path, the base/branch being reconciled, and the means to read/write within that repo. The single parameter that makes the mechanism repo-agnostic (PR-1).
 - **Decision request**: A typed question the agent issues to the user for one file/hunk — options among accept-theirs / accept-ours / keep-both / manual-per-hunk (+ the agent's suggested resolution). Answered by the user through the UI; recorded in the decision timeline.
 - **Conflict snapshot**: The captured state of the conflict at detection time — the conflicting file list and, per file/hunk, the ours/theirs/base content — so the 3-way view renders and the session resumes without re-deriving it.
@@ -243,7 +244,7 @@ The resolution is always safe and always resumable. A rollback tag is created be
 
 - **SC-001**: The reported repro (user-specs promote conflict on `034-event-notification-system`) creates a session, the agent's working context targets the user-specs worktree, and the conflict is resolved (autonomously, or via a user decision in the UI) — or the promote fails/times out cleanly with the rollback tag — with **no** manual git CLI.
 
-- **SC-002**: Zero managed-repo conflict paths dead-end with a static "resolve manually" / `rebaseConflict` error. Every known dead-end (user-specs promote, Pull, push-recovery, user-apps) plus any additional one found by the design source-sweep escalates instead.
+- **SC-002**: Zero managed-repo conflict paths dead-end with a static "resolve manually" / `rebaseConflict` error. Every known dead-end (user-specs promote, Pull, push-recovery, user-apps, VFS-mounted resolve) — the full set is the **seven** paths in the Path B table — escalates instead.
 
 - **SC-003**: For a **hard** text/code conflict in any managed repo (e.g. incompatible add/add), a user can resolve it end-to-end in the auto-launched UI (see 3-way view → answer the agent's decision / edit a hunk → resolved → operation completes) without opening a terminal.
 
