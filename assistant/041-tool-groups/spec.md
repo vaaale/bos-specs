@@ -255,8 +255,11 @@ and influences search.
   ephemeral and surface agents — receives identical guidance.
 - **FR-014**: If the agent has no granted registry tools, the block MUST be omitted
   entirely rather than emitted empty.
-- **FR-015**: The block MUST NOT restate descriptions or schemas of visible tools,
-  which the provider already delivers natively.
+- **FR-015**: Under each group, the block MUST list the **bare names** of that group's
+  granted *visible* tools, and MUST NOT restate their descriptions or schemas, which
+  the provider already delivers natively. Deferred tools MUST NOT be named — a group
+  reports only how many of its tools are hidden, alongside its discovery instruction.
+  Naming them would defeat deferral; counting them does not.
 
 ### Functional Requirements — search quality
 
@@ -309,9 +312,9 @@ replacement.
   say so explicitly.
 - **FR-034**: Free-text queries that name a group MUST also surface that group's
   members, so the two modes do not diverge in what they can reach.
-- **FR-035**: Every live `find_tools` implementation MUST behave identically with
-  respect to FR-016 through FR-034; any implementation not updated MUST be removed
-  rather than left divergent.
+- **FR-035**: There MUST be exactly one `find_tools` implementation. Reachability
+  analysis (see Resolved Decisions, D4) found the other two are already dead code:
+  they MUST be deleted, not brought to parity.
 - **FR-036**: The mechanism that derives revealed tool ids from the transcript MUST
   keep working across any change to the discovery response shape, including for
   conversations that already contain responses in the old shape.
@@ -429,13 +432,44 @@ replacement.
 - Changing which tools are deferred by default for any existing agent.
 - Any change to how tools execute, are gated, or are timed out.
 
-## Needs Clarification
+## Resolved Decisions
 
-- **NC-001**: Should the block list the bare *names* of a group's visible tools under
-  the group heading (cheap; reinforces grouping the model otherwise infers only from a
-  flat list), or list groups only? Assumption if unresolved: groups only.
-- **NC-002**: For an agent granted tools whose owning service is stopped, should the
-  group be omitted (assumption) or shown as unavailable so the agent knows the
-  capability exists but is down?
-- **NC-003**: Should the block be suppressible from Settings for users who prefer to
-  hand-author tool guidance in `AGENT.md`? Assumption if unresolved: no toggle.
+Settled before `plan`; each replaces an earlier open question.
+
+- **D1 — The block names visible tools, counts hidden ones** (was NC-001; see FR-015).
+  The provider's tool field is flat and unordered, so a tool's group is otherwise
+  inferrable only from its name prefix — and prefixes are demonstrably unreliable
+  (Scheduler shares none; `app_` spans two groups). Bare names are cheap, live in the
+  cached system block, and make the grouping real rather than implied. The asymmetry
+  is the point: **visible → named, hidden → counted**, so the block never leaks what
+  deferral exists to hide.
+
+- **D2 — A group whose owning service is stopped is omitted** (was NC-002). Not a
+  preference but a consequence of FR-004: groups are scoped to their tools' lifecycle,
+  so when a service stops, its capabilities unregister and its group leaves the
+  catalog — at which point BOS no longer knows the group those granted-but-unresolved
+  ids belonged to. Showing "Workflows (unavailable)" would require registering groups
+  at **install** time from the manifest rather than at tool-registration time, which
+  contradicts FR-004. The loss is bounded: the existing unresolved-tool-ids warning
+  already fires. Recorded as a deliberate v1 limitation; the upgrade path is
+  manifest-sourced group registration, and it should be taken only if stopped-service
+  confusion shows up in practice.
+
+- **D3 — No suppression toggle** (was NC-003). The block is already gate-derived, so
+  it is correct per agent without configuration, and a toggle would add a config
+  namespace plus a second code path through prompt composition. Anyone wanting custom
+  guidance can still write it in `AGENT.md`, which remains additive.
+
+- **D4 — The two other `find_tools` implementations are deleted, not updated**
+  (see FR-035). Reachability analysis over `src/`, `e2e/` and `tools/` found:
+  `makeDiscoveryTools` (`src/lib/agent/subagents/tools.ts`) has **zero** callers;
+  `toolsFor`, `SUBAGENT_TOOLS`, `SPEC_TOOLS`, `makeSpecTools`, `DEV_DELEGATE_SCHEMA`,
+  `RUN_COMMAND_SCHEMA` and `pickDeferredIds` in that same file have zero external
+  references; every remaining mention of the module elsewhere is a **code comment**.
+  Its one real importer is `getToolSchema` in `src/app/api/assistant/discovery/route.ts`
+  — and that route has zero callers repo-wide. `DEV_TOOLS` and
+  `DELEGATE_TO_DEVELOPER` likewise survive only in comments. So both are dead code:
+  `docs/dev/architecture-overview.md` §8.3 was **right** that `subagents/tools.ts`
+  "was retired"; the file simply was never deleted. This means there is exactly one
+  live `find_tools` (`src/lib/assistant/tools/server/discovery.ts`), and FR-016–FR-034
+  have exactly one implementation site.

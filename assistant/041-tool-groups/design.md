@@ -201,6 +201,21 @@ hidden tools, since it also tells the agent what the group list *is*.
 (FR-007); its discovery instruction is emitted iff ≥1 of those ids is in
 `gate.deferred` (FR-008). Nothing about `revealed` enters the block (FR-011).
 
+**Per-group rendering follows D1's asymmetry (FR-015): visible tools are named,
+hidden tools are counted.** Roughly:
+
+```
+WEB — <group description>
+  web_search, web_fetch
+  2 more available here — call find_tools(group: "web")
+```
+
+The name list costs ~1–3 tokens per tool inside the cached system block and is what
+makes group membership real for the model, which cannot otherwise recover it from the
+flat provider tool array. The count line is emitted only when the group has hidden
+tools; enumerating those names would defeat deferral, while counting them does not.
+A group with no hidden tools gets no second line at all.
+
 Two rules that must be written as rules, not left to fall out of the set arithmetic:
 
 - **Non-registry tools are excluded by construction (FR-005).** Discovery tools,
@@ -303,8 +318,8 @@ plan should treat it as created.
 | `src/lib/assistant/tools/server/mcp.ts` | Tool descriptions naming non-existent legacy tools (FR-051) |
 | `src/lib/assistant/start-run.ts` | Pass the run's gate + tool map into `composeInstructions` |
 | `src/lib/assistant/delegation-gate.ts` | Same for named/ephemeral/surface compose functions (FR-010) |
-| `src/lib/agent/subagents/tools.ts` | `makeDiscoveryTools`'s `find_tools` brought to parity, or deleted with its loop (FR-035) |
-| `src/app/api/assistant/discovery/route.ts` | Same ranking + envelope as the server tool (FR-035) |
+| `src/lib/agent/subagents/tools.ts` | **Deleted** — dead code (spec D4) |
+| `src/app/api/assistant/discovery/route.ts` | **Deleted** — dead route, its only importer of the above (spec D4) |
 | `src/app/api/tool-descriptions/route.ts` | Catalog carries group ids; group editing lives in the new route |
 | `src/components/apps/settings/ToolsTab.tsx` | Collapsed groups, group editor, filter |
 | `src/components/apps/settings/assistant/ToolAccordions.tsx` | Adopt the shared component |
@@ -318,7 +333,7 @@ plan should treat it as created.
 | `docs/dev/assistant/actions-and-tools.md` | Group model, discovery modes |
 | `docs/dev/apps/services.md` §15 | `toolGroups` declaration contract |
 | `docs/usage/settings/overview.md` | Link the new Tools page |
-| `docs/dev/architecture-overview.md` §8.2/§8.3 | Group model; and the §8.3 drift in R4 |
+| `docs/dev/architecture-overview.md` §8.2/§8.3 | Group model; §8.2's group list and "80+ capabilities, 20+ groups" figures; drop the §8.3 reference to the deleted module |
 
 ### Modified — outside this repo (spec FR-042)
 
@@ -334,7 +349,8 @@ plan should treat it as created.
 | Path | Change |
 |---|---|
 | `bos-system-specs/app-infrastructure/039-service-tool-exposure/design.md` | The `"Service Tools"` group in its file plan (`:175`) is superseded, and its open question (`:252`) about naming service-tool capability descriptors is closed by ADR-5 (constitution VI) |
-| `bos-system-specs/discrepancies.md` | Record the §8.3 doc/source drift in R4 |
+*(No `discrepancies.md` entry is needed — see R4: `architecture-overview.md` §8.3 was
+already correct, and the deletion makes it true.)*
 
 ## 5. Integration points
 
@@ -500,16 +516,17 @@ mid-session still changes the block for the *next* run. Accepted; worth a note i
 degrades to an unresolved id rendering as a slug in the UI rather than throwing.
 A test asserting every `Capability.group` resolves to a live group is cheap insurance.
 
-**R4 — Three discovery implementations.** `discovery.ts`, `subagents/tools.ts`
-(`makeDiscoveryTools`), and `/api/assistant/discovery`. FR-035 requires parity or
-deletion. `architecture-overview.md` §8.3 states `subagents/tools.ts` "was retired",
-while the file still exists and still exports a live `find_tools` — an unrecorded
-doc/source drift that `plan` must resolve first, since "delete it" and "bring it to
-parity" are very different task lists. Two obligations follow, both for `plan`, not
-optional: (1) settle retire-vs-parity **before** task breakdown, since it changes the
-task list rather than one task's content; (2) record the drift in
-`bos-system-specs/discrepancies.md` (store root, alongside `overview.md`) as
-constitution VI requires — this is a task, not a "candidate entry".
+**R4 — RESOLVED (spec D4): there is only one live discovery implementation.**
+Reachability analysis settled this before `plan`. `makeDiscoveryTools`
+(`src/lib/agent/subagents/tools.ts`) has zero callers; that module's other exports
+have zero external references; every remaining mention of it in `src/` is a code
+comment; its one importer, `getToolSchema` in
+`src/app/api/assistant/discovery/route.ts`, sits in a route with zero callers
+repo-wide. Both are deleted rather than updated, so FR-016–FR-034 land in exactly one
+file. `architecture-overview.md` §8.3 was **correct** that the module "was retired" —
+so this is not doc/source drift needing a `discrepancies.md` entry; deleting the file
+is what finally makes the doc true. The residual risk is only that `tsc` surfaces a
+transitive importer the grep missed, which is a compile error, not a silent one.
 
 **R5 — Benchmark subjectivity (SC-004).** "Correct tool in the top three" needs a
 fixed, committed query set, or it becomes a moving target that is tuned to pass.
@@ -520,11 +537,16 @@ items live in `bos-marketplace`; locally `data/user-apps/items/` is empty and
 `data/system/okf-knowledge-base` is a dangling symlink, so the live item state is in
 the Dokploy deployment. Verify against production, not this checkout.
 
-**Open questions** (mirroring `spec.md`'s Needs Clarification, unresolved at design
-time): NC-001 whether the block lists bare visible-tool names per group; NC-002
-whether a granted-but-service-stopped group is omitted or shown as unavailable;
-NC-003 whether the block is suppressible from Settings. None changes the module
-structure above — each is a branch inside `buildToolGroupsBlock`.
+**R7 — D2's accepted limitation.** A group whose owning service is stopped vanishes
+from the block rather than showing as unavailable, because groups are scoped to their
+tools' lifecycle (FR-004) and BOS therefore cannot name the group of an unresolvable
+id. The agent will report "I have no workflow tools" rather than "the Workflow
+Manager service is stopped". Accepted for v1; the upgrade path is registering groups
+at install time from the manifest, which would require relaxing FR-004.
+
+**Open questions: none.** `spec.md`'s three clarifications are settled as D1–D4 in its
+Resolved Decisions section, and D1 (visible tools named, hidden tools counted) is
+implemented in §3.3(e) above.
 
 No UI mockup was provided; the Settings changes are modifications to two existing
 panels rather than a new surface.
