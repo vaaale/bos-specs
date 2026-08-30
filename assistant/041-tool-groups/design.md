@@ -315,18 +315,27 @@ Files this feature creates or modifies. Existing mechanisms merely called into a
 | `src/lib/agent/discovery-search.ts` | Tokenizer, IDF index, scorer, `search()` — pure |
 | `src/app/api/tool-groups/route.ts` | GET effective groups; PATCH one group's description/aliases |
 | `src/components/apps/settings/tools/ToolGroupList.tsx` | Shared collapsible group shell + grouping helper |
-| `src/lib/agent/__tests__/discovery-search.test.ts` | Ranking unit tests + the SC-004 natural-language benchmark (see note below) |
-| `src/lib/agent/__tests__/tool-groups.test.ts` | Group registry, dynamic lifecycle, override persistence, and the ADR-1 invariant that every `Capability.group` resolves to a live group |
-| `src/lib/assistant/__tests__/tool-groups-block.test.ts` | Block membership/hint rules per gate kind, and the preamble's presence for named/ephemeral/surface agents (SC-011) |
-| `src/lib/assistant/__tests__/prompt-tool-names.test.ts` | SC-010: every tool name appearing in generated prompt text resolves against the live registry — the enforcement for FR-050/FR-051 |
-| `src/lib/assistant/__tests__/revealed-ids-shapes.test.ts` | ADR-4/R1: reveal derivation over a transcript containing both the legacy array and the new envelope |
+| `tests/agent/discovery-search.test.ts` | Ranking unit tests + the SC-004 natural-language benchmark (see note below) |
+| `tests/agent/tool-groups.test.ts` | Group registry, dynamic lifecycle, override persistence, `resolveGroup` precedence, and the ADR-1 invariant that every `Capability.group` resolves to a live group |
+| `tests/agent/service-tool-groups.test.ts` | Manifest validation, group resolution at `tool_declare`, rejection + `lastError` surfacing |
+| `tests/assistant/tool-groups-block.test.ts` | Block membership/hint rules per gate kind, D1 rendering, and the preamble's presence for named/ephemeral/surface agents (SC-011) |
+| `tests/assistant/prompt-tool-names.test.ts` | SC-010: every tool name appearing in generated prompt text resolves against the live registry — the enforcement for FR-050/FR-051 |
+| `tests/assistant/revealed-ids-shapes.test.ts` | ADR-4/R1/R9: reveal derivation over a transcript carrying both the legacy array and the new envelope, and over a compacted view |
 | `docs/usage/settings/tools.md` | Settings → Tools user page (none exists today) |
 
-`src/lib/agent/__tests__/` is a **new** directory. The repo's convention is
-per-sub-area test folders (`src/lib/assistant/__tests__/`,
-`src/lib/agent/scratchpad/__tests__/`, `src/lib/integrations/__tests__/`), so this
-follows the pattern rather than inventing one — but it does not exist yet and the
-plan should treat it as created.
+Unit tests live under **`tests/<area>/*.test.ts`**, not beside the source.
+`playwright.unit.config.ts` sets `testDir: "./tests"` with `testMatch: /.*\.test\.ts/`
+and is run via `npm run test:unit` (which sets
+`NODE_OPTIONS=--conditions=react-server`, required for anything importing a
+`server-only` module); `playwright.config.ts` sets `testDir: "./e2e"`. `tests/agent/`
+and `tests/assistant/` already exist — e.g. `tests/agent/service-tool-bridge.test.ts`
+from 039.
+
+Worth knowing while working here: eight files under `src/**/__tests__/*.test.ts`
+(`src/lib/assistant/__tests__/`, `src/lib/agent/scratchpad/__tests__/`,
+`src/lib/integrations/__tests__/`) are matched by **neither** config and therefore
+never run; only `agent-loop.test.ts` has a live counterpart under `tests/`. Out of
+scope here — noted so nobody adds a ninth by pattern-matching on them.
 
 ### Modified
 
