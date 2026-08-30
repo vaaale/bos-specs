@@ -35,14 +35,22 @@ items to change.
 | III. Always Delegate; Claude Codes | Implementation is a BOS-source change and MUST run on a Claude sub-agent (Developer). Noted for `plan`. |
 | IV. Minimize Blast Radius | Complies — `bos/tool-groups` feature branch; the two marketplace items are separate repos with their own branches. |
 | V. The VFS Is Not the Source | Complies — all edits in `src/`, `seed/`, `docs/`; runtime overrides in `data/`. |
-| VI. Specs & Docs Stay in Sync | In scope: `docs/dev/assistant/actions-and-tools.md`, `docs/dev/apps/services.md` §15, `docs/usage/` for the Settings tab. The pre-existing 039 spec statement that service tools land in a `"Service Tools"` group becomes false and must be updated, not left to drift. |
+| VI. Specs & Docs Stay in Sync | In scope: `docs/dev/assistant/actions-and-tools.md`, `docs/dev/apps/services.md` §15, a **new** Settings → Tools page under `docs/usage/settings/` (no such page exists today — that directory holds 8 pages, none for Tools), and 039's superseded group statement. |
 | VII. Respect Boundaries | No dependency changes; ranking is hand-written and deterministic, so no new package. `tsc --noEmit` + `lint` gate the change. |
 
-One flagged tension, not a violation: principle VI obliges updating
-`user-specs/039-service-tool-exposure` (whose FR-005/ADR-007 pin the
-`"Service Tools"` group) in the same change. That spec lives in the *user* store
-while this one lives in the *system* store; the cross-store edit needs the same
-branch name in both.
+One consequence worth naming: principle VI obliges updating
+`bos-system-specs/app-infrastructure/039-service-tool-exposure` in the same change,
+because this feature supersedes its `"Service Tools"` group. Two precise citations,
+since the obvious ones are wrong: 039's `spec.md:67` FR-005 is about *gating*
+(allowlist/deferred parity with built-ins) and its `design.md:223` ADR-007 is about
+*gating identity* (tool name, not capability id) — neither mentions the group. The
+group is pinned in that design's file plan (`design.md:175`,
+`registerAdditionalCapabilities(..., group: 'Service Tools')`) and left open in its
+own open-questions list (`design.md:252`, "exact naming convention for service tool
+capability descriptors under the `Service Tools` group"). This feature closes that
+open question. Both specs live in the **same** store (different Projects: `assistant`
+and `app-infrastructure`), so this is an ordinary same-branch edit, not a cross-store
+coordination problem.
 
 ## 3. Architecture
 
@@ -125,6 +133,14 @@ left the catalog (FR-049) — so unlike `setMetadataOverride`
 (`tool-metadata-overrides.ts`, which throws `unknown tool: ${id}`), it validates
 shape rather than membership.
 
+**FR-046 ("takes effect without a restart") is a property of this module's read
+path, and must stay one.** It holds because the effective view is resolved per
+invocation — `gateFromAgent()` (`src/lib/assistant/gate.ts`) already calls
+`readMetadataOverrides()` on every gate construction, and `getEffectiveGroups()`
+follows that pattern. A process-lifetime cache here would silently break FR-046; if
+one is ever needed for cost, it must key off a file mtime/revision, never be
+unconditional.
+
 **(c) Ranking — `src/lib/agent/discovery-search.ts` (new, framework-free), replacing
 `discovery-score.ts`'s `scoreCapability`.** A pure pipeline:
 
@@ -169,17 +185,47 @@ revealed — they need no revealing.
 `composeInstructions(agentId)` gains an optional second argument carrying the run's
 gate and tool map; when absent the block is omitted rather than guessed at.
 
-Membership is computed as: for each granted registry id in `gate.allow` that resolves
-against `listCapabilities()`, take its group; a group is emitted iff it has ≥1 such id
+The block has two parts.
+
+**The preamble (FR-013)** is a fixed, BOS-authored paragraph — not per-agent prose —
+stating when to reach for `find_tools` (no visible tool fits; the task implies a
+specialized tool; a group below advertises hidden tools) and, explicitly, that MCP
+tools are **not** reachable this way but through the MCP gateway tools (FR-050). It is
+emitted by `buildToolGroupsBlock` itself, so it reaches named, ephemeral, and surface
+agents identically (SC-011) — which is the whole reason it moves out of
+`AGENT.md`. It is emitted whenever the block is emitted, including when no group has
+hidden tools, since it also tells the agent what the group list *is*.
+
+**Membership** is computed as: for each id in `gate.allow` that resolves against
+`listCapabilities()`, take its group; a group is emitted iff it has ≥1 such id
 (FR-007); its discovery instruction is emitted iff ≥1 of those ids is in
-`gate.deferred` (FR-008). Ordering is built-in registry order, then dynamic groups
-(FR-012). Nothing about `revealed` enters the block (FR-011).
+`gate.deferred` (FR-008). Nothing about `revealed` enters the block (FR-011).
+
+Two rules that must be written as rules, not left to fall out of the set arithmetic:
+
+- **Non-registry tools are excluded by construction (FR-005).** Discovery tools,
+  consent/elicitation tools, and window-scoped surface Tier-2 tools are exactly the
+  class that bypasses the allowlist in `visibleTools()`
+  (`src/lib/assistant/tools.ts` — `gate.registryIds.has(name)` short-circuits the
+  allow and deferred checks). They have no `Capability`, therefore no group, and the
+  builder must never synthesize a "General"/empty bucket for them. The intersection
+  with `listCapabilities()` above already achieves this; stating it prevents a later
+  "helpful" fallback from reintroducing them.
+- **Ordering (FR-012) comes from the group table, not from capability order.** Today
+  group order is an accident of first-seen capability order. Under ADR-1 the built-in
+  group table in `tool-groups.ts` *is* the declared order; dynamic groups follow it,
+  sorted by id. That is what makes the cacheable prefix of the prompt stable across
+  service restarts.
 
 **(f) Settings + panel surfaces.** `ToolGroupList` — one shared collapsible-group
 component and one shared grouping helper — replaces the duplicated
 `groupByCategory` in `ToolsTab.tsx` and `assistant/ToolAccordions.tsx` (FR-048).
-`ToolsTab` additionally renders the per-group description/alias editor, reusing
-`useAutoSave` + `AutoSaveStatus` exactly as `ToolRow` does, and a filter box (FR-047).
+Every group renders collapsed on load (FR-043) with a header carrying its display
+name and its tool count (FR-044), each independently expandable. `ToolsTab`
+additionally renders the per-group description/alias editor, reusing `useAutoSave`
+(`src/components/apps/settings/hooks/useAutoSave.ts`) + `AutoSaveStatus`
+(`src/components/apps/settings/AutoSaveStatus.tsx`) exactly as `ToolRow` does, and a
+filter box (FR-047).
 
 A third consumer surfaced during this design and is folded in:
 `src/lib/agent/tool-manifest.ts` builds `ASSISTANT_TOOLS` from `actionCapabilities()`,
@@ -189,8 +235,16 @@ replacing display names this file must change regardless; it switches to
 `listCapabilities()` and resolves ids to display names.
 
 **(g) Service-declared groups.** `ToolGroupDeclaration { id, name, description,
-aliases? }` is added to `src/core/service/serviceToolTypes.ts` (framework-free, shared
-with worker entrypoints, exactly where `ToolDeclaration` already lives);
+aliases? }` is added to `src/core/service/serviceToolTypes.ts`, where
+`ToolDeclaration` already lives. **This is a compile-time type only, and an installed
+item's worker never imports it.** That module's own header comment describes itself as
+"shared between … worker entrypoints", which is true for BOS-internal fixtures and
+misleading for a marketplace item: an item's service entry runs unbundled, outside the
+`@/` module graph, and cannot import any `src/` TypeScript module. An item declares a
+group by posting a **plain object literal** over the existing `tool_declare` IPC
+message — exactly as it already posts `declaration` today
+(`docs/dev/apps/services.md` §15) — and the type exists solely so BOS's own side of
+that boundary is checked;
 `ServiceManifest.toolGroups?: ToolGroupDeclaration[]` in `src/core/service/types.ts`;
 `ToolDeclaration.group?: string` naming one of them. `manifestValidator.ts` — which
 today validates only the `deploymentMode` enum — requires a non-empty, well-formed,
@@ -220,9 +274,18 @@ Files this feature creates or modifies. Existing mechanisms merely called into a
 | `src/lib/agent/discovery-search.ts` | Tokenizer, IDF index, scorer, `search()` — pure |
 | `src/app/api/tool-groups/route.ts` | GET effective groups; PATCH one group's description/aliases |
 | `src/components/apps/settings/tools/ToolGroupList.tsx` | Shared collapsible group shell + grouping helper |
-| `src/lib/agent/__tests__/discovery-search.test.ts` | Ranking unit tests + the SC-004 natural-language benchmark |
-| `src/lib/agent/__tests__/tool-groups.test.ts` | Group registry, dynamic lifecycle, override persistence |
-| `src/lib/assistant/__tests__/tool-groups-block.test.ts` | Block membership/hint rules per gate kind |
+| `src/lib/agent/__tests__/discovery-search.test.ts` | Ranking unit tests + the SC-004 natural-language benchmark (see note below) |
+| `src/lib/agent/__tests__/tool-groups.test.ts` | Group registry, dynamic lifecycle, override persistence, and the ADR-1 invariant that every `Capability.group` resolves to a live group |
+| `src/lib/assistant/__tests__/tool-groups-block.test.ts` | Block membership/hint rules per gate kind, and the preamble's presence for named/ephemeral/surface agents (SC-011) |
+| `src/lib/assistant/__tests__/prompt-tool-names.test.ts` | SC-010: every tool name appearing in generated prompt text resolves against the live registry — the enforcement for FR-050/FR-051 |
+| `src/lib/assistant/__tests__/revealed-ids-shapes.test.ts` | ADR-4/R1: reveal derivation over a transcript containing both the legacy array and the new envelope |
+| `docs/usage/settings/tools.md` | Settings → Tools user page (none exists today) |
+
+`src/lib/agent/__tests__/` is a **new** directory. The repo's convention is
+per-sub-area test folders (`src/lib/assistant/__tests__/`,
+`src/lib/agent/scratchpad/__tests__/`, `src/lib/integrations/__tests__/`), so this
+follows the pattern rather than inventing one — but it does not exist yet and the
+plan should treat it as created.
 
 ### Modified
 
@@ -254,7 +317,8 @@ Files this feature creates or modifies. Existing mechanisms merely called into a
 | `seed/agents/assistant/AGENT.md` | Same; move delegation line to the delegation section (FR-052) |
 | `docs/dev/assistant/actions-and-tools.md` | Group model, discovery modes |
 | `docs/dev/apps/services.md` §15 | `toolGroups` declaration contract |
-| `docs/usage/` (Settings → Tools page) | Collapsible groups, group descriptions |
+| `docs/usage/settings/overview.md` | Link the new Tools page |
+| `docs/dev/architecture-overview.md` §8.2/§8.3 | Group model; and the §8.3 drift in R4 |
 
 ### Modified — outside this repo (spec FR-042)
 
@@ -265,7 +329,12 @@ Files this feature creates or modifies. Existing mechanisms merely called into a
 | `bos-marketplace/items/okf-knowledge-base/services/service.json` | Declare its group(s) for ~35 `okf_*` tools |
 | `bos-marketplace/items/okf-knowledge-base/spec/tool-surface.md` | Same |
 | `bos-marketplace/items/okf-knowledge-base/` bundled agents/skills | Prompt text naming tools / describing discovery |
-| `user-specs/039-service-tool-exposure/spec.md` | FR-005/ADR-007's `"Service Tools"` group is superseded (constitution VI) |
+### Modified — in this spec store, same branch
+
+| Path | Change |
+|---|---|
+| `bos-system-specs/app-infrastructure/039-service-tool-exposure/design.md` | The `"Service Tools"` group in its file plan (`:175`) is superseded, and its open question (`:252`) about naming service-tool capability descriptors is closed by ADR-5 (constitution VI) |
+| `bos-system-specs/discrepancies.md` | Record the §8.3 doc/source drift in R4 |
 
 ## 5. Integration points
 
@@ -346,9 +415,17 @@ for exactly the queries they exist to serve.
 ranking with IDF, stopwords, light stemming, and curated aliases.
 
 **Decision.** (c). (b) would need a model call or a new dependency inside a path that
-runs on every discovery call, and would make ranking non-deterministic — it cannot be
-unit-tested the way `discovery-score.ts` is today, and it violates the framework-free
-purity that lets one implementation serve the server tool, the API route, and tests.
+runs on every discovery call, would make ranking non-deterministic, and would break
+the framework-free purity that lets one implementation serve the server tool, the API
+route, and tests.
+
+A correction to the obvious version of that argument: `discovery-score.ts` is **not**
+unit-tested today — nothing in `src/**` imports it except its three call sites
+(`src/lib/assistant/tools/server/discovery.ts`,
+`src/lib/agent/subagents/tools.ts`, `src/app/api/assistant/discovery/route.ts`). So
+this feature does not *preserve* testability; it establishes it, and the benchmark in
+§4 is the first test the ranking has ever had. That makes SC-004 load-bearing rather
+than confirmatory.
 Curated aliases (FR-020) are the deliberate substitute for semantic reach: "email" →
 `gmail_*` is authored once, by a human, and is inspectable.
 
@@ -428,8 +505,11 @@ A test asserting every `Capability.group` resolves to a live group is cheap insu
 deletion. `architecture-overview.md` §8.3 states `subagents/tools.ts` "was retired",
 while the file still exists and still exports a live `find_tools` — an unrecorded
 doc/source drift that `plan` must resolve first, since "delete it" and "bring it to
-parity" are very different task lists. Candidate entry for
-`bos-system-specs/discrepancies.md`.
+parity" are very different task lists. Two obligations follow, both for `plan`, not
+optional: (1) settle retire-vs-parity **before** task breakdown, since it changes the
+task list rather than one task's content; (2) record the drift in
+`bos-system-specs/discrepancies.md` (store root, alongside `overview.md`) as
+constitution VI requires — this is a task, not a "candidate entry".
 
 **R5 — Benchmark subjectivity (SC-004).** "Correct tool in the top three" needs a
 fixed, committed query set, or it becomes a moving target that is tuned to pass.
