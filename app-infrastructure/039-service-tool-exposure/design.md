@@ -172,7 +172,7 @@ The worker sends `tool_error` with `{ callId, message, stack? }`; `ServiceManage
 |---|---|---|
 | Assistant tool contract | `src/lib/assistant/tools.ts` | `ToolDeclaration`/`AssistantTool` shape; service tools implement `execution: "server"` + `execute`. |
 | Server-tool execution | `src/lib/assistant/agent-loop.ts` | `runServerTool` runs the bridge's generated `execute` with kernel guarantees (caught, timed out, in-band errors). |
-| Capability registry | `src/lib/agent/capabilities-registry.ts` | `registerAdditionalCapabilities(..., group: 'Service Tools')` for informational capability descriptors (catalog only; not gated by it). |
+| Capability registry | `src/lib/agent/capabilities-registry.ts` | `registerAdditionalCapabilities(...)` for capability descriptors. **SUPERSEDED by 041-tool-groups (assistant/041, ADR-5):** the `group: 'Service Tools'` bucket is gone. An item now declares its own group(s) in `service.json` (`toolGroups`), each tool resolves to one, and a tool resolving to none is rejected — there is no fallback group. |
 | Loopback auth | `src/lib/secrets/auth-scope.ts` | `isLoopbackOnly` gates the HTTP invocation route (FR-009). |
 | Service registry events | `src/system/marketplace/install/serviceInstaller.ts` + `src/core/service/ServiceRegistry.ts` | `service:uninstalled` (emitted by the uninstall orchestration) / `service:status:changed` drive tool unregistration. |
 | Crash recovery | `src/core/service/CrashRecovery.ts` | Worker exit path triggers tool unregistration; restart re-registers. |
@@ -249,6 +249,6 @@ The worker sends `tool_error` with `{ callId, message, stack? }`; `ServiceManage
 
 ## 9. Open Questions (for plan/tasks)
 - ~~Gating identity (tool name vs capability id)~~ — resolved in ADR-007: gate identity is the tool name; the gating change (source `registryIds` from `listCapabilities()` in `gate.ts` and `tool-gate.ts`) is now part of the file plan (§5 Modified).
-- Exact naming convention for service tool capability descriptors under the `Service Tools` group (namespace per serviceId to avoid collisions).
+- ~~Exact naming convention for service tool capability descriptors under the `Service Tools` group~~ — **CLOSED by 041-tool-groups (assistant/041, ADR-5).** There is no shared bucket to namespace within: each item declares its own manifest-level `toolGroups`, validated at install, and its tools are filed under those.
 - Whether `tool_declare` should be bounded (e.g. max tools per service) to limit abuse — recommend a cap for v1.
 - Whether the loopback HTTP route ships in v1 at all, or only the contract is documented (leaning: contract-only unless a service opts in).
