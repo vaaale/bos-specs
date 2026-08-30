@@ -618,6 +618,22 @@ items live in `bos-marketplace`; locally `data/user-apps/items/` is empty and
 `data/system/okf-knowledge-base` is a dangling symlink, so the live item state is in
 the Dokploy deployment. Verify against production, not this checkout.
 
+**R9 — Reveal derivation MUST stay on the canonical transcript, not the model view.**
+`agent-loop.ts` holds two arrays: `contextMessages` (line 280 — the compacted,
+hook-modified view actually sent to the model, line 304) and `messages` (the canonical
+transcript). `deriveRevealedIds(messages)` (line 294) deliberately reads the latter.
+That is what makes reveals survive compaction: Layer 1 clears older tool results from
+the *view* (`keepToolResults`, default 2), so a `find_tools` result can vanish from
+what the model sees while the tools it revealed stay callable — which is the correct
+asymmetry, since a tool in the native array is self-describing.
+
+Switching derivation to `contextMessages` would look like a tidy-up and would silently
+un-reveal tools mid-conversation the moment compaction kicks in — the same silent
+failure class as R1, and not caught by any test that runs short conversations. Two
+consequences for `plan`: assert this in a test with a compacted view, and do **not**
+pin `find_tools` into the compaction plugin's `unrecoverableTools` list — it looks
+like a fix for this and is unnecessary, since derivation never reads the view.
+
 **R8 — Rollout order is load-bearing, because FR-040 fails loudly.** Ship BOS first
 and every pre-feature item's tools are rejected at service start until its manifest
 catches up — 12 `workflow_*` and ~35 `okf_*` tools offline in production. The safe
