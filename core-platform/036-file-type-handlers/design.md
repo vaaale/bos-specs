@@ -149,7 +149,7 @@ merely *calls into* — `os-store.launch`, `listInstalledManifests`, `fsClient.r
 | `src/apps/files/index.tsx` | mod | (a) load the handler view for the menu's file MIME on demand; (b) double-click: resolve `effectiveSelected` and, if present, `launch(selected.appId, buildLaunchParams(decl, path, action))` (from `src/os/file-handlers.ts`) else the existing in-app path; (c) right-click: render the "Open with" group (label = `label ?? name`, icon = the **target app's own `icon`**, checkmark = `selected`), hairline divider, then the existing actions; (d) on pick: `launch` with `action = open|edit`, and if the pick is render-capable, `POST` the selection; (e) **the "Open with" group and the double-click handler resolution are gated on `entry.type === "file"`** — a directory (`entry.type === "dir"`) keeps its existing behavior entirely unchanged (FR-012); the gate sits at the same seam the code already branches on (`openEntry`'s `entry.type === "dir"` check, and the context menu's `"Download as zip"` vs `"Download"` label). |
 | `src/lib/apps/store.ts` | mod | Mirror `fileHandlers` through `InstalledApp` (type), `readApp` (read `app.json`), and `toManifest` (emit onto `AppManifest`) — the exact three places `eventHandlers` is handled today (read the file; `readApp`'s `eventHandlers:` line and `toManifest`'s `eventHandlers:` line are the template). |
 | `src/lib/os-client.ts` | mod | Add `fileHandlersClient` (`list(mime)`, `setSelected(mime, appId?)`) — thin `fetch` wrappers over `/api/file-handlers`, the same shape as the existing `fsClient`/`settingsClient`. `fsClient.rawUrl` **stays** (it is the conversation-aware variant, still used by the Files app's own image `<img src>`); the shared module's `rawUrlFor` is its no-conversationId form, so a handler's `url` param is built client-side without importing a `server-only` module (M-1). |
-| `src/components/apps/IframeApp.tsx` | mod | Add `withFileParams(url, params)` (sibling to `withEventParams`) that encodes the contract's file params — `path`, `action`, and `url`/`title` when present — into `bos*`-prefixed query params; applied to the iframe `src` alongside the existing event-param handling. |
+| `src/components/apps/IframeApp.tsx` | mod | Add `withFileParams(url, params)` (sibling to `withEventParams`) that encodes the contract's file params — `path`, `action`, and `title` when present (**never a `url`** — the iframe's `src` is always the app's `manifest.url`, §6/ADR-3) — into `bos*`-prefixed query params; applied to the iframe `src` alongside the existing event-param handling. |
 
 > `gen-apps.mjs` auto-discovers built-in apps (`src/os/apps.ts` header) — no registry edit
 > for the `html-viewer`/`files` manifest changes. `html-viewer` and `files` already exist,
@@ -213,7 +213,8 @@ cited to the real route/file:
 for every handler app, the file's **VFS `path`** and the requested **`action`**
 (`"open"` for the open gesture and for render-capable "Open with" picks; `"edit"` for
 edit-capable picks), plus — when the handler's declared `paramShape` asks for them — a
-resolved **`url`** and **`title`**. A handler's obligation is entirely "when launched with
+resolved **`url`** (built-in (component) handlers only) and a **`title`**. A handler's
+obligation is entirely "when launched with
 a file, read/preview/edit it." Identical *intent* for built-in and iframe apps.
 
 **The mapping (contract → actual params) is handler-specific and declared in the
@@ -389,8 +390,7 @@ actual reading itself (A-4).
   app** (`src/apps/files/index.tsx`, `"use client"`) — the open gesture and the right-click
   pick both happen there, on a specific file the user just clicked. `launch` itself is the
   **client** OS store (`src/store/os-store.ts`); the server never performs the launch. So the
-  function that *assembles* the params is, by construction, client code — and a `"use client"
-  component **cannot import a `server-only` module** (Next.js throws at build/bundle time).
+  function that *assembles* the params is, by construction, client code — and a `"use client"` component **cannot import a `server-only` module** (Next.js throws at build/bundle time).
   The original draft put `buildLaunchParams` in `src/lib/file-handlers/registry.ts`, which it
   marks `server-only` (it must be — `handlersFor`/`effectiveSelected` read the install set via
   `listInstalledManifests`). The `paramShape.url="raw"` case additionally needs a raw-URL
