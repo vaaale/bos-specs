@@ -423,6 +423,19 @@ actual reading itself (A-4).
   the conversation-aware `fsClient.rawUrl`. If the two raw-URL forms ever diverge the blast
   radius is a single handler's `url` param — keep `rawUrlFor` to the bare-path form and cite
   `fsClient.rawUrl` as the reference string.
+- **Post-implementation correction (bug fix).** The two forms DID have to diverge, and the
+  predicted blast radius is exactly where it landed: a handler's `url` param. A browser
+  resolves a document's relative references against the **directory** of the URL it was loaded
+  from, and `?path=` has no directory — so an HTML file that keeps its CSS/JS beside it opened
+  in web_view with `<link href="style.css">` resolving to `/api/fs/style.css` (404): the page
+  previewed unstyled, or blank when a relative script built its body ("I opened an HTML file
+  and it didn't render"). `rawUrlFor` now builds the **path-shaped** raw URL
+  (`/api/fs/raw/<path>`, per-segment `encodeURIComponent`), served by a new
+  `src/app/api/fs/raw/[...path]/route.ts` whose bytes come from the same streaming helper as
+  the query shape (`src/lib/files/serve.ts`). `fsClient.rawUrl` keeps the query form: its
+  consumers are single assets (images, wallpapers, attachments, downloads) with no relative
+  references. So the rule replacing "keep the strings identical" is: **a URL a DOCUMENT is
+  loaded from must be path-shaped; a URL an ASSET is fetched from need not be.**
 
 ### ADR-8 — `mimeForPath` (the small map) is THE authoritative map for handler matching
 
