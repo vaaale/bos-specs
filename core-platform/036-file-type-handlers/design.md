@@ -213,7 +213,7 @@ cited to the real route/file:
 for every handler app, the file's **VFS `path`** and the requested **`action`**
 (`"open"` for the open gesture and for render-capable "Open with" picks; `"edit"` for
 edit-capable picks), plus — when the handler's declared `paramShape` asks for them — a
-resolved **`url`** (built-in (component) handlers only) and a **`title`**. A handler's
+resolved **`url`** (built-in / component handlers only) and a **`title`**. A handler's
 obligation is entirely "when launched with
 a file, read/preview/edit it." Identical *intent* for built-in and iframe apps.
 
