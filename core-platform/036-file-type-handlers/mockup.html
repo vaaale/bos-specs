@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Open with — Files context menu · Spec 036</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { color-scheme: dark; }
+  html, body { background: #0f1117; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* icon sizing via width/height attrs on each <svg>; strokes inherit */
+</style>
+</head>
+<body class="min-h-screen text-white/90">
+
+  <!-- ===== lucide sprite (inline, fill=none, currentColor) ===== -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+    <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-folder-plus" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></symbol>
+    <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="M9 15h6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+    <symbol id="i-code-2" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></symbol>
+    <symbol id="i-square-pen" viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+  </svg>
+
+  <div class="mx-auto max-w-[1240px] px-6 py-8">
+    <!-- ===== header ===== -->
+    <header class="mb-6">
+      <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-white/40">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>
+        <span>Spec 036 · file-type-handlers · UI mockup</span>
+      </div>
+      <h1 class="mt-2 text-xl font-semibold text-white">"Open with" in the Files context menu</h1>
+      <p class="mt-1 max-w-3xl text-xs leading-relaxed text-white/60">
+        The only new user-facing UI in this feature. Right-clicking a file surfaces one
+        <span class="text-white/80">Open with &lt;App&gt;</span> row per app registered as a handler for the file's
+        MIME type (FR-008). The row carrying a check is the currently-selected default used by double-click;
+        picking an unchecked row opens the file there now <em>and</em> makes it the new default (FR-010, "always open with").
+      </p>
+    </header>
+
+    <!-- ===== two states side by side ===== -->
+    <div class="flex flex-wrap items-start gap-8">
+
+      <!-- =============== FRAME 1 : report.html (handlers present) =============== -->
+      <div class="w-full max-w-[560px]">
+        <div class="mb-2 flex items-center gap-2 text-xs font-medium text-white/70">
+          <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold text-white/70">1</span>
+          <span><span class="font-mono text-white/90">report.html</span> — two handlers registered for <span class="font-mono text-white/70">text/html</span></span>
+        </div>
+
+        <!-- window -->
+        <div class="relative overflow-visible rounded-xl border border-white/10 bg-[#15171e] shadow-2xl">
+          <!-- titlebar -->
+          <div class="flex h-9 select-none items-center gap-2 border-b border-white/10 bg-white/[0.03] px-3">
+            <svg width="15" height="15" class="shrink-0 text-white/60" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>
+            <span class="flex-1 truncate text-xs text-white/60">Files&nbsp;—&nbsp;docs</span>
+            <svg width="15" height="15" class="shrink-0 text-white/30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"/></svg>
+          </div>
+
+          <!-- toolbar (copied from src/apps/files) -->
+          <div class="flex items-center gap-1 border-b border-white/10 bg-white/5 px-2 py-1.5">
+            <button class="rounded p-1.5 text-white/70 hover:bg-white/10" title="Up">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow-up"/></svg>
+            </button>
+            <button class="rounded p-1.5 text-white/70 hover:bg-white/10" title="Refresh">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg>
+            </button>
+            <div class="mx-1 flex flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap text-xs text-white/60">
+              <button class="rounded px-1 hover:bg-white/10 hover:text-white">root</button>
+              <span class="text-white/30">/</span>
+              <button class="rounded px-1 hover:bg-white/10 hover:text-white">docs</button>
+            </div>
+            <button class="rounded p-1.5 text-white/70 hover:bg-white/10" title="New folder">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder-plus"/></svg>
+            </button>
+            <button class="rounded p-1.5 text-white/70 hover:bg-white/10" title="New file">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-plus"/></svg>
+            </button>
+          </div>
+
+          <!-- drop zone wrapper (relative; menu overlays, not clipped) -->
+          <div class="relative h-[356px]">
+            <!-- file grid -->
+            <div class="grid h-full auto-rows-min grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-1 overflow-auto p-3 text-sm">
+              <!-- archive (dir) -->
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-sky-300" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">archive</span>
+              </div>
+              <!-- assets (dir) -->
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-sky-300" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">assets</span>
+              </div>
+              <!-- report.html (right-clicked / hovered) -->
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg bg-white/10 p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-white/70" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-text"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">report.html</span>
+                <!-- forced-visible hover actions (tile is under the cursor) -->
+                <div class="absolute right-0 top-0 flex gap-0.5 rounded bg-black/60 p-0.5">
+                  <button class="rounded p-1 text-white/80 hover:bg-white/20" title="Rename"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pencil"/></svg></button>
+                  <button class="rounded p-1 text-white/80 hover:bg-white/20" title="Delete"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+              <!-- notes.txt -->
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-white/70" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-text"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">notes.txt</span>
+              </div>
+              <!-- logo.png (image) -->
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-emerald-300" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-image"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">logo.png</span>
+              </div>
+              <!-- deck.pptx -->
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-white/70" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-text"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">deck.pptx</span>
+              </div>
+              <!-- data.csv -->
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-white/70" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-text"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">data.csv</span>
+              </div>
+            </div>
+
+            <!-- cursor at the anchor point -->
+            <svg class="absolute z-50 pointer-events-none" style="left:252px;top:54px" width="22" height="22" viewBox="0 0 24 24">
+              <path d="M4 2 L4 20 L8.6 15.4 L11.2 21 L13.6 20 L11 14.4 L17 14.4 Z" fill="#fff" stroke="#000" stroke-width="1" stroke-linejoin="round"/>
+            </svg>
+
+            <!-- context menu, anchored at the cursor -->
+            <div class="absolute z-40 min-w-[140px] rounded border border-white/15 bg-neutral-900 py-1 text-xs shadow-2xl"
+                 style="left:258px;top:62px">
+              <!-- section header: only present when >=1 handler registered -->
+              <div class="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-white/40">Open with</div>
+
+              <!-- Web View : SELECTED (default) for text/html -> checkmark.
+                   Row icon = html-viewer's OWN manifest icon (Code2), not a semantic glyph. -->
+              <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-white/80 hover:bg-white/10">
+                <svg width="14" height="14" class="shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-code-2"/></svg>
+                <span class="flex-1">Open with Web View</span>
+                <svg width="14" height="14" class="shrink-0 text-white/70" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg>
+              </button>
+
+              <!-- Editor : non-selected handler (follow-on agentic-text-editor).
+                   Icon is a PLACEHOLDER pen glyph here — at runtime it is Editor's own manifest icon. -->
+              <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-white/80 hover:bg-white/10">
+                <svg width="14" height="14" class="shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-square-pen"/></svg>
+                <span class="flex-1">Open with Editor</span>
+                <span class="shrink-0 w-[14px]"></span>
+              </button>
+
+              <!-- divider before the pre-existing action -->
+              <div class="mx-2 my-1 h-px bg-white/10"></div>
+
+              <!-- pre-existing action -->
+              <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-white/80 hover:bg-white/10">
+                <svg width="14" height="14" class="shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"/></svg>
+                <span class="flex-1">Download</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- design note (mockup annotation, NOT part of the app UI) -->
+        <div class="mt-3 flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-xs leading-relaxed text-white/55">
+          <svg width="14" height="14" class="mt-0.5 shrink-0 text-white/40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-info"/></svg>
+          <div>
+            <span class="font-medium text-white/70">Note (FR-010, Option A).</span>
+            The checkmark marks the handler currently selected as the default for <span class="font-mono text-white/60">text/html</span> — the one double-click uses.
+            Picking an <em>unchecked</em> "Open with" entry opens the file in that app right now <span class="text-white/70">and</span> makes it the new default
+            (macOS "always open with"). Hidden handler apps (Web View) appear by their own label even though they have no dock icon.
+            Each row's icon is the <span class="text-white/70">target app's own manifest icon</span> (never a semantic glyph): "Web View" shows html-viewer's
+            <span class="font-mono text-white/60">Code2</span> glyph; "Editor" carries a placeholder pen here that will be the Editor's own manifest icon at runtime.
+          </div>
+        </div>
+      </div>
+
+      <!-- =============== FRAME 2 : notes.txt (no handlers) =============== -->
+      <div class="w-full max-w-[560px]">
+        <div class="mb-2 flex items-center gap-2 text-xs font-medium text-white/70">
+          <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold text-white/70">2</span>
+          <span><span class="font-mono text-white/90">notes.txt</span> — no handlers registered for <span class="font-mono text-white/70">text/plain</span></span>
+        </div>
+
+        <!-- window -->
+        <div class="relative overflow-visible rounded-xl border border-white/10 bg-[#15171e] shadow-2xl">
+          <!-- titlebar -->
+          <div class="flex h-9 select-none items-center gap-2 border-b border-white/10 bg-white/[0.03] px-3">
+            <svg width="15" height="15" class="shrink-0 text-white/60" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>
+            <span class="flex-1 truncate text-xs text-white/60">Files&nbsp;—&nbsp;docs</span>
+            <svg width="15" height="15" class="shrink-0 text-white/30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"/></svg>
+          </div>
+
+          <!-- toolbar -->
+          <div class="flex items-center gap-1 border-b border-white/10 bg-white/5 px-2 py-1.5">
+            <button class="rounded p-1.5 text-white/70 hover:bg-white/10" title="Up">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow-up"/></svg>
+            </button>
+            <button class="rounded p-1.5 text-white/70 hover:bg-white/10" title="Refresh">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg>
+            </button>
+            <div class="mx-1 flex flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap text-xs text-white/60">
+              <button class="rounded px-1 hover:bg-white/10 hover:text-white">root</button>
+              <span class="text-white/30">/</span>
+              <button class="rounded px-1 hover:bg-white/10 hover:text-white">docs</button>
+            </div>
+            <button class="rounded p-1.5 text-white/70 hover:bg-white/10" title="New folder">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder-plus"/></svg>
+            </button>
+            <button class="rounded p-1.5 text-white/70 hover:bg-white/10" title="New file">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-plus"/></svg>
+            </button>
+          </div>
+
+          <!-- drop zone wrapper -->
+          <div class="relative h-[356px]">
+            <!-- file grid (same folder) -->
+            <div class="grid h-full auto-rows-min grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-1 overflow-auto p-3 text-sm">
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-sky-300" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">archive</span>
+              </div>
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-sky-300" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">assets</span>
+              </div>
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-white/70" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-text"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">report.html</span>
+              </div>
+              <!-- notes.txt (right-clicked / hovered) -->
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg bg-white/10 p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-white/70" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-text"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">notes.txt</span>
+                <div class="absolute right-0 top-0 flex gap-0.5 rounded bg-black/60 p-0.5">
+                  <button class="rounded p-1 text-white/80 hover:bg-white/20" title="Rename"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pencil"/></svg></button>
+                  <button class="rounded p-1 text-white/80 hover:bg-white/20" title="Delete"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-emerald-300" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-image"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">logo.png</span>
+              </div>
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-white/70" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-text"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">deck.pptx</span>
+              </div>
+              <div class="group relative flex cursor-default flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+                <svg width="36" height="36" class="text-white/70" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-file-text"/></svg>
+                <span class="line-clamp-2 max-w-full break-words text-center text-[11px] text-white/80">data.csv</span>
+              </div>
+            </div>
+
+            <!-- cursor -->
+            <svg class="absolute z-50 pointer-events-none" style="left:350px;top:54px" width="22" height="22" viewBox="0 0 24 24">
+              <path d="M4 2 L4 20 L8.6 15.4 L11.2 21 L13.6 20 L11 14.4 L17 14.4 Z" fill="#fff" stroke="#000" stroke-width="1" stroke-linejoin="round"/>
+            </svg>
+
+            <!-- context menu : NO "Open with" section, only the pre-existing action (FR-008 edge case 4) -->
+            <div class="absolute z-40 min-w-[140px] rounded border border-white/15 bg-neutral-900 py-1 text-xs shadow-2xl"
+                 style="left:356px;top:62px">
+              <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-white/80 hover:bg-white/10">
+                <svg width="14" height="14" class="shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"/></svg>
+                <span class="flex-1">Download</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- design note -->
+        <div class="mt-3 flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-xs leading-relaxed text-white/55">
+          <svg width="14" height="14" class="mt-0.5 shrink-0 text-white/40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-info"/></svg>
+          <div>
+            <span class="font-medium text-white/70">No-handler path (FR-008 / edge case 4).</span>
+            For a type with zero registered handlers there is <em>no</em> "Open with" section and no divider — the menu collapses
+            to its pre-existing action. Double-click likewise falls back to the app's current in-app behavior (FR-007). Byte-for-byte backward compatible.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
