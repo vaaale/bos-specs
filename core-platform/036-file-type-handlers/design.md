@@ -382,6 +382,73 @@ actual reading itself (A-4).
   edit-only apps (relaxing FR-010's render rule)," that's a one-line change to the Files
   app's pick handler — surfaced as Open Question O-1 rather than silently decided.
 
+### ADR-7 — The `contract→params` mapping is assembled client-side (Constitution II / SSR boundary)
+
+- **Context.** The spec requires the caller to `launch(selectedAppId, params)` where
+  `params` come from `buildLaunchParams(decl, path, action)`. The only caller is the **Files
+  app** (`src/apps/files/index.tsx`, `"use client"`) — the open gesture and the right-click
+  pick both happen there, on a specific file the user just clicked. `launch` itself is the
+  **client** OS store (`src/store/os-store.ts`); the server never performs the launch. So the
+  function that *assembles* the params is, by construction, client code — and a `"use client"
+  component **cannot import a `server-only` module** (Next.js throws at build/bundle time).
+  The original draft put `buildLaunchParams` in `src/lib/file-handlers/registry.ts`, which it
+  marks `server-only` (it must be — `handlersFor`/`effectiveSelected` read the install set via
+  `listInstalledManifests`). The `paramShape.url="raw"` case additionally needs a raw-URL
+  builder, and the only existing one is `fsClient.rawUrl` in `src/lib/os-client.ts` (itself
+  `"use client"`). Net: every helper the param-assembler calls must be client-importable.
+- **Options.**
+  (a) Keep `buildLaunchParams` server-only and have `GET /api/file-handlers` return fully
+  assembled `params` per handler. **Rejected** — a handler's params depend on the *file*
+  (`path`) and the *gesture* (`open`/`edit`), both known only client-side at click time; the
+  server's per-`mime` view has no idea which file the user clicked, so it cannot assemble
+  file-specific params. It would also interpret `paramShape` on a second, parallel path.
+  (b) Move the **pure** string helpers — `buildLaunchParams`, `baseMime`, `rawUrlFor`, and the
+  matching MIME map — into a **framework-free, client-safe** module (`src/os/file-handlers.ts`)
+  that both sides import; keep only the state/install-set-dependent logic (`handlersFor`,
+  `effectiveSelected`) `server-only` in `registry.ts`.
+- **Decision.** (b). The split line is one question: *does this function read the installed set
+  or durable state?* **Yes** → `server-only` (`registry.ts` / `selection.ts`). **No** → the
+  shared module (`src/os/file-handlers.ts`, the same framework-free convention as
+  `src/os/types.ts`). `buildLaunchParams(decl, path, action)` is pure (decl + path + action in,
+  params out) → shared. `rawUrlFor(path)` is a pure string builder
+  (`"/api/fs/raw?path=" + encodeURIComponent(path)`, identical to `fsClient.rawUrl(path, undefined)`)
+  → shared. The **server only supplies the handler list + each handler's `paramShape`** (via
+  `GET`); the **client assembles the params** and performs the `launch`. This is the explicit
+  Constitution II (SSR boundary) decision the review asked for: *server = state/install-set
+  authority; client = pure param assembly + the `launch` store call.*
+- **Consequences.** One source of truth for the mapping — there is no server/client duplicate
+  to drift. `rawUrlFor` intentionally duplicates `fsClient.rawUrl`'s string; that is safe
+  because `os-client.ts` is not a framework-free home for a pure builder (it uses
+  `document`/`XMLHttpRequest`), and the Files app's *own* in-app image `<img src>` keeps using
+  the conversation-aware `fsClient.rawUrl`. If the two raw-URL forms ever diverge the blast
+  radius is a single handler's `url` param — keep `rawUrlFor` to the bare-path form and cite
+  `fsClient.rawUrl` as the reference string.
+
+### ADR-8 — `mimeForPath` (the small map) is THE authoritative map for handler matching
+
+- **Context.** The design previously cited two MIME maps: `mimeForPath` (`src/lib/mime.ts`,
+  ~14 entries) and the raw route's inline map (`src/app/api/fs/raw/route.ts`, ~26 entries — adds
+  `.pdf`, `.mp4`, `.mp3`, `.avif`, `.mov`, `.m4v`, `.avi`, …). Which one is the single source of
+  truth for *deciding which handlers match a file's type* (FR-004)?
+- **Options.**
+  (a) Use the raw route's larger map for matching. **Rejected** — it is a *private constant in a
+  route file* whose job is to set `Content-Type` on streamed bytes (a **serving** concern), not to
+  drive UI matching; importing a route's private map from both a client component and the server
+  registry is backwards and couples matching to a route.
+  (b) Use `mimeForPath` as THE matching map, on **both** sides.
+- **Decision.** (b). `mimeForPath` is the existing "file → type" primitive (already imported by
+  three server modules: `/api/services/[id]/config-app`, `/app/apps/[...slug]`,
+  `assistant/tools/server/view-image`), it is what the spec's FR-004/A-2 points at, and after
+  ADR-7 it lives in the shared framework-free module so the client uses it directly. **Explicit
+  consequence, stated to stop an implementer reaching for the wrong map:** an extension present
+  *only* in the raw route's serving map — e.g. `.pdf`, `.mp4`, `.mp3`, `.avif`, `.mov` — resolves
+  to `application/octet-stream` under `mimeForPath`. A handler declaring `application/pdf` (or
+  `video/*` for `.mp4`) would therefore **never match** a file via the Files app, because the
+  Files app computes the file's type with `mimeForPath`. If such matching is ever wanted, the
+  fix is to **add the extension to the shared matching map** (one client-safe line), *not* to
+  import the raw route's serving map. The two maps have distinct jobs and must not be merged:
+  matching (small, shared, client-safe) vs. serving `Content-Type` (large, route-local).
+
 ---
 
 ## 8. Risks / open questions
