@@ -33,7 +33,7 @@ consumer + `html-viewer` declaration). No app/service facet split to reason abou
 | Principle | Status |
 |---|---|
 | **I. Spec-Driven** | ✅ This design IS the spec's architecture artifact; implementation follows plan/tasks. |
-| **II. Server Authority & SSR Boundary** | ✅ Registry, MIME normalization, selection persistence, and the install-set query are all `server-only` (`src/lib/file-handlers/`, `src/app/api/file-handlers/`). The Files app (client) only `fetch`es. Framework-free types (`AppFileHandlerDeclaration`) live in `src/os/types.ts` per the existing convention. No secrets. |
+| **II. Server Authority & SSR Boundary** | ✅ The **registry** (`handlersFor`/`effectiveSelected`), **selection persistence**, and the **install-set query** are all `server-only` (`src/lib/file-handlers/`, `src/app/api/file-handlers/`). The **pure** param/MIME helpers — `baseMime`, `buildLaunchParams`, `rawUrlFor`, and the authoritative matching map — are **framework-free and client-safe** (`src/os/file-handlers.ts`), so the client Files app can assemble `launch` params without importing a `server-only` module: the OS `launch` is the client store, so the caller that builds params is always client code (ADR-7 — this is the explicit SSR-boundary decision). The Files app (client) only `fetch`es for the handler list. Framework-free types (`AppFileHandlerDeclaration`) live in `src/os/types.ts` per the existing convention. No secrets. |
 | **III. Always Delegate** | ✅ Implementation goes through the Developer on a feature branch (mechanics in `target-bos-core.md`). |
 | **IV. Minimize Blast Radius** | ✅ Feature branch. The registry is **stateless/derived** (recomputed from the current installed set on each request, ADR-1) — no new mutable global to get stale, no preview/base divergence to manage. The Files-app change is strictly additive; the no-handler path is byte-for-byte the existing behavior (SC-003). |
 | **V. VFS Is Not the Source** | ✅ Selection state persists under `data/system/` (runtime state), not the VFS and not `src/`. |
@@ -86,13 +86,15 @@ flowchart LR
     OS["os-store launch(appId, params)\nsrc/store/os-store.ts"]
     WIN["Window.tsx delivery split\nbuilt-in: AppProps.params\niframe: URL query (withFileParams)"]
     HV["html-viewer (built-in)\nreads params.url / params.title"]
+    SH["shared client-safe helpers\nsrc/os/file-handlers.ts\nbaseMime · buildLaunchParams · rawUrlFor"]
   end
   FE -->|fetch| API
   API --> REG
   API --> SEL
   REG -->|"built from\nBUILTIN_APPS + listInstalledManifests()"| APPS["manifests\nsrc/os/apps.ts · src/lib/apps/store.ts"]
   SEL -->|atomic JSON| DATA[("data/system/file-handlers.json")]
-  FE -->|launch(appId, {path,action,url,title})| OS
+  FE -->|"buildLaunchParams · baseMime"| SH
+  FE -->|launch(appId, {path,action,[url],[title]})| OS
   OS --> WIN
   WIN --> HV
 ```
@@ -105,6 +107,7 @@ The concrete pieces, mapped to the spec's requirements:
   (FR-001, FR-013). Mirrors `AppManifest.eventHandlers` (spec 034, read
   `src/os/types.ts`). Each entry: MIME type (exact or `type/` prefix), `capabilities`
   (`render`/`edit`), optional `label`, optional `default`, optional `paramShape`.
+- **Shared client-safe helpers** (`src/os/file-handlers.ts`, new, **framework-free** — no React, no Node, no `server-only`; the same shape as `src/os/types.ts`) — the pure, environment-agnostic string logic the *client* needs to drive the contract: `baseMime` (parameter stripping + lowercase), the authoritative **matching** MIME map + `mimeForPath`/`fileBaseMime` (moved here from `src/lib/mime.ts`, ADR-8), `rawUrlFor(path)` (the file-bytes URL, identical string to `fsClient.rawUrl(path, undefined)`), and `buildLaunchParams(decl, path, action)` (the `paramShape`→`launch`-params mapping, ADR-3). This is what fixes the M-1 seam: the caller that assembles params is the client Files app, so these must be client-importable — a `"use client"` component cannot import a `server-only` module (ADR-7).
 - **Registry** (`src/lib/file-handlers/registry.ts`, new, `server-only`) — derives
   `{ handlers, effectiveSelected }` per MIME type from `BUILTIN_APPS`
   (`src/os/apps.ts`) + `listInstalledManifests()` (`src/lib/apps/store.ts`) (FR-002, FR-003).
