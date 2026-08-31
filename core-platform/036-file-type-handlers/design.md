@@ -459,19 +459,23 @@ actual reading itself (A-4).
   FR-010's render rule). The mockup's "always open with" annotation (Option A) is written
   assuming the render-capable case and doesn't settle the edit-only case. **Default in this
   design = ADR-6.** Cheap to flip if the other way is intended.
-- **R-1 — Client/server MIME normalization parity.** The Files app (client) computes the
-  file's base MIME to (a) request the right handler view and (b) know the no-handler
-  fallback. It must normalize the same way `baseMime` does server-side. Mitigation:
-  `baseMime` is a dependency-free string function; keep it in `src/lib/mime.ts` and have
-  the client import the same logic (or replicate it verbatim with a comment pointing at
-  the server copy). A drift here would only cause a *spurious no-handler fallback*, not a
-  crash — low severity, but worth a shared helper.
-- **R-2 — `withFileParams` must not clobber the app's own `url`.** For an installed iframe,
-  the manifest's `params.url` is the app's entry page; the contract's `url` param (from
-  `paramShape`) is a *separate* field delivered as a `bos*` query param, so there is no
-  collision as long as `withFileParams` reads the contract fields off `win.params`
-  (path/action/url/title) and never overwrites `params.url`. Mirrors how `withEventParams`
-  adds `bos*` params without touching `url`.
+- **R-1 — Client/server MIME normalization & matching parity (resolved).** The Files app
+  (client) computes the file's base MIME to (a) request the right handler view and (b) know
+  the no-handler fallback. It must normalize *and* match the same way the server does. The
+  original risk was a server/client drift between two copies of `baseMime`; **ADR-7 + ADR-8
+  close it** — the client and the registry now import the *same* `fileBaseMime`/`baseMime` and
+  the *same* matching map from `src/os/file-handlers.ts`, so there is no second copy to
+  drift. (The residual, unrelated, known consequence — extensions only in the raw route's
+  serving map resolve to `application/octet-stream` under matching — is a deliberate scoping
+  decision, ADR-8, not a parity bug.)
+- **R-2 — `withFileParams` must not clobber the app's own query params.** For an installed
+  iframe the contract delivers **only** `path`/`action` (+ optional `title`) — never a `url` —
+  because `Window.tsx` sets the iframe's `src` from `manifest.url` (the entry page) and would
+  overwrite any OS-supplied `url` anyway (ADR-7/ADR-3). `withFileParams` appends
+  `bosFilePath`/`bosFileAction` (and `bosFileTitle` when present) to that `src` **without
+  touching the app's own query string** — exactly how `withEventParams` adds `bosEvent*`
+  without touching the entry URL. The `bos*` prefix is the anti-collision guarantee; a handler
+  that declares its own query params is never shadowed.
 - **R-3 — `launch` returns `null` for an unlaunchable app.** The registry's "selected"
   should only ever point at installed apps, but as a final guard the Files app treats a
   `null` launch return as a fallback to the in-app path (no dead window).
@@ -481,10 +485,14 @@ actual reading itself (A-4).
   visibility. (Grounded: `html-viewer/manifest.ts` has `hidden: true`, `icon: "Code2"` —
   matches the mockup's "Web View / Code2 glyph" row.)
 - **O-2 (follow-on dependency, out of scope):** The `agentic-text-editor` item (A-7) will
-  declare a `text/html` handler (`paramShape:{url:"app"}`) and must implement the contract
-  on the handler side (read `bosFilePath`/`bosFileAction`, fetch via SDK). This design's
-  contract (§6) is that item's integration contract — it should be linked from the item's
-  spec.
+  declare a `text/html` handler in its `app.json` — **no `paramShape.url`** (an installed
+  iframe never gets an OS-supplied `url`; ADR-3/ADR-7) — and must implement the contract on the
+  handler side: read `bosFilePath`/`bosFileAction` (and `bosFileTitle` if present) off
+  `window.location.search` and fetch the bytes via the BOS SDK. This design's contract (§6)
+  is that item's integration contract — **the item's spec should link to §6** so the two
+  documents can't drift. Note the integration is a *follow-on*: this spec ships the platform
+  + the Files-app consumer + `html-viewer` (the built-in `"raw"` case) and is complete without
+  the item.
 
 ---
 
