@@ -104,8 +104,9 @@ The user can change which registered app is the **selected** handler for a MIME 
 
 **Acceptance Scenarios**:
 
-1. **Given** `text/html` has multiple registered handlers and a current selection, **When** the user sets a different app as the selected handler for `text/html`, **Then** subsequent double-clicks on HTML files open in the newly selected app.
-2. **Given** the user has set a selected handler for a type, **When** the app is uninstalled, **Then** the selection is invalidated and double-click falls back to the Files app's existing in-app behavior.
+1. **Given** `text/html` has multiple registered handlers and a current selection, **When** the user opens the right-click "Open with" menu on an HTML file, **Then** the currently selected handler is marked (checkmark) among the entries.
+2. **Given** a marked (selected) handler, **When** the user picks a different "Open with" entry, **Then** the file opens in the newly chosen app now, and it becomes the selected handler for the type — subsequent double-clicks on that type open in the new selection.
+3. **Given** the user has set a selected handler for a type, **When** that app is uninstalled, **Then** the selection is invalidated and double-click falls back to the Files app's existing in-app behavior.
 
 ---
 
@@ -132,11 +133,12 @@ The user can change which registered app is the **selected** handler for a MIME 
 - **FR-006**: In the Files app, the open gesture (double-click) on a file MUST open the file with the **selected** handler for the file's MIME type, when a render-capable selected handler exists and is installed.
 - **FR-007**: In the Files app, when no render-capable handler is registered/selected (or the selected handler is not installed) for a file's type, the open gesture MUST preserve the Files app's existing in-app behavior (image preview for image types, text editor otherwise).
 - **FR-008**: In the Files app, right-clicking a file MUST show an **"Open with \<App\>"** entry for **each** installed app registered as a handler for the file's MIME type (render- or edit-capable, including hidden apps shown by their own label).
-- **FR-009**: Selecting an "Open with \<App\>" entry MUST launch that app with the file (passing the file's VFS path as a launch parameter) and open it there.
-- **FR-010**: The OS MUST allow the user to change the **selected** handler for a MIME type among its registered handlers; the new selection MUST take effect for subsequent open gestures. A selected handler MUST be render-capable.
+- **FR-009**: Selecting an "Open with \<App\>" entry (or the open gesture, per FR-006) MUST launch the target app via the **open-file launch contract** (FR-014) and open the file there.
+- **FR-010**: The OS MUST let the user change the **selected** handler for a MIME type. In the Files app right-click menu, the currently selected handler MUST be marked (e.g. a checkmark) among the "Open with" entries; choosing a different handler MUST both open the file in it now and set it as the new selected handler for that type going forward (an "always open with" interaction). A selected handler MUST be render-capable.
 - **FR-011**: If a previously selected handler for a type is uninstalled, the OS MUST invalidate that selection and fall back per FR-007 (no error, no launch of a missing app).
 - **FR-012**: The "Open with" affordance and the selected-handler lookup MUST apply to **files only**; directory behavior in the Files app MUST be unchanged.
 - **FR-013**: Handler declarations MUST be declarative data in the app manifest (surfaced into the registry at boot), consistent with the existing `eventHandlers` registration pattern — the Files app and the registry MUST NOT contain per-app special cases for specific handlers.
+- **FR-014**: There MUST be a single, documented **open-file launch contract** by which the OS hands a file to a registered handler: the OS launches the handler app carrying (a) the file's VFS path and (b) the requested action — *open* (render/preview) for the open gesture and for render-capable "Open with" choices, or *edit* for an edit-capable "Open with" choice. A handler app's obligation is defined entirely by this convention: when launched with a file, it reads, previews, or edits that file. The contract MUST be identical for built-in (component) apps and installed (iframe) apps, and MUST require no per-app code in the Files app or the registry.
 
 ### Key Entities
 
@@ -144,6 +146,7 @@ The user can change which registered app is the **selected** handler for a MIME 
 - **File-type-handler registry**: the OS's boot-time, in-memory view of all installed apps' handler declarations, keyed by MIME type; the single source the Files app queries. Reflects only currently-installed apps.
 - **Selected handler** (per MIME type): the app currently chosen to open files of that type on the open gesture; initially from manifest `default`, changeable by the user (FR-010), invalidated when the app is uninstalled (FR-011). Must be render-capable.
 - **Open-with entry** (Files app, transient): a context-menu row per registered handler for a file's type, labelled "Open with \<App\>".
+- **Open-file launch contract**: the OS↔handler convention for handing a file to a registered app — the launch carries the file's VFS path plus an action (*open*/*edit*); a handler's obligation is to read/preview/edit that file. Identical for built-in and iframe apps (FR-014).
 
 ## Success Criteria
 
@@ -160,7 +163,7 @@ The user can change which registered app is the **selected** handler for a MIME 
 - **A-1**: The open gesture is the Files app's existing **double-click** (the user clarified "click" = the open gesture). Single-click is not an open trigger.
 - **A-2**: A file's MIME type is derived from its **extension** via the existing MIME map (`mimeForPath` / the raw-file route map). Content sniffing is out of scope.
 - **A-3**: "Open with" and the selected-handler mechanism apply to **files only**; directories keep their current behavior.
-- **A-4**: Launching a handler means `launch(appId, { path })` (file's VFS path as a param); **how the target app actually reads, previews, or edits the file is the consuming app's responsibility**, not this platform mechanism. For `html-viewer`, the param is its existing `url` (raw-file URL of the VFS path) so it renders the HTML.
+- **A-4**: The open-file launch contract (FR-014) is implemented as standard launch params carrying the file's VFS path (and, for render handlers such as `html-viewer`, its raw-file URL) plus the requested action. **How the target app actually reads, previews, or edits the file is the consuming app's responsibility**, not this platform mechanism — the OS's job ends at launching the handler with the contract's params.
 - **A-5**: An edit-only handler (no `render`) is a valid "Open with" choice but is **not** a valid *selected* (double-click) handler — double-click requires a render-capable selection.
 - **A-6**: Hidden apps (`hidden: true`, e.g. `html-viewer`) are valid handlers and appear in "Open with" by their own label, despite having no dock icon.
 - **A-7**: This spec implements the **platform mechanism + the Files app consumer + `html-viewer` registration**. The Agentic Editor's registration and its HTML-preview fix are a separate `marketplace-item` increment (`agentic-text-editor`) that depends on this mechanism; they are intentionally out of scope here so the platform ships independently.
@@ -174,10 +177,4 @@ The user can change which registered app is the **selected** handler for a MIME 
 - Built-in `html-viewer` app (web_view) and its raw-file URL resolution (present).
 - **Follow-on (consumer):** `agentic-text-editor` marketplace item — registers as a `text/html` handler and fixes HTML rendering in Preview mode. Depends on FR-001/FR-003/FR-009 being available.
 
-## Open Questions
 
-- **[NEEDS CLARIFICATION: interaction for changing the selected handler]** FR-010 says the user can change the selected handler for a type, but the exact interaction is not yet specified. Options:
-  - (a) A checkmark in the right-click "Open with" menu marks the current selection, and picking another entry both opens the file now *and* sets it as the new selected handler for that type (macOS-style "always open with").
-  - (b) A separate "Set as default for .html" item (or an explicit "Open with" submenu) so a plain choice is one-off and a default change is deliberate.
-  - (c) A per-type "default app" setting in the Settings app.
-  (Suggested: **a** — simplest, matches "choose the one that is selected for the given file type," no new settings surface. Confirm or pick another.)
