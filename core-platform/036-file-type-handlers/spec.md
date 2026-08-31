@@ -175,6 +175,6 @@ The user can change which registered app is the **selected** handler for a MIME 
 - Existing MIME map: `src/lib/mime.ts` (`mimeForPath`) and `src/app/api/fs/raw/route.ts` (present).
 - Existing manifest extension-point pattern: `AppManifest.eventHandlers` + boot-time registry (spec 034; present).
 - Built-in `html-viewer` app (web_view) and its raw-file URL resolution (present).
-- **Follow-on (consumer):** `agentic-text-editor` marketplace item — registers as a `text/html` handler and fixes HTML rendering in Preview mode. Depends on FR-001/FR-003/FR-009 being available.
+- **Follow-on (consumer):** `agentic-text-editor` marketplace item — declares a `text/html` handler in its `app.json` and fixes HTML rendering in Preview mode. Depends on FR-001 (declaration), FR-003 (registry query), FR-009 (launch), and FR-014 (the open-file launch contract it must honor to read/preview/edit the handed file).
 
 
