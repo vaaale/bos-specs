@@ -238,10 +238,12 @@ sets the iframe's `src` from `manifest.url`, an OS-supplied `url` for the iframe
 have reached the app as a distinct param. `paramShape.url` is therefore a **built-in-only** concern
 (`"raw"`); an installed handler always gets `path` + `action` (+ optional `title`) via `withFileParams`.
 
-The **delivery** differs by app kind (a pre-existing OS fact, ADR-2), but the OS passes the
-same set of fields either way; the handler reads only the ones it declared. `html-viewer`
-already reads `params.url` + `params.title` (no code change); an installed handler reads
-the `bos*` query params it asked for.
+The **delivery** differs by app kind (a pre-existing OS fact, ADR-2): a built-in handler
+receives its declared fields as direct `params` (`html-viewer` already reads `params.url` +
+`params.title` — no code change); an installed iframe handler receives `path`/`action` (and an
+optional `title`) as `bos*` query params and **never an OS-supplied `url`** (its `src` is
+always `manifest.url`). In both cases the handler reads only the fields it needs and does the
+actual reading itself (A-4).
 
 ---
 
@@ -303,11 +305,13 @@ the `bos*` query params it asked for.
   FR-013/SC-004, the very thing the spec exists to avoid).
   (b) A small, **generic, declarative** `paramShape` in each handler's manifest that the
   platform interprets uniformly.
-- **Decision.** (b). `paramShape` is a closed vocabulary (`url: "raw"|"app"`, `title:
-  "basename"`) — *not* arbitrary code — so the platform's `buildLaunchParams` stays a single
-  generic function with zero per-app branches. html-viewer declares
-  `paramShape:{url:"raw",title:"basename"}`; a marketplace editor declares
-  `paramShape:{url:"app"}` (or omits it and reads `path` via SDK).
+- **Decision.** (b). `paramShape` is a closed vocabulary — `url: "raw"` (**built-in handlers
+  only**) and `title: "basename"` — *not* arbitrary code, so the platform's `buildLaunchParams`
+  stays a single generic function with zero per-app branches. html-viewer declares
+  `paramShape:{url:"raw",title:"basename"}`; an installed (iframe) handler declares **no**
+  `url` (the iframe's `src` is always `manifest.url`, so the OS never supplies one for it — §6
+  / ADR-7) and reads `path`/`action` from the `bos*` query params via the SDK. The original
+  `"app"` token is dropped as redundant (its value was unconditionally `manifest.url`).
 - **Consequences.** "No per-app code in core" holds: the *data* is app-specific, the *code*
   is not. Adding a new token later is an additive change to `buildLaunchParams` + the type,
   not a per-app edit. This is the cleanest reading of the spec's "handler-specific
@@ -321,13 +325,16 @@ the `bos*` query params it asked for.
 - **Options.** (a) Compare raw strings (broken). (b) Normalize both sides to a **base media
   type** (drop parameters, lowercase) and match on exact base type OR `type/` prefix
   (FR-001 allows prefixes like `image/`).
-- **Decision.** (b). `baseMime()` in `src/lib/mime.ts` does the normalization; `matchDeclared`
-  in the registry does exact-base or prefix matching. The selection is keyed by base type
+- **Decision.** (b). `baseMime()` in the shared `src/os/file-handlers.ts` does the
+  normalization (the matching map lives there too — ADR-8); `matchDeclared` in the registry does
+  exact-base or prefix matching. The selection is keyed by base type
   (`data/system/file-handlers.json` → `{ "text/html": "html-viewer" }`), so a parameterized
   file type and its bare form share one selection.
-- **Consequences.** Correct matching for real MIME strings. The client (Files app) must
-  normalize identically to send a `mime=` the server understands — `baseMime` is a pure
-  string function, so it's safe to share/replicate (it has no Node imports).
+- **Consequences.** Correct matching for real MIME strings. The client (Files app) and the
+  server registry both call the *same* `baseMime`/`fileBaseMime` imported from the shared module
+  (`src/os/file-handlers.ts`), so the `mime=` the client sends is normalized by construction —
+  there is no server copy to drift (R-1 collapses). It is framework-free (no Node imports),
+  which is what makes it client-importable (ADR-7).
 
 ### ADR-5 — Selection persists to `data/system/file-handlers.json`, not OSSettings/config
 
