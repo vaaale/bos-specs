@@ -137,8 +137,9 @@ fresh conversation (tool shows **orange / dark yellow**), then run a turn that c
   yellow), **deferred-revealed** (blue), or **neutral** (the existing default
   styling). No row MAY be unclassified.
 - **FR-002**: A row MUST be colored **green** if and only if the tool is granted to
-  the currently selected agent and is **not** in a deferred-revealed state (i.e. it is
-  a non-deferred granted tool, or a deferred tool already revealed).
+  the currently selected agent and is **not** deferred. A granted deferred tool is
+  instead orange (hidden) or blue (revealed) — never green — so green means "granted
+  and always visible".
 - **FR-003**: A row MUST be colored **blue** if and only if the tool is granted, is
   deferred, and has been revealed by a prior `find_tools` call in the current
   conversation.
