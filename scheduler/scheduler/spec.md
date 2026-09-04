@@ -71,6 +71,8 @@ The scheduler daemon runs in the background, checking for due tasks and executin
 2. **Given** a recurring task, **When** it executes, **Then** the next run time is calculated and scheduled.
 3. **Given** the daemon is running, **When** BOS starts, **Then** it loads all active tasks from storage and begins monitoring.
 4. **Given** a task execution fails, **When** the error occurs, **Then** it is logged but does not crash the daemon; other tasks continue to execute.
+5. **Given** N BOS server processes are alive over one container and a task is due in the same tick window, **When** each process ticks, **Then** the task executes exactly once (FR-016).
+6. **Given** the elected daemon owner crashes without releasing its lock, **When** the next election runs, **Then** a surviving process reclaims ownership (by PID liveness or heartbeat age-out) and scheduling resumes (FR-017).
 
 ### User Story 6 - Comprehensive logging (Priority: P2)
 
