@@ -320,7 +320,7 @@ The Scheduler is successful when:
 ## Glossary
 
 - **Task**: A scheduled prompt to be sent to an agent
-- **Daemon**: The background process that monitors and executes tasks
+- **Daemon**: The background process that monitors and executes tasks; since 042 exactly one server process per container is the elected owner (see `daemon.lock`)
 - **Schedule**: When and how often a task should run
 - **Execution**: One instance of a task running
 - **Next Run**: The calculated time when a task will next execute
