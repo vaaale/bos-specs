@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en" style="color-scheme: dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Info Panel — Tools (state color coding) · UI Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* Base chrome mirrors the real Assistant window: #0f1117 desktop bg.
+     The panel is the 224px (w-56) right-hand InfoPanelV2 — reproduced verbatim
+     from src/components/agent/v2/InfoPanelV2.tsx, with ONE change per row:
+     the 11px wrench icon color. Text content + row layout are untouched (FR-012). */
+  html, body { height: 100%; }
+  body {
+    background: #0f1117;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  /* ---- State palette (the design decision this mockup fixes) ----
+     Chosen on the #0f1117 theme from BOS's own semantic accents:
+       GRANTED / non-deferred  → emerald-400  #34d399  (success)
+       DEFERRED, hidden        → amber-400    #fbbf24  (attention / orange-yellow)
+       DEFERRED, revealed      → sky-400      #38bdf8  (informational / blue)
+       NEUTRAL / "the rest"    → white/40     rgba(255,255,255,.4) (today's grey)
+     All four clear WCAG AA for large/graphical text on #0f1117 and are hue-separated
+     (≈160° green, ≈38° amber, ≈199° blue, achromatic grey).
+     NOTE: real code should use the named Tailwind classes (text-emerald-400 /
+     text-amber-400 / text-sky-400) per the style guide's "prefer opacity + named
+     accent over raw hex" idiom; raw hex is used here only so this static file
+     self-documents the values. */
+  .tool-row .wrench { transition: color .15s ease; }
+  .tool-row[data-state="green"]   .wrench { color: #34d399; }
+  .tool-row[data-state="orange"]  .wrench { color: #fbbf24; }
+  .tool-row[data-state="blue"]    .wrench { color: #38bdf8; }
+  .tool-row[data-state="neutral"] .wrench { color: rgba(255,255,255,.4); }
+
+  /* legend dots */
+  .dot { width: 8px; height: 8px; border-radius: 9999px; flex: none; }
+  .dot-green   { background: #34d399; }
+  .dot-orange  { background: #fbbf24; }
+  .dot-blue    { background: #38bdf8; }
+  .dot-neutral { background: rgba(255,255,255,.4); }
+</style>
+</head>
+<body class="flex min-h-screen items-start justify-center gap-8 p-8 text-white">
+
+  <!-- ============ Left: context strip (what the mockup is showing) ============ -->
+  <div class="mt-16 w-[300px] shrink-0 select-none">
+    <div class="text-sm font-semibold text-white/90">Tool state color coding</div>
+    <div class="mt-1 text-xs text-white/50">Assistant → Info Panel → <span class="text-white/70">Tools</span> tab</div>
+
+    <div class="mt-5 space-y-1 text-xs text-white/60">
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-white/40">Selected agent</div>
+      <div class="text-white/85">Developer</div>
+      <div class="text-[10px] text-white/40">allowlist: 12 tools · deferred: 8</div>
+    </div>
+
+    <!-- Conversation-awareness toggle (User Story 2 / SC-003):
+         revealed set is per-conversation. Toggling flips the two DEFERRED+GRANTED
+         tools (run_command, git_fetch) between orange (hidden) and blue (revealed). -->
+    <div class="mt-5">
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-white/40">Conversation</div>
+      <div class="mt-1.5 inline-flex rounded-md border border-white/10 bg-black/30 p-0.5 text-[11px]">
+        <button id="btn-fresh" class="rounded px-2 py-1 text-white/50 hover:text-white/80">Fresh · no find_tools</button>
+        <button id="btn-after" class="rounded bg-white/15 px-2 py-1 text-white">After find_tools</button>
+      </div>
+      <div id="rev-note" class="mt-2 text-[10px] leading-relaxed text-white/40">
+        Revealed this conversation:<br /><span class="mono text-white/60">run_command, git_fetch</span>
+      </div>
+    </div>
+
+    <div class="mt-6 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-[10px] leading-relaxed text-white/45">
+      The color sits on the <span class="text-white/70">wrench icon</span> only — name &amp;
+      description text, group headings, and the Skills / MCP tabs are unchanged.
+      A compact legend at the top of the tab maps each color to its meaning.
+    </div>
+  </div>
+
+  <!-- ============ Right: the 224px (w-56) InfoPanelV2, reproduced verbatim ============ -->
+  <div class="mt-16 h-[620px] w-56 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] shadow-2xl">
+
+    <!-- tab bar: Tools / Skills / MCP (unchanged chrome; only Tools is in scope) -->
+    <div class="flex shrink-0 border-b border-white/10 text-xs">
+      <button id="tab-tools"  class="flex-1 border-b-2 border-white/50 py-2 text-white capitalize">tools</button>
+      <button id="tab-skills" class="flex-1 py-2 capitalize text-white/50 hover:text-white/80">skills</button>
+      <button id="tab-mcp"    class="flex-1 py-2 capitalize text-white/50 hover:text-white/80">MCP</button>
+    </div>
+
+    <!-- TOOLS TAB (in scope) -->
+    <div id="pane-tools" class="min-h-0 flex-1 overflow-auto p-2 text-xs">
+
+      <!-- LEGEND — FR-010. Compact single column; four rows. -->
+      <div class="mb-3 space-y-1 border-b border-white/10 pb-2">
+        <div class="flex items-center gap-1.5"><span class="dot dot-green"></span><span class="text-[10px] text-white/55">Granted</span></div>
+        <div class="flex items-center gap-1.5"><span class="dot dot-orange"></span><span class="text-[10px] text-white/55">Deferred · hidden</span></div>
+        <div class="flex items-center gap-1.5"><span class="dot dot-blue"></span><span class="text-[10px] text-white/55">Deferred · revealed</span></div>
+        <div class="flex items-center gap-1.5"><span class="dot dot-neutral"></span><span class="text-[10px] text-white/55">Not granted</span></div>
+      </div>
+
+      <div class="space-y-3">
+
+        <!-- FILES -->
+        <div>
+          <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-white/40">Files</div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="green">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">file_read</span><span class="block text-[10px] text-white/45">Read a file from the VFS</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="orange">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">file_write</span><span class="block text-[10px] text-white/45">Create or overwrite a file</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="orange">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">file_edit</span><span class="block text-[10px] text-white/45">Replace a unique snippet in a file</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="green">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">file_list</span><span class="block text-[10px] text-white/45">List directory entries</span></div>
+          </div>
+        </div>
+
+        <!-- WEB -->
+        <div>
+          <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-white/40">Web</div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="green">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">web_search</span><span class="block text-[10px] text-white/45">Search the web</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="green">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">web_view</span><span class="block text-[10px] text-white/45">Open a URL in a preview window</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="neutral">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">web_fetch</span><span class="block text-[10px] text-white/45">Fetch a page as markdown</span></div>
+          </div>
+        </div>
+
+        <!-- DEV -->
+        <div>
+          <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-white/40">Dev</div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="blue" id="rc">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">run_command</span><span class="block text-[10px] text-white/45">Run a sandboxed shell command</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="blue" id="gf">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">git_fetch</span><span class="block text-[10px] text-white/45">Fetch updates from a remote</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="orange">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">git_push</span><span class="block text-[10px] text-white/45">Push a branch to a remote</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="green">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">bos_source_read</span><span class="block text-[10px] text-white/45">Read a file from the BOS repo</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="orange">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">dev_branch_request</span><span class="block text-[10px] text-white/45">Create the active feature branch</span></div>
+          </div>
+        </div>
+
+        <!-- MEMORY -->
+        <div>
+          <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-white/40">Memory</div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="green">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">memory_search</span><span class="block text-[10px] text-white/45">Search long-term memory</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="orange">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">memory_save</span><span class="block text-[10px] text-white/45">Save a new memory</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="orange">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">memory_recall</span><span class="block text-[10px] text-white/45">Recall a memory by id</span></div>
+          </div>
+        </div>
+
+        <!-- CORE — discovery tools. Edge case: bypass the allowlist, always neutral. -->
+        <div>
+          <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-white/40">Core</div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="neutral">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">find_tools</span><span class="block text-[10px] text-white/45">Discover available tools</span></div>
+          </div>
+          <div class="tool-row flex items-start gap-1.5 py-0.5" data-state="neutral">
+            <svg class="wrench mt-0.5 h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <div class="min-w-0"><span class="mono text-white/85">find_agent</span><span class="block text-[10px] text-white/45">Discover available agents</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- SKILLS / MCP panes — present & unchanged by this feature (out of scope) -->
+    <div id="pane-skills" class="hidden min-h-0 flex-1 overflow-auto p-2 text-xs text-white/40">Unchanged by this feature.</div>
+    <div id="pane-mcp" class="hidden min-h-0 flex-1 overflow-auto p-2 text-xs text-white/40">Unchanged by this feature.</div>
+  </div>
+
+<script>
+  // Tab switching (cosmetic — only Tools is in scope for this feature).
+  const tabs = { tools: 'tab-tools', skills: 'tab-skills', mcp: 'tab-mcp' };
+  const panes = { tools: 'pane-tools', skills: 'pane-skills', mcp: 'pane-mcp' };
+  const activeTab = 'flex-1 border-b-2 border-white/50 py-2 text-white capitalize';
+  const idleTab = 'flex-1 py-2 capitalize text-white/50 hover:text-white/80';
+  Object.keys(tabs).forEach(t => {
+    document.getElementById(tabs[t]).addEventListener('click', () => {
+      Object.keys(tabs).forEach(x => document.getElementById(tabs[x]).className = x === t ? activeTab : idleTab);
+      Object.keys(panes).forEach(x => document.getElementById(panes[x]).classList.toggle('hidden', x !== t));
+    });
+  });
+
+  // Conversation toggle: flips run_command + git_fetch between orange (hidden)
+  // and blue (revealed). Demonstrates SC-003 (orange -> blue on reveal, revert).
+  const btnFresh = document.getElementById('btn-fresh');
+  const btnAfter = document.getElementById('btn-after');
+  const revNote = document.getElementById('rev-note');
+  function setMode(mode) {
+    const st = mode === 'after' ? 'blue' : 'orange';
+    document.getElementById('rc').setAttribute('data-state', st);
+    document.getElementById('gf').setAttribute('data-state', st);
+    revNote.innerHTML = mode === 'after'
+      ? 'Revealed this conversation:<br /><span class="mono text-white/60">run_command, git_fetch</span>'
+      : 'Revealed this conversation:<br /><span class="mono text-white/40">(none yet)</span>';
+    btnAfter.className = mode === 'after' ? 'rounded bg-white/15 px-2 py-1 text-white' : 'rounded px-2 py-1 text-white/50 hover:text-white/80';
+    btnFresh.className = mode === 'fresh' ? 'rounded bg-white/15 px-2 py-1 text-white' : 'rounded px-2 py-1 text-white/50 hover:text-white/80';
+  }
+  btnFresh.addEventListener('click', () => setMode('fresh'));
+  btnAfter.addEventListener('click', () => setMode('after'));
+</script>
+</body>
+</html>

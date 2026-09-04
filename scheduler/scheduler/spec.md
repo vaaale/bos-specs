@@ -71,6 +71,8 @@ The scheduler daemon runs in the background, checking for due tasks and executin
 2. **Given** a recurring task, **When** it executes, **Then** the next run time is calculated and scheduled.
 3. **Given** the daemon is running, **When** BOS starts, **Then** it loads all active tasks from storage and begins monitoring.
 4. **Given** a task execution fails, **When** the error occurs, **Then** it is logged but does not crash the daemon; other tasks continue to execute.
+5. **Given** N BOS server processes are alive over one container and a task is due in the same tick window, **When** each process ticks, **Then** the task executes exactly once (FR-016).
+6. **Given** the elected daemon owner crashes without releasing its lock, **When** the next election runs, **Then** a surviving process reclaims ownership (by PID liveness or heartbeat age-out) and scheduling resumes (FR-017).
 
 ### User Story 6 - Comprehensive logging (Priority: P2)
 
@@ -101,7 +103,7 @@ Users can view the history of task executions, including when they ran and their
   - **Recurring**: Execute every N units (minutes, hours, days, weeks) with configurable interval
 - **FR-002**: A **Task** entity MUST contain: `id`, `name`, `prompt` (the message to send), `agentId` (which agent receives it), `scheduleType` (one-time | recurring), `scheduleConfig` (datetime for one-time; interval + unit + optional start time for recurring), `status` (active | paused), `nextRunAt` (ISO timestamp or null if paused), `createdAt`, `updatedAt`.
 - **FR-003**: The scheduler MUST persist tasks to a durable store (`data/scheduler/tasks.json`) so they survive restarts.
-- **FR-004**: A **daemon process** MUST run in the background, checking for due tasks every minute (or configurable interval) and executing them by invoking the agent runtime.
+- **FR-004**: A **daemon** MUST run in the background, checking for due tasks every minute (or configurable interval) and executing them by invoking the agent runtime. Because BOS runs several server processes over one data root (Supervisor BASE + PREVIEW, `next dev` workers), every process MAY start the daemon, but only the **elected owner** performs the tick loop (see FR-017).
 - **FR-005**: The daemon MUST be resilient: task execution failures MUST NOT crash the daemon; errors MUST be logged and the daemon continues monitoring other tasks.
 - **FR-006**: After a recurring task executes, the daemon MUST calculate and update the `nextRunAt` based on the interval.
 - **FR-007**: One-time tasks that have executed MUST be marked as `completed` or removed (configurable).
@@ -120,15 +122,19 @@ Users can view the history of task executions, including when they ran and their
   - `updateTaskSchedule(taskId, newScheduleConfig)` → updates just the schedule
 - **FR-012**: All scheduler operations MUST log to BOS's central logging system using the `scheduler` component name, with appropriate levels (info for normal operations, warn for skipped tasks, error for failures).
 - **FR-013**: Task execution MUST create a new conversation or append to an existing one (configurable per task) in the agent's chat history.
-- **FR-014**: The daemon MUST start automatically when BOS starts (as part of the app installation), and MUST gracefully handle BOS shutdown.
+- **FR-014**: The daemon MUST start automatically when every BOS server process boots, and MUST gracefully handle process shutdown — releasing the daemon lock (see FR-017) so a surviving process can take over immediately.
 - **FR-015**: Tasks MUST be loaded from storage on daemon startup, and any tasks with `nextRunAt` in the past (that weren't executed) MUST either be executed immediately or marked for review (configurable).
+- **FR-016**: A due task MUST execute **at most once per due instant**, even when multiple BOS server processes are alive and observe the task as due in the same tick window. (This is the guarantee the pre-042 per-process singleton failed to provide: a non-idempotent task such as "Daily Review" was observed firing N× where N = number of concurrent server processes.)
+- **FR-017**: Exactly **one** server process per user container MUST run the daemon tick loop at any time. Ownership MUST be established by an atomic container-wide lock (`daemon.lock`): the holder refreshes a heartbeat, non-holders poll the election, and a crashed holder is reclaimed (immediately if its PID is provably dead on the same host, otherwise once its heartbeat ages out). A process that loses or releases ownership MUST stop ticking but remain in the election.
+- **FR-018**: Every dispatch (a scheduled tick **and** an out-of-band "Run Now") MUST first acquire an **atomic per-job lock** (`job-locks/<taskId>.lock`) held for the duration of the run, so a task cannot run twice even if two owners ever coexist (e.g. a promote/restart overlap). The in-process "already running" set is only a fast path; the on-disk lock is authoritative. `daemon.lock` and the job locks MUST be rooted in the container's **canonical** data directory (`BOS_CANONICAL_DATA`, falling back to the per-process data dir) so that a base and a preview — which have different `BOS_DATA_DIR`s — share one lock scope.
 
 ### Key Entities
 
 - **Task** — the core entity containing all scheduling information.
 - **ScheduleConfig** — varies by type: `{ type: 'one-time', datetime: ISO }` or `{ type: 'recurring', interval: number, unit: 'minute'|'hour'|'day'|'week', startTime?: ISO }`.
 - **TaskExecution** — record of a task run: `{ taskId, executedAt, status: 'success'|'error', duration, output?, error? }`.
-- **Daemon** — the background process that monitors and executes tasks.
+- **Daemon** — the background process that monitors and executes tasks. Since 042, exactly one server process per container is the elected daemon owner (FR-017); the others stand by.
+- **Scheduler lock** — a cross-process lock file (`daemon.lock` for ownership; `job-locks/<taskId>.lock` for dispatch exclusivity), created atomically via `fs.link` and reclaimed by PID liveness + heartbeat (FR-017, FR-018).
 
 ## Success Criteria *(mandatory)*
 
@@ -141,13 +147,14 @@ Users can view the history of task executions, including when they ran and their
 - **SC-005**: The daemon survives task execution errors and continues operating.
 - **SC-006**: All scheduler activities are visible in the central logging system.
 - **SC-007**: Tasks persist across BOS restarts and resume scheduling correctly.
+- **SC-008**: With N concurrent server processes pointed at one container, a single due task dispatches exactly once (not N×), and killing the elected owner causes a survivor to take over without a permanent scheduling pause.
 
 ## Assumptions & Dependencies
 
 - Depends on the existing agent runtime being available to execute tasks (the agent can receive prompts and process them).
 - Depends on BOS's central logging system (`017-central-logging`) for all log output.
 - Depends on the app installation system (`009-installed-apps`) for deploying the scheduler as an installed app.
-- The daemon runs as a background Node.js process within the BOS environment (similar to how other background services work).
+- The daemon runs in every BOS server process, but ownership is arbitrated by a container-wide lock so exactly one process ticks at a time (FR-017). BOS runs several server processes over one data root (Supervisor BASE + PREVIEW, `next dev` workers), which is why the single-daemon guarantee is a locking problem, not a "start it once" problem.
 - Task execution uses the existing MCP tool gateway or direct agent invocation (to be finalized in implementation).
 
 ## Design notes (non-normative)
@@ -179,6 +186,9 @@ Users can view the history of task executions, including when they ran and their
 **Storage layout:**
 - `data/scheduler/tasks.json` — all tasks with their current state
 - `data/scheduler/executions/` — per-task execution history files
+- `<canonical data>/scheduler/daemon.lock` — container-wide daemon ownership lock (042)
+- `<canonical data>/scheduler/job-locks/<taskId>.lock` — per-task dispatch exclusivity lock (042)
+  (rooted in `BOS_CANONICAL_DATA` so a base and a preview share one scope — FR-018)
 
 **Daemon loop:**
 1. Load tasks from storage
@@ -187,6 +197,11 @@ Users can view the history of task executions, including when they ran and their
 4. Update `nextRunAt` based on schedule type
 5. Log the execution
 6. Wait 60 seconds (or configured interval) and repeat
+
+**Concurrency (042):**
+- `startDaemon()` is election-gated: it competes for `daemon.lock`; only the winner ticks, losers poll, a crashed owner is reclaimed.
+- Each dispatch takes `job-locks/<taskId>.lock` (atomic `fs.link`), held with a heartbeat for the run.
+- Locks are rooted in `BOS_CANONICAL_DATA` so a base and a preview share one scope. See `docs/dev/automation/scheduler-concurrency.md`.
 
 **Schedule calculation:**
 - One-time: `nextRunAt = scheduled datetime`
