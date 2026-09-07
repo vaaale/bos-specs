@@ -165,17 +165,19 @@
 ## Dependencies
 
 ```
-T001–T006 (usage) ──┐
-T007–T011 (core) ───┤
-T012–T016 (intake) ─┤
-T017–T021 (diag) ───┤──► T028–T040 (US1) ──► T041–T045 (US2) ──► T046–T050 (US3)
-T022–T025 (cost) ───┤         │                        │
-T026–T027 (boot) ───┘         │                        ├──► T051–T053 (US4)
-                               │                        ├──► T054–T057 (US5)
-                               │                        ├──► T058–T059 (US6)
-                               │                        └──► T060–T064 (US7)
-                               │
-                               └──► T065–T070 (Polish)
+T001–T006 (usage)  ──┐
+T007–T011 (core)     ──┤
+T012–T016 (intake)   ──┤
+T017–T021 (diag)     ──┤
+T022–T025 (cost)     ──┤
+T026–T027 (boot)     ──┤
+T071+T073 (consent)  ──┘──► T028–T040 (US1) ──► T041–T045 (US2) ──► T046–T050 (US3)
+                               + T072 (US1)        │
+                                                    ├──► T051–T053 (US4)
+                                                    ├──► T054–T057 (US5)
+                                                    ├──► T058–T059 (US6)
+                                                    ├──► T060–T064 (US7)
+                                                    └──► T065–T070 (Polish)
 ```
 
 **Foundational (T001–T027, plus the consent application T071/T073) MUST complete before any user story.**
