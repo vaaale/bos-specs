@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Self-Heal — UI Mockup</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;color:rgba(255,255,255,.85);font:13px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:22px}
+.wrap{max-width:1020px;margin:0 auto}
+.sec{margin-bottom:28px}
+.seclbl{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,.38);margin-bottom:11px}
+.hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.hdr h3{font-size:15px;font-weight:600;color:#fff}
+.card{background:#15171e;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-weight:600;color:rgba(255,255,255,.4);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)}
+td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.cid{font-weight:600;color:#fff;font-size:12px}
+.ctit{color:rgba(255,255,255,.55);font-size:11px;margin-top:1px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:rgba(255,255,255,.6)}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
+.be{background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.3)}
+.bb{background:rgba(139,92,246,.15);color:#a78bfa;border:1px solid rgba(139,92,246,.3)}
+.ba{background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.12)}
+.bc{background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3)}
+.bd{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3)}
+.bdb{background:rgba(236,72,153,.15);color:#f472b6;border:1px solid rgba(236,72,153,.3)}
+.st{font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.sbuild{color:#a78bfa}.sdiag{color:#60a5fa}.ssusp{color:#fbbf24}.sdim{color:rgba(255,255,255,.35)}
+.spin{width:11px;height:11px;border:2px solid rgba(167,139,250,.25);border-top-color:#a78bfa;border-radius:50%;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.btn{display:inline-block;padding:6px 13px;border-radius:7px;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.04);color:rgba(255,255,255,.85)}
+.bv{background:rgba(139,92,246,.18);border-color:rgba(139,92,246,.4);color:#c4b5fd}
+.bg{background:transparent}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ac{background:#15171e;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:13px;display:flex;flex-direction:column;gap:9px}
+.ac .tt{font-size:12px;font-weight:600;color:#fff}
+.ac .sub{font-size:11px;color:rgba(255,255,255,.5)}
+.lab{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.32)}
+.diff{background:#0b0d12;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:8px 9px;font-family:ui-monospace,Menlo,monospace;font-size:10px;line-height:1.55}
+.del{color:#f87171;background:rgba(248,113,113,.09);display:block;border-radius:3px}
+.add{color:#34d399;background:rgba(16,185,129,.09);display:block;border-radius:3px}
+.rw{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+.susp{border:1px solid rgba(245,158,11,.5);animation:pu 2s ease-in-out infinite}
+@keyframes pu{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.22)}50%{box-shadow:0 0 0 5px rgba(245,158,11,.05)}}
+.susp .tt{color:#fbbf24}
+.q{background:#0b0d12;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:9px 10px;font-size:11px;color:rgba(255,255,255,.8)}
+.q code{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:#c4b5fd;background:rgba(139,92,246,.12);padding:1px 4px;border-radius:3px}
+.inp{background:#0b0d12;border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:7px 9px;font-size:11px;color:rgba(255,255,255,.3);width:100%}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fc{display:flex;flex-direction:column;gap:12px}
+.fg{background:#15171e;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px}
+.fg h4{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.4);margin-bottom:9px}
+.tg{display:flex;align-items:center;gap:10px;font-size:11px;color:rgba(255,255,255,.7);padding:4px 0}
+.tg .num{margin-left:auto}
+.sw{width:30px;height:16px;border-radius:999px;background:rgba(255,255,255,.15);position:relative;flex:none}
+.sw.on{background:rgba(139,92,246,.6)}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff}
+.sw.on::after{left:16px}
+.num{background:#0b0d12;border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:6px 9px;font-size:11px;color:rgba(255,255,255,.65);width:74px;text-align:right}
+.lg3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
+.cl{display:flex;flex-direction:column;gap:5px}
+.lgd{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.lg{display:flex;align-items:center;gap:10px;background:#15171e;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px}
+.lg .nm{font-size:11px;color:rgba(255,255,255,.78)}
+.lg .kd{font-size:10px;color:rgba(255,255,255,.35);font-family:ui-monospace,Menlo,monospace}
+.note{font-size:10px;color:rgba(255,255,255,.4);font-style:italic;margin-top:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="sec">
+<div class="seclbl">1 · BS Self-Heal Page — Case List</div>
+<div class="hdr"><h3>Self-Heal</h3><span class="btn bg">＋ Report a problem</span></div>
+<div class="card">
+<table>
+<thead><tr><th>Status</th><th>Case</th><th>Trigger</th><th>Scope Class</th></tr></thead>
+<tbody>
+<tr><td><span class="st sbuild"><span class="spin"></span>bs-pipeline</span></td><td><div class="cid">EHS-0141</div><div class="ctit">bos_app_launch drops file param</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td></tr>
+<tr><td><span class="st sdiag">diagnosed</span></td><td><div class="cid">EHS-0142</div><div class="ctit">Skill mis-teaches file_read path</div></td><td>repeated-failure</td><td><span class="badge bb">b · skill</span></td></tr>
+<tr><td><span class="st ssusp">suspended</span></td><td><div class="cid">EHS-0135</div><div class="ctit">file_read permission: which layer?</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td></tr>
+<tr><td><span class="st sdim">dismissed</span></td><td><div class="cid">EHS-0130</div><div class="ctit">websearch network timeout</div></td><td>hard-error</td><td><span class="badge ba">a · env</span></td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div class="sec">
+<div class="seclbl">2 · Case Detail — Scope-class-dependent Action Area</div>
+<div class="g2">
+<div class="ac">
+<span class="badge ba">a · env</span>
+<div class="tt">No durable change</div>
+<div class="sub">External timeout — allowlisted. Retry once the network recovers.</div>
+<div class="rw"><span class="btn bg">Close</span></div>
+</div>
+<div class="ac">
+<span class="badge bb">b · skill</span>
+<div class="tt">Proposed skill edit</div>
+<div class="diff"><span class="del">- file_read({path:"~/docs/x"})</span><span class="add">+ file_read({path:"/Documents/x"})</span></div>
+<div class="rw"><span class="btn bv">Approve edit</span><span class="btn bg">Dismiss</span></div>
+</div>
+<div class="ac">
+<span class="badge be">e · bos-core</span>
+<div class="tt">Preview status</div>
+<div class="sub"><span class="st sbuild"><span class="spin"></span>Building</span></div>
+<div class="mono">branch · bos/self-heal-0141</div>
+<div class="note">Promote stays in Topbar (FR-024)</div>
+<div class="rw"><span class="btn bv">Pin &amp; open preview</span></div>
+</div>
+<div class="ac susp">
+<span class="lab">SUSPENDED · decision needed</span>
+<div class="tt">Waiting on you</div>
+<div class="q">This gap could be fixed in <code>file_read</code> (FR-002) or <code>bos_app_launch</code> (FR-014). Which surface should the pipeline modify?</div>
+<input class="inp" readonly value="Your answer…">
+<div class="rw"><span class="btn bv">Submit answer</span></div>
+</div>
+</div>
+</div>
+
+<div class="sec">
+<div class="seclbl">3 · Settings → Self Improvement</div>
+<div class="form">
+<div class="fc">
+<div class="fg"><h4>Global</h4><div class="tg"><span class="sw on"></span>Enable self-healing</div></div>
+<div class="fg"><h4>Triggers</h4>
+<div class="tg"><span class="sw on"></span>Explicit report</div>
+<div class="tg"><span class="sw"></span>Hard error</div>
+<div class="tg"><span class="sw"></span>Repeated failure</div>
+<div class="tg"><span class="sw"></span>Workflow timeout</div>
+<div class="tg"><span class="sw"></span>Log events</div>
+</div>
+</div>
+<div class="fc">
+<div class="fg"><h4>Autonomy</h4>
+<div class="tg"><span class="sw on"></span>Autonomous implement</div>
+<div class="tg"><span class="sw on"></span>TDD required</div>
+<div class="tg">Coverage target <span class="num">95%</span></div>
+</div>
+<div class="fg"><h4>Limits</h4>
+<div class="lg3">
+<div class="cl"><span class="lab">Cost cap / day</span><span class="num">50k</span></div>
+<div class="cl"><span class="lab">Dedupe (s)</span><span class="num">86400</span></div>
+<div class="cl"><span class="lab">Suspend (d)</span><span class="num">7</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="sec">
+<div class="seclbl">4 · Scope Class Badge System (legend)</div>
+<div class="lgd">
+<div class="lg"><span class="badge ba">a</span><div><div class="nm">Env</div><div class="kd">no change</div></div></div>
+<div class="lg"><span class="badge bb">b</span><div><div class="nm">Skill</div><div class="kd">patch skill</div></div></div>
+<div class="lg"><span class="badge bc">c</span><div><div class="nm">Workflow</div><div class="kd">edit def</div></div></div>
+<div class="lg"><span class="badge bd">d</span><div><div class="nm">Notify</div><div class="kd">not owned</div></div></div>
+<div class="lg"><span class="badge bdb">d-bis</span><div><div class="nm">App</div><div class="kd">app_build</div></div></div>
+<div class="lg"><span class="badge be">e</span><div><div class="nm">Core</div><div class="kd">feature branch</div></div></div>
+</div>
+</div>
+
+</div>
+</body>
+</html>
