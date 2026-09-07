@@ -173,6 +173,10 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 - **FR-015**: The Build Studio pipeline for self-heal fixes MUST run autonomously from `specify` through `implement` without stopping at step boundaries. The escalation MUST carry an explicit pre-authorization instruction: "The user has pre-authorized this fix. Run the full pipeline autonomously. Stop only if you encounter a decision you cannot resolve autonomously." The pipeline MUST enforce a **commit-before-advance** rule: any user-confirmed decision (a scope choice, an architectural decision, a design constraint) MUST be persisted to the current pipeline artifact (spec.md, design.md, plan.md, etc.) immediately upon confirmation, before the agent proceeds to the next question or step. This guarantees that a cold restart (conversation interruption, BOS restart, token limit) can recover all confirmed decisions from the artifacts on disk without losing any.
 
+- **FR-015b**: For class-e/d-bis escalations, the **fast spine MUST create the feature branch server-side** (deterministic name: `bos/self-heal-<case-id>`) and set the BS conversation's `activeFeatureBranch` to it **before** the BS agent's first token is consumed. This pre-conditions the branch so the BS agent never needs to call `dev_branch_request` (a frontend elicitation that would block indefinitely in an autonomous run). The Diagnostician's report is passed to the BS agent as **user intent**; the BS agent's `specify` step MUST produce a proper `spec.md` from it (adding user stories, FRs, success criteria), not treat the report as a spec directly.
+
+- **FR-015c**: The system MUST enforce **mutual exclusion** on the slow path: only one class-e/d-bis case MAY be in the `bs-pipeline` state at a time. If a new escalation arrives while another case is in flight, it MUST be queued (FIFO) and processed after the current one reaches a terminal state (`preview-ready`, `dismissed`, `failed`, `abandoned`). The case store tracks the in-flight case id; the escalation mechanism checks it before starting a new slow path.
+
 - **FR-015a**: At the `plan` → `tasks` boundary, the pipeline MUST perform a **classification verification** check: the plan's file list MUST plausibly map to the Diagnostician's `proposedSurface` description. If the plan modifies files in a subsystem that the `proposedSurface` does not reference, the pipeline MUST emit `self_heal.decision_needed` explaining the divergence. If the divergence persists after ONE re-diagnosis attempt (the Diagnostician is shown the plan and asked to reconcile), the case MUST suspend for human resolution. A second disagreement between the Diagnostician and the pipeline is never resolved by further LLM arbitration.
 
 - **FR-016**: When the autonomous pipeline encounters an unresolvable decision, it MUST emit a `self_heal.decision_needed` event (with the question, context, and case id) and the run MUST transition to suspended state. The run MUST resume when a matching `self_heal.decision_resolved` event arrives with the user's answer.
@@ -241,6 +245,31 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 - **SC-010**: No self-heal fix is ever promoted without an explicit user action. The system emits `fix_ready`; only the user promotes.
 
+## Clarifications
+
+### Session 2026-09-07
+
+**Q1 (C1)**: For the `self_heal.request` tool, what is the user-facing entry point?
+**A1**: A button in the BS Self-Heal page ("Report a problem" → text input → fires the tool). Agents and apps call it as a server-side tool; the user calls it via the BS UI.
+
+**Q2 (C2)**: Should `permission_denied` be in the environmental allowlist (suppressed) or NOT (always triggers)?
+**A2**: NOT in the allowlist. `permission_denied` always triggers the mechanism. The Diagnostician then decides whether it's environmental (class a — user's disk permissions) or a BOS bug (class e — code drops permissions). The allowlist covers only errors that are *unconditionally* external: network/socket errors, DNS resolution failures, 401 auth errors, 429 rate-limit responses, OOM/SIGKILL, and external service timeouts.
+
+**Q3 (C3)**: How does the Diagnostician's report map to the BS pipeline's `specify` step?
+**A3**: The report is treated as **user intent**. The BS agent receives it and writes a proper `spec.md` from it (adding user stories, FRs, success criteria). The report is the *input*; the spec is the *output* of `specify`. This produces a cleaner, more complete artifact than treating the report as a spec directly.
+
+**Q4 (C4)**: Who names the feature branch for autonomous class-e fixes, and how is the branch created given the elicitation gotcha?
+**A4**: The **fast spine creates the branch server-side** before the BS agent starts. The branch name is deterministic: `bos/self-heal-<case-id>`. The fast spine (workflow code, not an LLM agent) creates the branch via the git API and sets the BS conversation's `activeFeatureBranch` field to it. When the BS agent starts and tries to write `spec.md`, the branch is already active — `dev_branch_request` is never called, the elicitation card is never shown. This resolves the agent-to-agent communication gap: the branch is pre-conditioned, not elicited.
+
+**Q5 (C5)**: How does the pipeline resume after a `decision_resolved` event (v1)?)
+**A5**: A new workflow run is triggered by the `decision_resolved` event (the workflow engine subscribes to it). The new run reads the case store to determine which pipeline step to resume at, and re-enters the BS conversation with the answer appended. The BS agent picks up from the last artifact on disk.
+
+**Q6 (C6)**: Can multiple self-heal cases run the slow path simultaneously?
+**A6**: **No.** Only one case at a time. When a new class-e/d-bis escalation arrives while another is in flight, it MUST be queued and processed FIFO after the current one completes. The case store tracks the in-flight case; the escalation mechanism checks for an in-flight case before starting a new slow path.
+
+**Q7 (C7)**: How does the Diagnostician's tool access work for Mode 2?
+**A7**: The agent definition gains a **unified tool set**: the existing conversation tools (`conversation_overview`, `conversation_page`, `submit_review_report`) + source-reading tools (`bos_source_search`, `bos_source_read`, `bos_source_list`) + app tools (`app_list`) + event-store tools (`query_events`, `get_event`). Mode is selected by input type: a conversation id triggers Mode 1; a failure signature triggers Mode 2. One agent, one tool set, two entry points.
+
 ## Assumptions
 
 - The 034 event-notification system is implemented and available (it is — converged 2026-08-24). The self-heal mechanism rides on its emit/query/get/ack infrastructure.
@@ -250,6 +279,6 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 - The Workflow Manager service (with event-triggered runs, per spec 002) is available for the fast-spine workflow.
 - The `data/user-apps/items/` directory is the authoritative location for user-owned marketplace items. An item's presence there (vs. only in the public marketplace) is the ownership predicate.
 - The HITL node (suspended workflow state) is a v2 enhancement. In v1, the exception stop uses terminate-and-retrigger: the workflow ends when `decision_needed` is emitted, and a new workflow is triggered when `decision_resolved` arrives with the case context.
-- The environmental allowlist for trigger filtering is a static, code-defined list (not user-configurable in v1). It covers: network/socket errors, DNS resolution failures, 401/403 auth errors, 429 rate-limit responses, OOM/SIGKILL, and external service timeouts (errors originating from outside BOS).
+- The environmental allowlist for trigger filtering is a static, code-defined list (not user-configurable in v1). It covers: network/socket errors, DNS resolution failures, 401 auth errors, 429 rate-limit responses, OOM/SIGKILL, and external service timeouts (errors originating from outside BOS). `permission_denied` is NOT in the allowlist — it always triggers, and the Diagnostician decides whether it's environmental (class a) or a BOS bug (class e).
 - The Diagnostician's report is the single source of truth for the scope classification. The pipeline does not re-classify; it trusts the report's `scopeClass` field.
 - TDD and the 95% coverage target are instructions in the developer delegation brief, not a global change to the Developer agent's behavior. Other (non-self-heal) developer delegations are unaffected.
