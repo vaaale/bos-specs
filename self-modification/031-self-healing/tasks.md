@@ -45,6 +45,11 @@
 - [ ] T020 [P] Extend the `agent-behavior-review` skill — add a "Mode 2: Gap Diagnosis" section to `SKILL.md` with the investigation method (reproduce → search specs/docs → verify in source → classify scope → write report). The report format: markdown with YAML frontmatter (scopeClass, ownership, proposedSurface, caseId, triggeredAt). The classification rules (a/b/c/d/d-bis/e) and the ownership predicate (data/user-apps/items/ check)
 - [ ] T021 Write `tests/self-heal/diagnostician.test.ts` — `runDiagnostician` with a mocked `runSubAgent` returns a valid report; the VFS file is written; the case is updated with scope class. Self-cleaning temp root
 
+### Consent Application (analyze fix F1 — FR-010, FR-011, FR-022c)
+
+- [ ] T071 Create `src/lib/self-heal/consent.ts` — `applyApprovedEdit(caseId, edit)`: for scope class `b` (FR-010) apply the proposed skill patch via the existing skill-management mechanism; for class `c` (FR-011) apply the proposed workflow definition edit. MUST refuse to apply unless the case is in the consented `patching`/`fixing` state (consent-gated). On success move the case to a terminal closed state and emit the lifecycle event. Wired into intake Phase-B routing (T012) and the API route `?op=consent` (T032)
+- [ ] T073 [P] Write `tests/self-heal/consent.test.ts` — `applyApprovedEdit` for class `b` actually changes the skill file (assert the diff applied); for class `c` changes the workflow def; a NOT-consented case results in NO change (the gate holds). Self-cleaning temp root
+
 ### Cost + Queues (P4)
 
 - [ ] T022 Create `src/lib/self-heal/cost.ts` — `recordCaseCost(caseId, usage)`, `capExhaustedForToday()`, `getDayKey()` (UTC midnight), `estimateCost(task)` (fallback when usage is undefined). Ledger is in `data/self-heal/index.json`. Reset at midnight UTC
@@ -64,8 +69,8 @@
 *The headline end-to-end loop. Independent test: SC-001.*
 
 - [ ] T028 [US1] Create `src/lib/assistant/tools/server/self-heal.ts` — three server tools: `self_heal.request` (FR-001: accepts problem description + optional context, calls `selfHealIntake`), `self_heal.request_decision` (FR-016: accepts caseId + question, emits `decision_needed`, suspends the case), `self_heal.complete_fix` (FR-017: accepts caseId + branch/appId + summary, checks Supervisor preview state, emits `fix_ready`, clears in-flight slot)
-- [ ] T029 [US1] Implement branch pre-creation in `src/lib/self-heal/intake.ts` (FR-015b): before the BS conversation's first token, create the branch `bos/self-heal-<caseId-lowercase>` server-side (via the git API or `supervisorBegin`), set the BS conversation's `activeFeatureBranch` to it. The Diagnostician's report is passed as **user intent** — the BS agent's `specify` step writes a proper `spec.md` from it
-- [ ] T030 [US1] Implement the autonomous brief in `src/lib/self-heal/intake.ts`: construct the `runSubAgent` task for the BS agent that includes (a) the pre-authorization instruction ("The user has pre-authorized this fix. Run the full pipeline autonomously. Stop only if you encounter a decision you cannot resolve autonomously."), (b) the FR-015a classification-verification instruction, (c) the FR-014 TDD + ≥95% coverage mandate in the developer delegation brief, (d) the Diagnostician's report as the `specify` input
+- [ ] T029 [US1] Implement branch pre-creation in `src/lib/self-heal/intake.ts` (FR-015b): before the BS conversation's first token, set the BS conversation's `activeFeatureBranch` to the deterministic name `bos/self-heal-<caseId-lowercase>` — do NOT eagerly create the git ref; it materializes lazily in `supervisorBegin` at the first `dev_delegate` (design.md ADR-3, reviewer-verified). The Diagnostician's report is passed as **user intent** — the BS agent's `specify` step writes a proper `spec.md` from it
+- [ ] T030 [US1] Implement the autonomous brief in `src/lib/self-heal/intake.ts`: construct the `runSubAgent` task for the BS agent that includes (a) the pre-authorization instruction ("The user has pre-authorized this fix. Run the full pipeline autonomously. Stop only if you encounter a decision you cannot resolve autonomously."), (b) the FR-015a classification-verification instruction (one re-diagnosis; a second disagreement is never LLM-arbitrated — emit `decision_needed`), (c) the FR-014 mandate in the developer delegation brief — TDD (failing test first) + ≥95% coverage on modified files + the `plan` step's file list as a **hard scope constraint** (modify only those files; emit `decision_needed` for any addition; the `converge` step verifies modified ⊆ plan list), (d) the FR-015 **commit-before-advance** rule (persist each user-confirmed decision to the current artifact before advancing), (e) the Diagnostician's report as the `specify` input
 - [ ] T031 [US1] Implement boot-reconcile in `src/lib/self-heal/intake.ts` (R9): on boot (single-owner via scheduler daemon lock), find cases in `bs-pipeline` state with no live conversation → check Supervisor for a `ready` preview on the case's branch → if found, re-emit `fix_ready` (idempotent); if not, mark case `failed`
 - [ ] T032 [P] [US1] Create `src/app/api/self-heal/route.ts` — API route: `GET` (list cases, optional `?caseId` for detail), `POST ?op=report` (fire `self_heal.request`), `POST ?op=consent` (approve/reject class-b/c patch), `POST ?op=answer` (submit `decision_resolved`), `POST ?op=dismiss` (close case). All server-only; the client fetches over HTTP
 - [ ] T033 [P] [US1] Create `src/apps/build-studio/selfheal/useSelfHealCases.ts` — React hook that fetches from `/api/self-heal` and subscribes to `self_heal.*` events (via the 034 stream) for live updates
@@ -73,9 +78,10 @@
 - [ ] T035 [US1] Create `src/apps/build-studio/selfheal/CaseList.tsx` — table with columns: Status | Case | Trigger | Scope Class (badge). Active/in-flight first. Click a row → detail view
 - [ ] T036 [US1] Create `src/apps/build-studio/selfheal/CaseDetail.tsx` — diagnostics report (markdown rendered), header strip (scope class, ownership, proposed surface, status), state-transition timeline (vertical, timestamped), and the scope-class-dependent action area
 - [ ] T037 [US1] Create `src/apps/build-studio/selfheal/PreviewStatus.tsx` — the class-e/d-bis action card: build state (building/ready/failed), branch name or app id, "Pin & open preview" button, build log tail, note: "Promote stays in Topbar (FR-024)"
+- [ ] T072 [US1] Create `src/apps/build-studio/selfheal/ConsentCard.tsx` — the class-b/c action card (FR-022c): the proposed edit rendered as a before/after diff, with **Approve edit** (calls `/api/self-heal?op=consent` → `applyApprovedEdit`, T071) and **Dismiss** buttons. Rendered from `CaseDetail` (T036) when the case is in the consented/`patching` state
 - [ ] T038 [US1] Modify `src/apps/build-studio/index.tsx` — add "Self-Heal" to the nav (peer of the conflict/git-merge page). Render `SelfHealPane` when selected
 - [ ] T039 [P] [US1] Modify `src/apps/build-studio/manifest.ts` — add `eventHandler` entries for `self_heal.fix_ready` (deep-link to the case, show a toast) and `self_heal.decision_needed` (highlight the suspended case)
-- [ ] T040 [US1] Write `e2e/031-self-healing.spec.ts` — **SC-001 acceptance test**: fire `self_heal.request` with the `bos_app_launch`-missing-params signature → assert Diagnostician writes a markdown report classifying `e` with a source citation → case escalates and a BS conversation is seeded with `activeFeatureBranch` = `bos/self-heal-<id>` → (mock the developer step to a committed `params` fix on the branch) → preview health passes → `fix_ready` event emitted with the branch name → the Event Viewer shows it. **Regression test that fails on base**: a test asserting `bos_app_launch` accepts a `file` param must fail before the fix and pass after. `test.describe.configure({mode:'serial'})`
+- [ ] T040 [US1] Write `e2e/031-self-healing.spec.ts` — **SC-001 acceptance test**: fire `self_heal.request` with the `bos_app_launch`-missing-params signature → assert Diagnostician writes a markdown report classifying `e` with a source citation → case escalates and a BS conversation is seeded with `activeFeatureBranch` = `bos/self-heal-<id>` → (mock the developer step to a committed `params` fix on the branch) → preview health passes → `fix_ready` event emitted with the branch name → the Event Viewer shows it. **Regression test that fails on base**: a test asserting `bos_app_launch` accepts a `file` param must fail before the fix and pass after. **Consent (SC-009)**: a class-b case renders `ConsentCard`; approving it applies the skill edit (assert the file changes) and the case closes. `test.describe.configure({mode:'serial'})`
 
 ---
 
@@ -172,7 +178,7 @@ T026–T027 (boot) ───┘         │                        ├──► 
                                └──► T065–T070 (Polish)
 ```
 
-**Foundational (T001–T027) MUST complete before any user story.**
+**Foundational (T001–T027, plus the consent application T071/T073) MUST complete before any user story.**
 **US1 (T028–T040) MUST complete before US2–US7** (the BS page + API route are shared infrastructure).
 **US2–US7 are independent of each other** (they can be developed in parallel once US1 is done).
 **Polish (T065–T070) is last.**
@@ -195,7 +201,7 @@ T026–T027 (boot) ───┘         │                        ├──► 
 
 ## Implementation Strategy
 
-**MVP = Foundational (T001–T027) + US1 (T028–T040).** This delivers the headline capability: the explicit `self_heal.request` → Diagnostician → autonomous BS pipeline → TDD fix → `fix_ready` event, with the BS Self-Heal page and the `bos_app_launch` acceptance test. The user can report a problem and get a fix on a preview with one click.
+**MVP = Foundational (T001–T027 + T071/T073) + US1 (T028–T040 + T072).** This delivers the headline capability: the explicit `self_heal.request` → Diagnostician → autonomous BS pipeline → TDD fix → `fix_ready` event, with the BS Self-Heal page, the class-b/c consent flow (approve a skill/workflow edit), and the `bos_app_launch` acceptance test. The user can report a problem and get a fix on a preview with one click.
 
 **Increment 2 = US2 (T041–T045).** Automatic detection. The system starts noticing problems the user hasn't reported.
 
