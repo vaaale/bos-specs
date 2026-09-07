@@ -85,7 +85,7 @@ flowchart LR
 
   RE --> MX{"Mutual-exclusion slot free?"}
   MX -->|no| Q[("slow-path FIFO queue")]
-  MX -->|yes| SLOW["Slow Path\nautonomous BS pipeline\nspecify→…→implement\non bos/self-heal-caseId"]
+  MX -->|yes| SLOW["Slow Path\nautonomous BS pipeline\nspecify→…→implement\non bos/self-heal-<caseId>"]
 
   SLOW --> FR["fix_ready event\n+ preview (or app_build)"]
   FR --> USER["User promotes / discards\n(Topbar or BS page)"]
@@ -116,7 +116,7 @@ flowchart TB
   end
   EKV["034 event kernel (data/events/)"]
   AGT["agent system\nrunSubAgent (local)"]
-  SUB["Supervisor + preview worktrees\nbos/self-heal-caseId"]
+  SUB["Supervisor + preview worktrees\nbos/self-heal-<caseId>"]
   UA["user-apps GitFS repo\n(ownership predicate)"]
 
   HOOK -->|emit self_heal.trigger| EKV
@@ -125,13 +125,13 @@ flowchart TB
   INTAKE --> STORE
   INTAKE -->|async| AGT
   AGT -->|Diagnostician report| INTAKE
-  INTAKE -->|escalate: seed BS conv + runSubAgent| AGT
-  AGT -->|dev_delegate (implement)| SUB
-  INTAKE -.ownership check.-> UA
+  INTAKE -->|"escalate: seed BS conv + runSubAgent"| AGT
+  AGT -->|"dev_delegate (implement)"| SUB
+  INTAKE -.->|"ownership check"| UA
   API --> INTAKE
   CFG --> INTAKE
   API --> STORE
-  INTAKE -->|emit case_*/fix_ready| EKV
+  INTAKE -->|"emit case_*/fix_ready"| EKV
 ```
 
 ### 3.3 Component
