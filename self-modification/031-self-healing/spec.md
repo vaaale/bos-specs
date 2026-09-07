@@ -217,7 +217,7 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 - **Scope Class**: The classification of a diagnosed problem into one of six fix surfaces: `a` (env — no change), `b` (skill/agent — patch skill), `c` (workflow — edit workflow), `d` (app not owned — notify), `d-bis` (app owned — fix via app_build), `e` (BOS core — fix via feature branch).
 
-- **Fast Spine**: The deterministic, fast-path workflow (trigger → diagnose → scope → resolve/escalate) that completes in minutes and ends without waiting for the slow path.
+- **Fast Spine**: The deterministic, fast-path coordinator (trigger → dedupe → cost-cap → case store → Diagnostician → scope-class routing → resolve/escalate) that completes in minutes and ends without waiting for the slow path. Implemented as a 034 core headless handler + server-only case store + hook plugin + async `runSubAgent` — NOT a 002 workflow.
 
 - **Slow Path**: The autonomous Build Studio pipeline (specify → implement → preview) that runs over hours/days for class e/d-bis fixes.
 
@@ -276,7 +276,7 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 - The 005 self-modification pipeline (Supervisor, base + preview, promote/discard) is implemented and available (it is — the user has been using it for feature development).
 - The `conversation-reviewer` agent and its `agent-behavior-review` skill exist and are functional (they are — the user built them). The extension adds Mode 2 without modifying Mode 1's behavior.
 - The Build Studio pipeline (specify → clarify → design → plan → tasks → implement → converge) is available as a delegated agent (`build-studio`) that can be invoked programmatically with a pre-authorization instruction.
-- The Workflow Manager service (with event-triggered runs, per spec 002) is available for the fast-spine workflow.
+- The fast spine is a **deterministic bos-core coordinator** — a 034 core headless handler (`registerCoreExecutor`) fronting a server-only case store, with a hook plugin for trigger capture and `runSubAgent` for the Diagnostician and the slow-path BS conversation. The 002 Workflow Manager service is NOT the fast-spine engine (its core engine is retired per architecture-overview §14; the 002 service is an LLM-node engine with no deterministic node type and no event-triggered runs). The 002 service is an *integration point* for the workflow-timeout trigger (FR-004), not the spine's vehicle.
 - The `data/user-apps/items/` directory is the authoritative location for user-owned marketplace items. An item's presence there (vs. only in the public marketplace) is the ownership predicate.
 - The HITL node (suspended workflow state) is a v2 enhancement. In v1, the exception stop uses terminate-and-retrigger: the workflow ends when `decision_needed` is emitted, and a new workflow is triggered when `decision_resolved` arrives with the case context.
 - The environmental allowlist for trigger filtering is a static, code-defined list (not user-configurable in v1). It covers: network/socket errors, DNS resolution failures, 401 auth errors, 429 rate-limit responses, OOM/SIGKILL, and external service timeouts (errors originating from outside BOS). `permission_denied` is NOT in the allowlist — it always triggers, and the Diagnostician decides whether it's environmental (class a) or a BOS bug (class e).
