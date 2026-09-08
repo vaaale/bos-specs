@@ -28,6 +28,7 @@ A background process that:
 - Executes tasks by sending prompts to the designated agent
 - Updates task state after execution
 - Logs all activities
+- **Is owned by exactly one process per container** (042): every server process starts the daemon, but only the winner of an atomic container-wide lock (`daemon.lock`) ticks; the others poll. A per-task dispatch lock additionally guarantees a due task runs once even if two owners ever coexist. See `docs/dev/automation/scheduler-concurrency.md`.
 
 ## Architecture
 
@@ -81,6 +82,11 @@ A background process that:
 - Calculates next run times
 - Validates schedule configurations
 - Handles timezone conversions
+
+**Locks** (`lock.ts`, 042)
+- Cross-process file locks: `daemon.lock` (single-owner election) and `job-locks/<taskId>.lock` (per-dispatch exclusivity)
+- Atomic acquisition via `fs.link` (EEXIST, no read-then-write gap); heartbeat + PID-liveness reclaim so a crashed owner never wedges scheduling
+- Rooted in `BOS_CANONICAL_DATA` so a base and a preview share one lock scope
 
 **Daemon** (`daemon.ts`)
 - Background process loop
@@ -140,9 +146,12 @@ task-service.createTask() → storage.save() → confirmation to user
 
 ### Task Execution
 ```
-Daemon loop → check due tasks → executeTask() → executor.sendPrompt(agent) → 
-agent.process() → result captured → recordExecution() → update nextRunAt → log
+Elected owner ticks → check due tasks → acquire job-locks/<taskId>.lock (atomic) →
+executeTask() → executor.sendPrompt(agent) → agent.process() → result captured →
+recordExecution() → update nextRunAt → release lock → log
 ```
+(Only the process holding `daemon.lock` ticks; every dispatch is additionally
+serialized by a per-task lock, so a due task fires once container-wide.)
 
 ### Modifying a Task
 ```
@@ -253,8 +262,9 @@ daemon picks up changes on next loop
 
 ### Scalability Improvements
 - Database backend for very large task counts
-- Distributed daemon for multi-instance deployments
 - Priority queues for time-sensitive tasks
+- (Single-container multi-process dedup — exactly-once dispatch + one elected daemon —
+  is now implemented, 042; true *cross-container* distribution remains future work.)
 
 ## Dependencies
 
@@ -310,7 +320,7 @@ The Scheduler is successful when:
 ## Glossary
 
 - **Task**: A scheduled prompt to be sent to an agent
-- **Daemon**: The background process that monitors and executes tasks
+- **Daemon**: The background process that monitors and executes tasks; since 042 exactly one server process per container is the elected owner (see `daemon.lock`)
 - **Schedule**: When and how often a task should run
 - **Execution**: One instance of a task running
 - **Next Run**: The calculated time when a task will next execute
