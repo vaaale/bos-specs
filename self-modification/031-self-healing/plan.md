@@ -250,9 +250,9 @@ src/app/api/
 
 src/apps/build-studio/selfheal/
 ├── TranscriptsSection.tsx            # NEW — linked-run list + rendered transcript panel (US9)
-├── RunControl.tsx                    # NEW — stuck indicator + Stop/Start (US10)
+├── RunActions.tsx                    # NEW — per-row controls in the case list: stuck indicator + Stop/Start/Discard (US10/US10b)
 ├── CaseList.tsx                      # MODIFY — `stopped` status chip
-├── CaseDetail.tsx                    # MODIFY — wire in TranscriptsSection + RunControl
+├── CaseDetail.tsx                    # MODIFY — wire in TranscriptsSection (RunActions is in CaseList, not here)
 └── useSelfHealCases.ts               # MODIFY — subscribe run_stuck/run_aborted/run_restarted; fetch transcripts
 
 src/apps/build-studio/manifest.ts     # MODIFY — event handlers for run_stuck/run_aborted/run_restarted
@@ -302,7 +302,7 @@ These close out the implement-step items from `design.md` §9 (all resolved by t
 2. **P12 — Platform abort (FR-032)**: `run-registry.ts` + abort wiring in both runners (register AbortController / child, SIGKILL escalation, parentRunId cascade) + `abortHeadlessRun` + `tests/agent/run-registry.test.ts`. Depends on P11's `runId`.
 3. **P13 — `endedReason` surfacing (M1, FR-033(b) enablement)**: `types.ts` `endedReason`; `runner.ts` non-error return; thread through `intake.ts` `PipelineRunOutput` + `diagnostician.ts`. Unblocks P14's max-steps branch. Depends on P11/P12 (same files).
 4. **P14 — Self-heal stuck detector + Stop/Start + `stopped` (FR-033/034/035)**: `stuck-detector.ts` + `self-heal/types.ts` (`stopped`, `runs[]`) + `store.ts` (runs[], clearInFlightSlot) + `intake.ts` (stopRun/startRun, onEvent wiring for diag + pipeline, max-steps→stopped branch, `run_stuck`/`run_aborted`/`run_restarted`) + `diagnostician.ts` (onEvent, run recording) + `/api/self-heal` (stop/start ops, runs in GET) + `tests/self-heal/stuck-detector.test.ts` + `tests/self-heal/stopped-state.test.ts`. Depends on P11–P13.
-5. **P15 — BS pane + manifest + Settings (US9/US10 UI, FR-022(f)/(g))**: `TranscriptsSection.tsx` + `RunControl.tsx` + `CaseList.tsx` (stopped chip) + `CaseDetail.tsx` (wire both) + `useSelfHealCases.ts` (new events + transcript fetch) + `manifest.ts` (event handlers) + `SelfImprovementTab.tsx` (stuck-detector settings). Reference `mockup.html`.
+5. **P15 — BS pane + manifest + Settings (US9/US10 UI, FR-022(f)/(g)/(h), FR-036)**: `TranscriptsSection.tsx` + `RunActions.tsx` (per-row Stop/Start/Discard in the case list) + `CaseList.tsx` (stopped chip + RunActions cell) + `CaseDetail.tsx` (wire TranscriptsSection only) + `useSelfHealCases.ts` (new events + transcript fetch + discard mutation) + `manifest.ts` (event handlers incl. `case_discarded`) + `SelfImprovementTab.tsx` (stuck-detector settings). Reference `mockup.html`. + `intake.ts` (`discardCase`) + `store.ts` (`deleteCase`) + `/api/self-heal` (`?op=discard`).
 6. **P16 — Docs + e2e + coverage**: `docs/dev` + `docs/usage` sections; SC-011–014 + R-SA5 in `e2e/031-self-healing.spec.ts`; run coverage on the updated gate (incl. `transcript.ts` + `run-registry.ts`).
 
 *Dependencies*: P11 before P12 before P13 before P14 (all touch the runner/type files in sequence). P15 after P14 (the pane reads what the spine writes). P16 last. P11–P14 are the backend spine; P15 is the frontend; P16 verifies end-to-end.
