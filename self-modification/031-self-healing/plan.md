@@ -199,3 +199,112 @@ These close out the implement-step open items from `design.md` §7:
 ## Assumptions
 
 See `spec.md` → Assumptions (already reconciled for the "not a 002 workflow" finding) and `design.md` §1–§8 for the verified architectural premises. This plan adds: the 1M/day cost cap default (user-confirmed), and the R6/R7/R8 implement-step resolutions above.
+
+---
+
+# Scope-Add (2026-09-08): Headless Transcription + Stuck-Run Stop/Start
+
+**Extends the base feature above (P0–P10) in place on the same branch.** Three parts, per `spec.md` US8/US9/US10 + FR-029–FR-035 and `design.md` §9 (ADR-10–ADR-14, reviewer-verified): (1) a **platform headless-run transcription** (one markdown file per run, both local + CLI backends), (2) a **platform abort** capability (`abortHeadlessRun`), and (3) a **self-heal stuck-run detector + Stop/Start** with a new `stopped` case state. Transcription + abort are platform (agent-execution layer); stuck-detection + Stop/Start are self-heal consumers of them. Architecture lives in `design.md` §9 — this section fixes the implementation structure, test strategy, and phases (T074+).
+
+## Technical Context (delta)
+
+**New storage**:
+- Transcriptions — `data/agent-transcripts/<agentId>/<runId>.md` (canonical data dir via `dataDir()`, gitignored, NOT under `/Documents/Chats`). One file per run. The self-heal store (`data/self-heal/`) already uses `path.join(dataDir(), "self-heal")` as the non-VFS precedent.
+
+**New config** (`src/lib/config/registry.ts`): a platform `agentRuns` namespace — `agentRuns.transcriptions.enabled` (bool, default true); and `selfHeal.stuckDetector.enabled` (default true) + `selfHeal.stuckDetector.repeatCalls` (number, default 5).
+
+**New modules**:
+- `src/lib/agent/subagents/transcript.ts` — `TranscriptionWriter` (open/appendTurn/appendToolCall/appendToolResult/finalize), the markdown format, config gate. Wired into BOTH `runner.ts` (local) and `claude-runner.ts` (CLI).
+- `src/lib/agent/subagents/run-registry.ts` — module-level `runId → { abort: () => void, parentRunId?: string }` registry; `abortHeadlessRun(runId)` that cascades parent→child (the nested Developer CLI child is orphaned otherwise — `tool_progress` is swallowed by `runLocalHeadless`, ADR-11). SIGKILL escalation for CLI children.
+- `src/lib/self-heal/stuck-detector.ts` — deterministic stuck detection: `(tool, normalizedInput)` repeat count (reuses `signature.ts` normalization) + max-steps exhaustion (via the new `AgentRunResult.endedReason`).
+
+**Read API**: `src/app/api/agent-transcripts/route.ts` — `GET ?runId` (one transcript), `GET ?agentId` (list runs), `GET ?caseId` (list a self-heal case's runs via the case store). Read-only.
+
+**Key type additions** (`src/lib/agent/subagents/types.ts`): `AgentRunResult` gains `runId` (string, generated at the top of each runner — see R-SA2), `endedReason?: "completed"|"cancelled"|"error"|"max_steps"`, `aborted?: boolean`; `SubAgentEvent` gains `{ type: "run_started", runId, agentId, startedAt, parentRunId? }`. `self-heal/types.ts`: `CaseStatus` gains `stopped`; `HealingCase` gains `runs[]` (authoritative run list) + `stuckSignature?`.
+
+**Constraints**:
+- The transcription writer is on the SHARED `runLocalHeadless`/`runClaudeAgent` path — it MUST no-op cleanly when `agentRuns.transcriptions.enabled` is false, MUST NOT change any existing caller's observable `AgentRunResult` (byte-identical except the new additive fields), and MUST be cheap (append-per-turn, no re-read).
+- `runLocalHeadless` today collapses `cancelled`/`max_steps` into the clean return (special-cases only `error`) — the `endedReason` surfacing (M1) is what makes both the abort-confirmation AND the max-steps stuck detection reachable by the spine.
+- `stopped` is non-terminal; Stop MUST explicitly `clearInFlightSlot` (the terminal-only auto-release does not fire for `stopped`), so another escalation can proceed (FR-015c).
+
+## Project Structure (delta)
+
+```text
+src/lib/agent/subagents/
+├── transcript.ts                     # NEW — TranscriptionWriter (platform)  [ADR-10]
+├── run-registry.ts                   # NEW — abortHeadlessRun + cascade (platform)  [ADR-11]
+├── types.ts                          # MODIFY — AgentRunResult + runId/endedReason/aborted; SubAgentEvent + run_started
+├── runner.ts                         # MODIFY — runLocalHeadless: accept genId, register AbortController, wire transcript, surface endedReason+aborted+runId
+└── claude-runner.ts                  # MODIFY — runId at top, register child, wire transcript, SIGKILL escalation, return runId+endedReason+aborted, parentRunId
+
+src/lib/self-heal/
+├── stuck-detector.ts                 # NEW — deterministic stuck detection  [ADR-13]
+├── types.ts                          # MODIFY — CaseStatus + stopped; HealingCase + runs[]/stuckSignature
+├── store.ts                          # MODIFY — stopped handling, runs[] persistence, clearInFlightSlot on Stop
+├── intake.ts                         # MODIFY — stopRun/startRun, onEvent wiring (diag + pipeline) + runs[] recording, endedReason max-steps → stopped branch
+└── diagnostician.ts                  # MODIFY — pass onEvent, record run, endedReason branch
+
+src/app/api/
+├── agent-transcripts/route.ts        # NEW — read API (?runId / ?agentId / ?caseId)
+└── self-heal/route.ts                # MODIFY — POST ?op=stop / ?op=start; GET ?caseId returns runs[]
+
+src/apps/build-studio/selfheal/
+├── TranscriptsSection.tsx            # NEW — linked-run list + rendered transcript panel (US9)
+├── RunControl.tsx                    # NEW — stuck indicator + Stop/Start (US10)
+├── CaseList.tsx                      # MODIFY — `stopped` status chip
+├── CaseDetail.tsx                    # MODIFY — wire in TranscriptsSection + RunControl
+└── useSelfHealCases.ts               # MODIFY — subscribe run_stuck/run_aborted/run_restarted; fetch transcripts
+
+src/apps/build-studio/manifest.ts     # MODIFY — event handlers for run_stuck/run_aborted/run_restarted
+src/lib/config/registry.ts            # MODIFY — selfHeal.stuckDetector.*; agentRuns.transcriptions.enabled
+src/components/apps/settings/SelfImprovementTab.tsx  # MODIFY — stuck-detector settings
+
+docs/dev/self-healing/self-healing.md # MODIFY — transcription, abort, stuck-detection sections
+ docs/usage/self-healing.md          # MODIFY — how to read transcripts + Stop/Start
+tests/agent/                          # NEW — transcript.test.ts, run-registry.test.ts
+ tests/self-heal/stuck-detector.test.ts  # NEW
+e2e/031-self-healing.spec.ts          # MODIFY — SC-011–SC-014
+```
+
+**Structure decision**: the transcription + abort primitives live in `src/lib/agent/subagents/` (the execution layer) as platform modules; self-heal consumes them. The `case.runs[]` list (in the case store) is the authoritative run list on the read side; the transcript files are the content. This mirrors the existing `src/lib/agent/subagents/` split and the self-heal store precedent.
+
+## Open Decisions Resolved (scope-add)
+
+These close out the implement-step items from `design.md` §9 (all resolved by the architect + reviewer round):
+
+- **R-SA1 (transcript format + append cadence)**: markdown with YAML frontmatter (`agentId`, `runId`, `startedAt`, `endedAt`/`aborted`, `caseId?`); body = task input, then the message sequence with each tool call rendered as `tool_name(input)` + an indented result. Append per-turn (`saveMessages` already fires each turn) so an in-flight transcript is viewable up to the present (FR-031). Full format spec in `design.md` ADR-10.
+- **R-SA2 (where runId is generated — the S2 fix)**: generate `runId` at the **very top** of `runLocalHeadless` and `runClaudeAgent` (before any early-return/refusal site) and thread it through. This means the CLI refusal return statements each gain the now-required `runId` — additive to the type but it edits existing returns; the behavioral result for every caller is unchanged except the new fields.
+- **R-SA3 (endedReason — the M1 fix)**: `runLocalHeadless` surfaces the loop's end reason as `AgentRunResult.endedReason` and threads it through `PipelineRunOutput` + the Diagnostician run-end path. The run-end handler branches `endedReason === "max_steps"` → stuck → `stopped` (transcript is complete, no abort needed). `runClaudeAgent` has no step loop, so `max_steps` does not apply to the CLI path (local-run-only detection).
+- **R-SA4 (nested-Developer cascade)**: the self-heal run→child link is recorded in `run-registry.ts` via `parentRunId` (the build-studio run is the parent, the nested Developer CLI run is the child). `abortHeadlessRun(parentRunId)` cascades and kills the child process (SIGTERM→SIGKILL). This is the only way a Stop of the pipeline run reaches the Developer, because `tool_progress`/the child signal are otherwise swallowed (ADR-11).
+- **R-SA5 (aborted build must not mark preview ready — the S3 test requirement)**: plan/tasks MUST include a test asserting `previewStateFor(branch) !== "ready"` for a partial/staged-abort build, so an aborted→`stopped` case cannot flip to `preview-ready` or emit a false `fix_ready` (R12 elevated to a test).
+- **R-SA6 (`stopped` frees the slot)**: Stop explicitly calls `clearInFlightSlot` (the terminal-only auto-release does not fire for non-terminal `stopped`). Start re-acquires it via the existing escalation guard.
+
+## Test Strategy (delta)
+
+**Unit (Vitest, self-cleaning):**
+- `tests/agent/transcript.test.ts` — the writer produces the documented markdown format; a local run (stubbed loop) appends task + turns + tool calls + results; disabled config → no file; an aborted run → partial file marked `aborted`.
+- `tests/agent/run-registry.test.ts` — register/abort-by-runId aborts the run's AbortController; a parent abort cascades to the registered child; aborting an unknown runId is a no-op; the registry clears on run end (no leak).
+- `tests/self-heal/stuck-detector.test.ts` — same `(tool, normalizedInput)` × `repeatCalls` with no progress → stuck (repeat-calls); a `endedReason === "max_steps"` run-end → stuck (max-steps); distinct calls / intervening progress → NOT stuck. Deterministic, no LLM.
+- `tests/self-heal/stopped-state.test.ts` — Stop transitions an in-flight case → `stopped` + `clearInFlightSlot` + `run_aborted` event; Start transitions `stopped` → in-flight + `run_restarted`; a stuck run does NOT create a new case (FR-025/FR-035); `stopped` is not terminal (the boot-reconcile leaves it alone).
+
+**E2E (Playwright, `e2e/031-self-healing.spec.ts`):**
+- **SC-011**: a headless run with transcriptions enabled writes exactly one `data/agent-transcripts/<agentId>/<runId>.md`; no transcript under `/Documents/Chats`.
+- **SC-012**: the BS Self-Heal page shows the Diagnostician + pipeline transcripts as distinct, viewable documents (in-flight shows the live badge).
+- **SC-013 (the `file_grep` incident)**: a self-heal run repeating the same tool call 5× with no progress is flagged stuck; the user Stops it (case → `stopped`, partial transcript) and Starts it (fresh run, case → in-flight) from the page.
+- **SC-014**: a stuck self-heal run never creates a new case.
+- **R-SA5 test**: an aborted pipeline build's branch reports `previewStateFor !== "ready"` (no false `fix_ready`).
+
+**Coverage gate (updated)**: CI asserts ≥95% line+branch on `src/lib/self-heal/**` AND the new platform modules `src/lib/agent/subagents/transcript.ts` + `src/lib/agent/subagents/run-registry.ts`. (The base-feature gate from the section above is unchanged and still applies to `src/lib/self-heal/**`.)
+
+## Phases (scope-add, T074+)
+
+1. **P11 — Platform transcription (FR-029/030)**: `transcript.ts` + wire into `runner.ts` + `claude-runner.ts` + `types.ts` (runId, run_started) + `agentRuns.transcriptions.enabled` config + the read API route + `tests/agent/transcript.test.ts`. TDD-first.
+2. **P12 — Platform abort (FR-032)**: `run-registry.ts` + abort wiring in both runners (register AbortController / child, SIGKILL escalation, parentRunId cascade) + `abortHeadlessRun` + `tests/agent/run-registry.test.ts`. Depends on P11's `runId`.
+3. **P13 — `endedReason` surfacing (M1, FR-033(b) enablement)**: `types.ts` `endedReason`; `runner.ts` non-error return; thread through `intake.ts` `PipelineRunOutput` + `diagnostician.ts`. Unblocks P14's max-steps branch. Depends on P11/P12 (same files).
+4. **P14 — Self-heal stuck detector + Stop/Start + `stopped` (FR-033/034/035)**: `stuck-detector.ts` + `self-heal/types.ts` (`stopped`, `runs[]`) + `store.ts` (runs[], clearInFlightSlot) + `intake.ts` (stopRun/startRun, onEvent wiring for diag + pipeline, max-steps→stopped branch, `run_stuck`/`run_aborted`/`run_restarted`) + `diagnostician.ts` (onEvent, run recording) + `/api/self-heal` (stop/start ops, runs in GET) + `tests/self-heal/stuck-detector.test.ts` + `tests/self-heal/stopped-state.test.ts`. Depends on P11–P13.
+5. **P15 — BS pane + manifest + Settings (US9/US10 UI, FR-022(f)/(g))**: `TranscriptsSection.tsx` + `RunControl.tsx` + `CaseList.tsx` (stopped chip) + `CaseDetail.tsx` (wire both) + `useSelfHealCases.ts` (new events + transcript fetch) + `manifest.ts` (event handlers) + `SelfImprovementTab.tsx` (stuck-detector settings). Reference `mockup.html`.
+6. **P16 — Docs + e2e + coverage**: `docs/dev` + `docs/usage` sections; SC-011–014 + R-SA5 in `e2e/031-self-healing.spec.ts`; run coverage on the updated gate (incl. `transcript.ts` + `run-registry.ts`).
+
+*Dependencies*: P11 before P12 before P13 before P14 (all touch the runner/type files in sequence). P15 after P14 (the pane reads what the spine writes). P16 last. P11–P14 are the backend spine; P15 is the frontend; P16 verifies end-to-end.
+
+*Note*: these phases run on top of the already-implemented base (P0–P10). P11's `types.ts`/`runner.ts`/`claude-runner.ts` edits are additive to the existing ADR-5 usage fields — coordinate with the existing T002/T004/T005 files so they don't conflict.

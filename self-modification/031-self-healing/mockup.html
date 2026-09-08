@@ -67,6 +67,26 @@ tr:last-child td{border-bottom:none}
 .lg .nm{font-size:11px;color:rgba(255,255,255,.78)}
 .lg .kd{font-size:10px;color:rgba(255,255,255,.35);font-family:ui-monospace,Menlo,monospace}
 .note{font-size:10px;color:rgba(255,255,255,.4);font-style:italic;margin-top:3px}
+.sok{color:#34d399}
+.sstop{color:#c4a56a}
+.sabort{color:#f87171}
+.blk{margin-top:18px}
+.live{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:700;letter-spacing:.03em;color:#34d399;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3);padding:1px 7px;border-radius:999px}
+.live::before{content:"";width:5px;height:5px;border-radius:50%;background:#34d399;animation:lv 1.4s ease-in-out infinite}
+@keyframes lv{0%,100%{opacity:1}50%{opacity:.3}}
+.tr{background:#0b0d12;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:11px 13px;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:1.75;color:rgba(255,255,255,.72);max-height:238px;overflow-y:auto}
+.tr .ti{color:#c4b5fd}
+.tr .as{color:rgba(255,255,255,.9);margin-top:9px}
+.tr .tl{color:#60a5fa;font-weight:600}
+.tr .ta{color:rgba(255,255,255,.42)}
+.tr .rt{color:rgba(255,255,255,.4);padding-left:15px}
+.tr .rep{color:#fbbf24}
+.stuck{color:#fbbf24;font-size:11px;font-weight:600;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:7px;padding:8px 11px;margin-bottom:11px}
+.runctl{border-color:rgba(245,158,11,.35)}
+.bstop{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.42);color:#fcd34d}
+.bplay{background:rgba(16,185,129,.14);border-color:rgba(16,185,129,.42);color:#6ee7b7}
+.ctlrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.notein{font-size:10px;color:rgba(255,255,255,.45);margin-top:9px}
 </style>
 </head>
 <body>
@@ -83,6 +103,7 @@ tr:last-child td{border-bottom:none}
 <tr><td><span class="st sdiag">diagnosed</span></td><td><div class="cid">EHS-0142</div><div class="ctit">Skill mis-teaches file_read path</div></td><td>repeated-failure</td><td><span class="badge bb">b · skill</span></td></tr>
 <tr><td><span class="st ssusp">suspended</span></td><td><div class="cid">EHS-0135</div><div class="ctit">file_read permission: which layer?</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td></tr>
 <tr><td><span class="st sdim">dismissed</span></td><td><div class="cid">EHS-0130</div><div class="ctit">websearch network timeout</div></td><td>hard-error</td><td><span class="badge ba">a · env</span></td></tr>
+<tr><td><span class="st sstop">stopped</span></td><td><div class="cid">EHS-0140</div><div class="ctit">ack_event drops timeout arg</div></td><td>repeated-failure</td><td><span class="badge be">e · bos-core</span></td></tr>
 </tbody>
 </table>
 </div>
@@ -117,6 +138,29 @@ tr:last-child td{border-bottom:none}
 <div class="q">This gap could be fixed in <code>file_read</code> (FR-002) or <code>bos_app_launch</code> (FR-014). Which surface should the pipeline modify?</div>
 <input class="inp" readonly value="Your answer…">
 <div class="rw"><span class="btn bv">Submit answer</span></div>
+</div>
+</div>
+<div class="blk">
+<div class="seclbl">Transcripts · linked headless runs</div>
+<div class="card">
+<table>
+<thead><tr><th>Agent</th><th>Run id</th><th>Status</th><th></th></tr></thead>
+<tbody>
+<tr><td style="font-weight:600;color:#fff">Diagnostician</td><td class="mono">headless-conversation-reviewer-1728372044</td><td><span class="st sok">Completed</span></td><td style="text-align:right"><span class="btn bg">View transcript</span></td></tr>
+<tr><td style="font-weight:600;color:#fff">Pipeline</td><td class="mono">headless-build-studio-1728374122</td><td><span class="st sbuild"><span class="spin"></span>In-flight</span> <span class="live">live</span></td><td style="text-align:right"><span class="btn bv">View transcript</span></td></tr>
+</tbody>
+</table>
+</div>
+<div class="notein" style="margin:11px 0 7px">Rendering · Pipeline run (in-flight)</div>
+<div class="tr"><div class="ti">▶ task — implement a content-grep tool <span class="ta">file_grep</span> for BOS · case EHS-0141 · scope e</div><div class="as">● Assistant: I'll find where the existing file tooling lives so file_grep can sit next to it.</div><div><span class="tl">file_search</span><span class="ta">({ dir:"src/components", query:"file_read" })</span></div><div class="rt">→ 12 matches — FilesTool.tsx:44 · FileTools.ts:128 · …</div><div class="as">● Assistant: Let me read the file-tools module to learn the handler shape before adding the new tool.</div><div><span class="tl">bos_source_read</span><span class="ta">({ path:"src/server/tools/FileTools.ts" })</span></div><div class="rt">→ 214 lines · export async function fileRead(args) { … }</div><div><span class="tl rep">file_search</span><span class="ta rep">({ dir:"src/components", query:"file_read" })</span></div><div class="rt rep">→ 12 matches (no new results) — repeated, no progress</div></div>
+<div class="notein">In-flight transcripts append live (FR-031) — one file per run · <span class="mono">data/agent-transcripts/&lt;agentId&gt;/&lt;runId&gt;.md</span></div>
+</div>
+<div class="blk">
+<div class="seclbl">Run control</div>
+<div class="card runctl">
+<div class="stuck">⚠ Stuck — repeated file_search ×5 with no progress (run headless-build-studio-1728374122)</div>
+<div class="ctlrow"><span class="btn bstop">■ Stop</span><span class="notein" style="margin-top:0">kills the run · case → stopped</span></div>
+<div class="notein">State · in-flight → <b style="color:rgba(255,255,255,.72)">Stop</b> enabled, Start hidden · stopped → <b style="color:rgba(255,255,255,.72)">Start</b> enabled, Stop hidden</div>
 </div>
 </div>
 </div>
