@@ -87,6 +87,8 @@ tr:last-child td{border-bottom:none}
 .bplay{background:rgba(16,185,129,.14);border-color:rgba(16,185,129,.42);color:#6ee7b7}
 .ctlrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .btn-xs{padding:3px 8px;font-size:10px;border-radius:5px;display:inline-flex;align-items:center;gap:3px}
+.bdisc{background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.22);color:rgba(248,113,113,.6);margin-left:4px;padding:3px 5px}
+.bdisc:hover{background:rgba(248,113,113,.18);color:#f87171}
 .stuck-i{color:#fbbf24;font-size:11px;cursor:help;margin-right:3px}
 .notein{font-size:10px;color:rgba(255,255,255,.45);margin-top:9px}
 </style>
@@ -101,11 +103,11 @@ tr:last-child td{border-bottom:none}
 <table>
 <thead><tr><th>Status</th><th>Case</th><th>Trigger</th><th>Scope Class</th><th style="text-align:right">Run</th></tr></thead>
 <tbody>
-<tr><td><span class="st sbuild"><span class="spin"></span>bs-pipeline</span></td><td><div class="cid">EHS-0141</div><div class="ctit">bos_app_launch drops file param</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;white-space:nowrap"><span class="stuck-i" title="Stuck — repeated file_search ×5 with no progress">⚠</span><span class="btn btn-xs bstop">⏹ Stop</span></td></tr>
-<tr><td><span class="st sdiag">diagnosed</span></td><td><div class="cid">EHS-0142</div><div class="ctit">Skill mis-teaches file_read path</div></td><td>repeated-failure</td><td><span class="badge bb">b · skill</span></td><td style="text-align:right;color:rgba(255,255,255,.2)">—</td></tr>
-<tr><td><span class="st ssusp">suspended</span></td><td><div class="cid">EHS-0135</div><div class="ctit">file_read permission: which layer?</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;color:rgba(255,255,255,.2)">—</td></tr>
-<tr><td><span class="st sdim">dismissed</span></td><td><div class="cid">EHS-0130</div><div class="ctit">websearch network timeout</div></td><td>hard-error</td><td><span class="badge ba">a · env</span></td><td style="text-align:right;color:rgba(255,255,255,.2)">—</td></tr>
-<tr><td><span class="st sstop">stopped</span></td><td><div class="cid">EHS-0140</div><div class="ctit">ack_event drops timeout arg</div></td><td>repeated-failure</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;white-space:nowrap"><span class="btn btn-xs bplay">▶ Start</span></td></tr>
+<tr><td><span class="st sbuild"><span class="spin"></span>bs-pipeline</span></td><td><div class="cid">EHS-0141</div><div class="ctit">bos_app_launch drops file param</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;white-space:nowrap"><span class="stuck-i" title="Stuck — repeated file_search ×5 with no progress">⚠</span><span class="btn btn-xs bstop">⏹ Stop</span><span class="btn btn-xs bdisc" title="Discard this case (irreversible)">✕</span></td></tr>
+<tr><td><span class="st sdiag">diagnosed</span></td><td><div class="cid">EHS-0142</div><div class="ctit">Skill mis-teaches file_read path</div></td><td>repeated-failure</td><td><span class="badge bb">b · skill</span></td><td style="text-align:right;white-space:nowrap"><span class="btn btn-xs bdisc" title="Discard this case (irreversible)">✕</span></td></tr>
+<tr><td><span class="st ssusp">suspended</span></td><td><div class="cid">EHS-0135</div><div class="ctit">file_read permission: which layer?</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;white-space:nowrap"><span class="btn btn-xs bdisc" title="Discard this case (irreversible)">✕</span></td></tr>
+<tr><td><span class="st sdim">dismissed</span></td><td><div class="cid">EHS-0130</div><div class="ctit">websearch network timeout</div></td><td>hard-error</td><td><span class="badge ba">a · env</span></td><td style="text-align:right;white-space:nowrap"><span class="btn btn-xs bdisc" title="Discard this case (irreversible)">✕</span></td></tr>
+<tr><td><span class="st sstop">stopped</span></td><td><div class="cid">EHS-0140</div><div class="ctit">ack_event drops timeout arg</div></td><td>repeated-failure</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;white-space:nowrap"><span class="btn btn-xs bplay">▶ Start</span><span class="btn btn-xs bdisc" title="Discard this case (irreversible)">✕</span></td></tr>
 </tbody>
 </table>
 </div>
