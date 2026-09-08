@@ -86,6 +86,8 @@ tr:last-child td{border-bottom:none}
 .bstop{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.42);color:#fcd34d}
 .bplay{background:rgba(16,185,129,.14);border-color:rgba(16,185,129,.42);color:#6ee7b7}
 .ctlrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.btn-xs{padding:3px 8px;font-size:10px;border-radius:5px;display:inline-flex;align-items:center;gap:3px}
+.stuck-i{color:#fbbf24;font-size:11px;cursor:help;margin-right:3px}
 .notein{font-size:10px;color:rgba(255,255,255,.45);margin-top:9px}
 </style>
 </head>
@@ -97,13 +99,13 @@ tr:last-child td{border-bottom:none}
 <div class="hdr"><h3>Self-Heal</h3><span class="btn bg">＋ Report a problem</span></div>
 <div class="card">
 <table>
-<thead><tr><th>Status</th><th>Case</th><th>Trigger</th><th>Scope Class</th></tr></thead>
+<thead><tr><th>Status</th><th>Case</th><th>Trigger</th><th>Scope Class</th><th style="text-align:right">Run</th></tr></thead>
 <tbody>
-<tr><td><span class="st sbuild"><span class="spin"></span>bs-pipeline</span></td><td><div class="cid">EHS-0141</div><div class="ctit">bos_app_launch drops file param</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td></tr>
-<tr><td><span class="st sdiag">diagnosed</span></td><td><div class="cid">EHS-0142</div><div class="ctit">Skill mis-teaches file_read path</div></td><td>repeated-failure</td><td><span class="badge bb">b · skill</span></td></tr>
-<tr><td><span class="st ssusp">suspended</span></td><td><div class="cid">EHS-0135</div><div class="ctit">file_read permission: which layer?</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td></tr>
-<tr><td><span class="st sdim">dismissed</span></td><td><div class="cid">EHS-0130</div><div class="ctit">websearch network timeout</div></td><td>hard-error</td><td><span class="badge ba">a · env</span></td></tr>
-<tr><td><span class="st sstop">stopped</span></td><td><div class="cid">EHS-0140</div><div class="ctit">ack_event drops timeout arg</div></td><td>repeated-failure</td><td><span class="badge be">e · bos-core</span></td></tr>
+<tr><td><span class="st sbuild"><span class="spin"></span>bs-pipeline</span></td><td><div class="cid">EHS-0141</div><div class="ctit">bos_app_launch drops file param</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;white-space:nowrap"><span class="stuck-i" title="Stuck — repeated file_search ×5 with no progress">⚠</span><span class="btn btn-xs bstop">⏹ Stop</span></td></tr>
+<tr><td><span class="st sdiag">diagnosed</span></td><td><div class="cid">EHS-0142</div><div class="ctit">Skill mis-teaches file_read path</div></td><td>repeated-failure</td><td><span class="badge bb">b · skill</span></td><td style="text-align:right;color:rgba(255,255,255,.2)">—</td></tr>
+<tr><td><span class="st ssusp">suspended</span></td><td><div class="cid">EHS-0135</div><div class="ctit">file_read permission: which layer?</div></td><td>explicit</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;color:rgba(255,255,255,.2)">—</td></tr>
+<tr><td><span class="st sdim">dismissed</span></td><td><div class="cid">EHS-0130</div><div class="ctit">websearch network timeout</div></td><td>hard-error</td><td><span class="badge ba">a · env</span></td><td style="text-align:right;color:rgba(255,255,255,.2)">—</td></tr>
+<tr><td><span class="st sstop">stopped</span></td><td><div class="cid">EHS-0140</div><div class="ctit">ack_event drops timeout arg</div></td><td>repeated-failure</td><td><span class="badge be">e · bos-core</span></td><td style="text-align:right;white-space:nowrap"><span class="btn btn-xs bplay">▶ Start</span></td></tr>
 </tbody>
 </table>
 </div>
@@ -155,14 +157,7 @@ tr:last-child td{border-bottom:none}
 <div class="tr"><div class="ti">▶ task — implement a content-grep tool <span class="ta">file_grep</span> for BOS · case EHS-0141 · scope e</div><div class="as">● Assistant: I'll find where the existing file tooling lives so file_grep can sit next to it.</div><div><span class="tl">file_search</span><span class="ta">({ dir:"src/components", query:"file_read" })</span></div><div class="rt">→ 12 matches — FilesTool.tsx:44 · FileTools.ts:128 · …</div><div class="as">● Assistant: Let me read the file-tools module to learn the handler shape before adding the new tool.</div><div><span class="tl">bos_source_read</span><span class="ta">({ path:"src/server/tools/FileTools.ts" })</span></div><div class="rt">→ 214 lines · export async function fileRead(args) { … }</div><div><span class="tl rep">file_search</span><span class="ta rep">({ dir:"src/components", query:"file_read" })</span></div><div class="rt rep">→ 12 matches (no new results) — repeated, no progress</div></div>
 <div class="notein">In-flight transcripts append live (FR-031) — one file per run · <span class="mono">data/agent-transcripts/&lt;agentId&gt;/&lt;runId&gt;.md</span></div>
 </div>
-<div class="blk">
-<div class="seclbl">Run control</div>
-<div class="card runctl">
-<div class="stuck">⚠ Stuck — repeated file_search ×5 with no progress (run headless-build-studio-1728374122)</div>
-<div class="ctlrow"><span class="btn bstop">■ Stop</span><span class="notein" style="margin-top:0">kills the run · case → stopped</span></div>
-<div class="notein">State · in-flight → <b style="color:rgba(255,255,255,.72)">Stop</b> enabled, Start hidden · stopped → <b style="color:rgba(255,255,255,.72)">Start</b> enabled, Stop hidden</div>
-</div>
-</div>
+
 </div>
 
 <div class="sec">
