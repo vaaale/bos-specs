@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-08
 
-**Status**: Draft
+**Status**: Implemented on preview (`bos/self-heal-0002`, candidate `0d7fcc8d`) — pending user Promote. Self-heal case 0002.
 
 **App Target**: bos-core
 
