@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en" style="color-scheme: dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Conversation Archive — UI Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  html,body{height:100%;}
+  body{
+    font-family:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:#0a0b0f;
+    margin:0;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  /* thin dark scrollbars, matching BOS chrome */
+  *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
+  *::-webkit-scrollbar{width:8px;height:8px;}
+  *::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:9999px;}
+  *::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.28);}
+  *::-webkit-scrollbar-track{background:transparent;}
+  i[data-lucide]{display:inline-block;vertical-align:middle;}
+</style>
+</head>
+<body class="flex flex-col text-white/90">
+
+  <!-- ══ META ANNOTATION BAR (not app UI — mockup navigation) ══ -->
+  <div class="flex h-11 shrink-0 items-center gap-3 border-b border-white/10 bg-black/60 px-3 backdrop-blur">
+    <div class="flex items-center gap-2 text-xs font-medium text-white/80">
+      <span class="grid h-5 w-5 place-items-center rounded bg-white/10" id="meta-ico"></span>
+      <span>Conversation Archive</span>
+      <span class="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-normal text-white/45">UI mockup · 038-conversation-archive</span>
+    </div>
+    <nav id="tabs" class="ml-2 flex items-center gap-1"></nav>
+    <div class="ml-auto hidden items-center gap-1.5 text-[11px] text-white/40 md:flex">
+      <span id="legend-ico"></span>
+      <span>Archive = a visibility filter, not a deletion · state is shared across apps</span>
+    </div>
+  </div>
+
+  <!-- ══ STAGE ══ -->
+  <div class="grid min-h-0 flex-1 place-items-center overflow-auto p-4">
+    <div id="win" class="flex h-[720px] max-h-[88vh] w-[980px] max-w-[95vw] flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f1117] shadow-2xl"></div>
+  </div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   Conversation Archive — mockup logic
+   Faithful to: ConversationPanel.tsx (rows/sections), ChatInputV2.tsx
+   (composer), AssistantChatV2.tsx (toolbar + status), style-guide §2/§4.
+   ───────────────────────────────────────────────────────────── */
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function ic(name, { cls = '', size = 16 } = {}) {
+  return `<i data-lucide="${name}" class="${cls}" style="width:${size}px;height:${size}px"></i>`;
+}
+
+/* ── Seed data ─────────────────────────────────────────────── */
+const DATA = {
+  assistant: {
+    single: false,
+    agents: ['Bos', 'Code Reviewer'],
+    convs: [
+      { id:'a1',  title:'Refactor auth middleware',   agent:'Bos',           archived:false, createdAt:5 },
+      { id:'a2',  title:'Draft Q3 release notes',      agent:'Bos',           archived:false, createdAt:4 },
+      { id:'a3',  title:'Debug flaky e2e test',        agent:'Bos',           archived:false, createdAt:3 },
+      { id:'a4',  title:'Review PR #482',              agent:'Code Reviewer', archived:false, createdAt:2 },
+      { id:'ar1', title:'Migrate to Postgres 16',      agent:'Bos',           archived:true,  createdAt:9 },
+      { id:'ar2', title:'Write onboarding email',      agent:'Bos',           archived:true,  createdAt:8 },
+      { id:'ar3', title:'Investigate 502s on deploy',  agent:'Code Reviewer', archived:true,  createdAt:7 },
+    ],
+  },
+  buildstudio: {
+    single: true,
+    agents: ['Build Studio'],
+    convs: [
+      { id:'b1',  title:'038-conversation-archive',       agent:'Build Studio', archived:false, createdAt:5 },
+      { id:'b2',  title:'037-git-conflict-escalation',    agent:'Build Studio', archived:false, createdAt:4 },
+      { id:'b3',  title:'Self-heal case EHS-204',         agent:'Build Studio', archived:false, createdAt:3 },
+      { id:'br1', title:'035-spec-promote',               agent:'Build Studio', archived:true,  createdAt:9 },
+      { id:'br2', title:'031-self-healing',               agent:'Build Studio', archived:true,  createdAt:8 },
+    ],
+  },
+};
+
+const MESSAGES = {
+  a1: [
+    { role:'user',      text:'The auth middleware is duplicating token validation in three places. Can we consolidate it?' },
+    { role:'assistant', text:"Good call. I traced it — verifyToken in auth.ts, an inline copy in session.ts, and a third in the API route guard. I'd extract a single authenticate(req) helper and have all three call it. Want me to sketch the change?" },
+    { role:'user',      text:'Yes, and keep the tests green.' },
+    { role:'assistant', text:'On it. I\u2019ll extract the helper, update the three call sites, and run the auth suite. I expect a few tests to touch the new signature — I\u2019ll fix those too.' },
+  ],
+  ar1: [
+    { role:'user',      text:'Plan the Postgres 14 → 16 migration for the main DB.' },
+    { role:'assistant', text:"Here's the plan: 1) pg_dump, 2) upgrade the instance, 3) restore, 4) run the flyway migrations, 5) verify row counts. I'd schedule a maintenance window. This thread is archived now — unarchive to continue." },
+  ],
+  b1: [
+    { role:'user',      text:"Let's spec a conversation archive feature — reversible, and it hides from both the Assistant and Build Studio lists." },
+    { role:'assistant', text:'Spec drafted at /Specs/user-specs/core-platform/038-conversation-archive/spec.md. Key decision: archived is a visibility flag, not deletion, shared across apps. Ready to move to design when you are.' },
+  ],
+};
+const DEFAULT_MSGS = [
+  { role:'assistant', text:'Hi — what would you like to work on here?' },
+  { role:'user',      text:'Thanks, let\u2019s get started.' },
+];
+const messagesFor = c => MESSAGES[c.id] || DEFAULT_MSGS;
+
+/* ── UI state ──────────────────────────────────────────────── */
+let which = 'assistant';        // 'assistant' | 'buildstudio'
+let activeId = 'a1';
+let openMenuId = null;
+let editingId = null;
+let currentTab = 'list';
+
+const TABS = [
+  { id:'list',        label:'List + Archive menu' },
+  { id:'archived',    label:'Archived section' },
+  { id:'readonly',    label:'Read-only (FR-009)' },
+  { id:'buildstudio', label:'Build Studio' },
+];
+
+const firstId = (w, arch) => (DATA[w].convs.find(c => c.archived === arch) || { id: null }).id;
+const setFor   = () => DATA[which];
+const activeConv = () => setFor().convs.find(c => c.id === activeId);
+
+function setTab(tab) {
+  currentTab = tab;
+  editingId = null;
+  if (tab === 'list')        { which='assistant';   activeId='a1'; openMenuId = firstId('assistant', false); }
+  else if (tab === 'archived'){ which='assistant';   activeId='a1'; openMenuId = firstId('assistant', true);  }
+  else if (tab === 'readonly'){ which='assistant';   activeId = firstId('assistant', true); openMenuId = null; }
+  else if (tab === 'buildstudio'){ which='buildstudio'; activeId='b1'; openMenuId = firstId('buildstudio', false); }
+  render();
+}
+
+/* ── Window chrome ─────────────────────────────────────────── */
+function titlebar() {
+  const icon  = which === 'buildstudio' ? 'hammer' : 'bot';
+  const tint  = which === 'buildstudio' ? 'text-amber-300' : 'text-violet-300';
+  const name  = which === 'buildstudio' ? 'Build Studio' : 'Assistant';
+  return `
+  <div class="flex h-9 shrink-0 select-none items-center gap-2 border-b border-white/10 bg-[#15171e] px-3">
+    <div class="flex items-center gap-2">
+      <span class="h-3 w-3 rounded-full" style="background:#ff5f57"></span>
+      <span class="h-3 w-3 rounded-full" style="background:#febc2e"></span>
+      <span class="h-3 w-3 rounded-full" style="background:#28c840"></span>
+    </div>
+    <div class="flex flex-1 items-center justify-center gap-1.5 text-xs text-white/60">
+      ${ic(icon, { size:13, cls:tint })}<span>${name}</span>
+    </div>
+    <div class="w-14"></div>
+  </div>`;
+}
+
+function toolbar() {
+  const status = `<span class="ml-auto flex items-center gap-1.5">${ic('check-circle-2',{size:12,cls:'text-emerald-400'})}<span class="text-white/45">Ready</span></span>`;
+  if (which === 'buildstudio') {
+    return `
+    <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-2 py-1 text-[11px]">
+      <span class="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-white/70">${ic('hammer',{size:12,cls:'text-amber-300'})}Build Studio</span>
+      <span class="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 font-mono text-white/60">${esc(activeConv()?.title || '')}</span>
+      ${status}
+    </div>`;
+  }
+  return `
+  <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-2 py-1 text-[11px]">
+    <span class="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-white/70">${ic('bot',{size:12,cls:'text-violet-300'})}Bos ${ic('chevron-down',{size:12,cls:'text-white/40'})}</span>
+    <span class="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">${ic('git-branch',{size:12,cls:'text-white/40'})}main ${ic('chevron-down',{size:12,cls:'text-white/40'})}</span>
+    ${status}
+  </div>`;
+}
+
+/* ── Conversation list (ConversationPanel.tsx) ─────────────── */
+function menuItem(action, id, label, icon, tone) {
+  const rose = tone === 'rose';
+  return `<button data-action="menu:${action}" data-id="${id}"
+    class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-white/10 ${rose ? 'text-rose-300/90' : 'text-white/80'}">
+    ${ic(icon, { size:13, cls:'shrink-0 ' + (rose ? 'text-rose-300/80' : 'text-white/50') })}${label}
+  </button>`;
+}
+
+function menuFor(c) {
+  // Menu opens upward for archived rows (they sit at the bottom of the list) so it
+  // isn't clipped by the scroll region; downward otherwise.
+  const pos = c.archived ? 'bottom-8' : 'top-7';
+  return `
+  <div class="absolute ${pos} right-1.5 z-30 w-44 rounded-lg border border-white/10 bg-[#15171e] p-1 shadow-2xl" data-menu="${c.id}">
+    ${c.archived
+      ? menuItem('unarchive', c.id, 'Unarchive', 'archive-restore')
+      : menuItem('archive',   c.id, 'Archive',   'archive')}
+    <div class="my-1 h-px bg-white/10"></div>
+    ${menuItem('rename', c.id, 'Rename', 'pencil')}
+    ${menuItem('delete', c.id, 'Delete', 'trash-2', 'rose')}
+  </div>`;
+}
+
+function row(c) {
+  const active = c.id === activeId;
+  const base   = 'group relative flex items-center gap-1.5 rounded px-2 py-1.5 text-xs cursor-pointer select-none';
+  const state  = active ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10';
+  const showKebab = openMenuId === c.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100';
+  const title = editingId === c.id
+    ? `<input data-action="rename-input" data-id="${c.id}" value="${esc(c.title)}"
+         class="min-w-0 flex-1 rounded border border-white/30 bg-black/40 px-1 py-0.5 text-xs text-white outline-none" />`
+    : `<button data-action="pick" data-id="${c.id}" title="${esc(c.title)}"
+         class="flex-1 truncate text-left">${esc(c.title)}</button>`;
+  return `
+  <div class="${base} ${state}" data-row="${c.id}">
+    ${ic('message-square', { size:12, cls:'shrink-0 text-white/40' })}
+    ${title}
+    ${editingId === c.id ? '' : `
+      <button data-action="kebab" data-id="${c.id}" title="More"
+        class="rounded p-0.5 text-white/30 transition-opacity ${showKebab} hover:bg-white/10 hover:text-white">
+        ${ic('more-horizontal', { size:13 })}
+      </button>`}
+    ${openMenuId === c.id ? menuFor(c) : ''}
+  </div>`;
+}
+
+function panel() {
+  const set = setFor();
+  const normal   = set.convs.filter(c => !c.archived).sort((a,b) => b.createdAt - a.createdAt);
+  const archived = set.convs.filter(c =>  c.archived).sort((a,b) => b.createdAt - a.createdAt);
+
+  let list;
+  if (set.single) {
+    list = normal.map(c => row(c)).join('');
+  } else {
+    list = set.agents.map(agent => {
+      const listFor = normal.filter(c => c.agent === agent);
+      if (!listFor.length) return '';
+      return `
+      <div>
+        <div class="flex items-center justify-between px-1 py-0.5">
+          <span class="text-[10px] font-semibold uppercase tracking-wide text-white/35">${esc(agent)}</span>
+          <button data-action="new" data-agent="${esc(agent)}" title="New ${esc(agent)} conversation"
+            class="rounded p-0.5 text-white/40 hover:bg-white/10 hover:text-white">${ic('plus',{size:12})}</button>
+        </div>
+        <div class="space-y-0.5">${listFor.map(c => row(c)).join('')}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const archBody = archived.length
+    ? archived.map(c => row(c)).join('')
+    : `<div class="px-2 py-1 text-[11px] text-white/30">No archived conversations.</div>`;
+
+  return `
+  <div class="relative flex h-full w-[240px] shrink-0 flex-col border-r border-white/10 bg-white/[0.02]">
+    <div class="flex items-center justify-between px-2 py-2">
+      <span class="text-xs font-semibold uppercase tracking-wide text-white/40">Chats</span>
+      <button data-action="new" title="New conversation" class="rounded p-1 text-white/60 hover:bg-white/10 hover:text-white">${ic('plus',{size:14})}</button>
+    </div>
+    <div id="panelbody" class="min-h-0 flex-1 space-y-2 overflow-auto px-1.5 pb-2">
+      ${list}
+      <div class="mt-1 border-t border-white/10 pt-2">
+        <div class="flex items-center gap-1.5 px-1 py-0.5">
+          ${ic('archive', { size:11, cls:'shrink-0 text-white/40' })}
+          <span class="text-[10px] font-semibold uppercase tracking-wide text-white/35">Archived</span>
+          ${archived.length ? `<span class="text-white/25">${archived.length}</span>` : ''}
+        </div>
+        <div class="space-y-0.5">${archBody}</div>
+      </div>
+    </div>
+    <div class="pointer-events-none absolute right-0 top-0 h-full w-1.5 cursor-col-resize"></div>
+  </div>`;
+}
+
+/* ── Main column (messages + composer / read-only) ─────────── */
+function messagesHTML(conv) {
+  const msgs = messagesFor(conv);
+  const badge = conv.archived
+    ? `<span class="flex items-center gap-1 rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-100">${ic('archive',{size:10})}Archived</span>`
+    : '';
+  return `
+  <div class="flex flex-col items-center px-4 pt-4 pb-1 gap-1">
+    <span class="text-sm font-medium text-white/90">${esc(conv.title)}</span>
+    ${badge}
+  </div>
+  <div class="space-y-3 px-4 pb-4 pt-2">
+    ${msgs.map(m => m.role === 'user'
+      ? `<div class="flex justify-end"><div class="max-w-[78%] whitespace-pre-wrap rounded-xl rounded-br-sm border border-[#5b8cff]/25 bg-[#5b8cff]/15 px-3 py-2 text-sm text-white/90">${esc(m.text)}</div></div>`
+      : `<div class="flex justify-start"><div class="max-w-[82%] whitespace-pre-wrap rounded-xl rounded-bl-sm border border-white/10 bg-white/[0.05] px-3 py-2 text-sm text-white/80">${esc(m.text)}</div></div>`
+    ).join('')}
+  </div>`;
+}
+
+function composerNormal() {
+  return `
+  <div class="shrink-0 border-t border-white/10 px-3 py-2.5">
+    <div class="flex items-end gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 focus-within:border-white/20">
+      <button class="rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white/70">${ic('paperclip',{size:15})}</button>
+      <textarea rows="1" placeholder="Type a message…" class="flex-1 resize-none bg-transparent text-sm text-white/90 outline-none placeholder:text-white/30"></textarea>
+      <button class="rounded-lg bg-[#5b8cff] p-1.5 text-white" title="Send">${ic('arrow-up',{size:15})}</button>
+    </div>
+  </div>`;
+}
+
+function readonlyBanner() {
+  return `
+  <div class="flex shrink-0 items-center gap-2 border-t border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+    ${ic('lock', { size:14, cls:'shrink-0' })}
+    <span class="flex-1">This conversation is archived and read-only. Nothing is lost — unarchive to pick up where you left off.</span>
+  </div>`;
+}
+
+function readonlyCta() {
+  return `
+  <div class="flex shrink-0 items-center gap-3 border-t border-white/10 bg-white/[0.02] px-3 py-3">
+    <div class="flex-1 text-xs text-white/50">You can't send a message until this conversation is restored.</div>
+    <button data-action="cta:unarchive" class="flex items-center gap-1.5 rounded bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20">
+      ${ic('archive-restore',{size:13})}Unarchive to reply
+    </button>
+  </div>`;
+}
+
+function mainArea() {
+  const conv = activeConv();
+  if (!conv) return `<div class="grid flex-1 place-items-center bg-[#0f1117] text-xs text-white/30">Select a conversation</div>`;
+  return `
+    ${toolbar()}
+    <div class="relative min-h-0 flex-1 overflow-auto bg-[#0f1117]">${messagesHTML(conv)}</div>
+    ${conv.archived ? readonlyBanner() + readonlyCta() : composerNormal()}`;
+}
+
+function contentRow() {
+  return `
+  <div class="flex min-h-0 flex-1">
+    ${panel()}
+    <div class="flex min-w-0 flex-1 flex-col bg-[#0f1117] text-white/90">${mainArea()}</div>
+  </div>`;
+}
+
+/* ── Render + events ───────────────────────────────────────── */
+const win = document.getElementById('win');
+const tabsEl = document.getElementById('tabs');
+
+function render() {
+  tabsEl.innerHTML = TABS.map(t =>
+    `<button data-tab="${t.id}" class="rounded-md px-3 py-1 text-xs transition-colors ${t.id === currentTab ? 'bg-white/15 text-white' : 'text-white/55 hover:bg-white/10 hover:text-white/80'}">${t.label}</button>`
+  ).join('');
+  win.innerHTML = titlebar() + contentRow();
+  lucide.createIcons();
+
+  if (currentTab === 'archived') {
+    const el = win.querySelector('#panelbody');
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+  if (editingId) {
+    const inp = win.querySelector('input[data-action="rename-input"]');
+    if (inp) { inp.focus(); inp.select(); }
+  }
+}
+
+function toggleArchive(id, toArchived) {
+  const c = setFor().convs.find(x => x.id === id);
+  if (c) c.archived = toArchived;
+  openMenuId = null;
+  render();
+}
+
+win.addEventListener('click', e => {
+  const t = e.target.closest('[data-action]');
+  if (t) {
+    const a = t.dataset.action, id = t.dataset.id;
+    switch (a) {
+      case 'pick':           activeId = id; openMenuId = null; render(); return;
+      case 'kebab':          openMenuId = (openMenuId === id ? null : id); editingId = null; render(); return;
+      case 'menu:archive':   toggleArchive(id, false); return;
+      case 'menu:unarchive': toggleArchive(id, true);  return;
+      case 'menu:rename':    openMenuId = null; editingId = id; render(); return;
+      case 'menu:delete': {
+        const set = setFor();
+        const idx = set.convs.findIndex(x => x.id === id);
+        if (idx > -1) set.convs.splice(idx, 1);
+        if (activeId === id) activeId = firstId(which, false) || firstId(which, true);
+        openMenuId = null; render(); return;
+      }
+      case 'cta:unarchive': {
+        const c = activeConv(); if (c) c.archived = false; render(); return;
+      }
+      case 'new': {
+        const set = setFor();
+        const agent = t.dataset.agent || (set.single ? 'Build Studio' : 'Bos');
+        const id = 'c' + Date.now();
+        set.convs.unshift({ id, title: 'New conversation', agent, archived:false, createdAt: 100 + Math.floor(Math.random()*900) });
+        activeId = id; openMenuId = null; render(); return;
+      }
+    }
+  } else if (openMenuId) {
+    openMenuId = null; render(); // click-away closes the menu
+  }
+});
+
+win.addEventListener('keydown', e => {
+  const inp = e.target.closest('input[data-action="rename-input"]');
+  if (!inp) return;
+  if (e.key === 'Enter') { commitRename(inp); e.preventDefault(); }
+  else if (e.key === 'Escape') { editingId = null; render(); }
+});
+win.addEventListener('focusout', e => {
+  const inp = e.target.closest('input[data-action="rename-input"]');
+  if (inp) commitRename(inp);
+});
+function commitRename(inp) {
+  const id = inp.dataset.id, val = inp.value.trim();
+  const c = setFor().convs.find(x => x.id === id);
+  if (c && val) c.title = val;
+  editingId = null;
+  if (currentTab !== 'readonly' || c) render();
+}
+
+tabsEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]');
+  if (b) setTab(b.dataset.tab);
+});
+
+/* static meta icons (created once) */
+document.getElementById('meta-ico').innerHTML  = ic('archive', { size:14, cls:'text-white/70' });
+document.getElementById('legend-ico').innerHTML = ic('archive', { size:12, cls:'text-white/35' });
+lucide.createIcons();
+
+/* boot */
+setTab('list');
+</script>
+</body>
+</html>
