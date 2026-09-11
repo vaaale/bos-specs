@@ -1,0 +1,209 @@
+# Design: Conversation Archive
+
+Spec: `038-conversation-archive` · App Target: `bos-core` · Companion mockup: `mockup.html` (same dir)
+
+---
+
+## 1. Classification
+
+**`bos-core`** — agrees with `spec.md`'s `App Target`.
+
+Reasoning (per the build-studio target taxonomy, all three read):
+- The change is to BOS's own **conversation data model** (`src/lib/agent/conversations.ts`), the **core assistant components** both apps embed, and **API routes** under `src/app/api/assistant/`. That is exactly the `bos-core` scope ("Settings, desktop, API routes, server-only logic that isn't a self-contained app/service" — `target-bos-core.md`).
+- It is **not** a `builtin-app`: nothing new ships as a `src/apps/<id>/` window. The two affected windows (`chat`, `build-studio`) already exist; we only modify shared code they consume.
+- It is **not** a `marketplace-item`: there is no raw/non-standard protocol, no continuous background daemon, no own-port service, no self-contained installable unit. The `target-marketplace-item.md` "service facet sidesteps a Next.js limitation" guardrail is **not triggered** — the only server logic needed is one boolean gate on an existing route and one thin PATCH, both ordinary Next.js App Router work. No `data/user-apps/items/<id>/`, no `service.json`, no worker thread.
+
+So the "check marketplace-item before concluding bos-core" pass was done and the answer stays `bos-core`.
+
+---
+
+## 2. Constitution check
+
+| Principle | Compliance |
+|---|---|
+| II. Server Authority & SSR Boundary | ✅ The authoritative read-only gate lives in `src/app/api/assistant/runs/route.ts` (server). The client UI gate is UX sugar, not authority. |
+| IV. Minimize Blast Radius | ✅ All edits are on a feature branch via `dev_delegate`; no new global state; the `archived` flag is additive and backward-compatible. |
+| V. The VFS Is Not the Source | ✅ The flag is persisted on the existing conversation file in the user's VFS (`/Documents/Chats/<id>.json`) — user data, not BOS source. Source changes go through `src/` on a branch. |
+| VI. Specs & Docs Stay in Sync | ⚠️ Action for `implement`: update `docs/dev/assistant/*` (conversation model) and a `docs/usage` page for the archive affordance in the same change. Recorded as a task, not a design decision. |
+| VII. Respect Boundaries / Quality gates | ✅ No `package.json`/lockfile/build-config change; no new external dependency (see ADR-1). `tsc`+lint gate unchanged. |
+
+No conflicts. The only thing flagged (VI) is the standard docs-sync obligation, not a design tension.
+
+---
+
+## 3. Architecture
+
+### 3.1 How the two surfaces actually reach the conversation list (verified, not assumed)
+
+This is the load-bearing fact, and it is **not** "they share one list component":
+
+```
+Assistant app (src/apps/chat/index.tsx)
+  └─ <AssistantChatV2 allGroups showConversations showInfo />
+        showLeftPanel && allGroups  →  <ConversationPanel currentAgentId onPickAgent />   (LEFT PANEL, all-agents, grouped by agent)
+Build Studio (src/apps/build-studio/index.tsx)
+  └─ <AssistantChatV2 agentId={buildStudioAgent} showConversations conversationsInToolbar />
+        useToolbar = conversationsInToolbar && !allGroups = true  →  showLeftPanel = false
+        showToolbar →  <ConversationSelector agentId={resolvedAgentId} />   (TOOLBAR <select> dropdown, single agent)
+```
+
+Both components live in the files named by the task:
+- `src/components/apps/assistant/ConversationPanel.tsx` → `ConvRow` (the row) + the single-agent and all-agents views.
+- `src/components/apps/assistant/AgentSelector.tsx` → `ConversationSelector` (the `<select>` Build Studio shows).
+
+**They share the store, not the component.** Both read the same module-level `useSyncExternalStore` singleton in `src/lib/agent/conversations.ts`:
+- `useConversations(agentId)` → `s.conversations.filter(c => c.agentId === agentId)`
+- `useAllConversations()` → `s.conversations` (all agents)
+- `useActiveConversation(agentId)` / `useActiveConversationId(agentId)`
+
+So "both surfaces honor the same filter" is achieved by putting the flag in the store and having **each** surface split default-vs-archived from it — not by one shared list widget. That split is small and local (panel: two sections; selector: two `<optgroup>`s).
+
+### 3.2 Cross-app propagation is free — one JS context, one store
+
+Verified in `src/components/desktop/Window.tsx` (line ~207): a built-in window renders via `createElement(AppComponent, …)` **directly in the desktop shell's React tree**; only `manifest.kind === "iframe"` windows get an `<IframeApp>`. `chat` and `build-studio` are built-in (in `src/apps/_components.generated.ts`), so **every built-in window in a given BOS instance runs in the same page, same JS context, same `conversations.ts` module instance**.
+
+Therefore an archive done in the Assistant window calls `setState → notify()` in the shared module, and the Build Studio window's `ConversationSelector` re-renders off the same store on the next tick — **no event bus, no pub/sub, no API round-trip for propagation**. This satisfies FR-005 and SC-004 ("no manual refresh or re-login required") by construction. (The one persistence round-trip — the PATCH to the server — is for durability across restarts, not for in-session propagation.)
+
+### 3.3 Data model
+
+Conversations are one JSON file per chat at `/Documents/Chats/<id>.json`, holding **metadata + full message history** (`src/lib/agent/conversations.ts`, header comment). The metadata fields are parsed defensively field-by-field in `readConversationFile` (e.g. `activeFeatureBranch`), and the server's writer (`src/lib/assistant/conversation-store.ts`) preserves all top-level fields on message save.
+
+The minimal change is **additive**: add an optional `archived?: boolean` to the metadata, defaulting to `false` when absent (which is every existing conversation). No schema version bump, no data migration — a missing field simply reads as `false`.
+
+### 3.4 Context / container (matches BOS reality)
+
+```mermaid
+flowchart LR
+  subgraph page["One BOS page (single JS context)"]
+    A["Assistant window<br/>chat/index.tsx"] -->|render| CP["ConversationPanel<br/>(ConvRow rows)"]
+    B["Build Studio window<br/>build-studio/index.tsx"] -->|render| CS["ConversationSelector<br/>(select dropdown)"]
+    CP --> S["conversations.ts store<br/>(useSyncExternalStore singleton)"]
+    CS --> S
+    CI["ChatInputV2<br/>(composer)"] --> S
+    S -->|setState+notify| CP
+    S -->|setState+notify| CS
+  end
+  S -->|PATCH /api/assistant/conversations/<id>/archive| R1["archive route<br/>(server)"]
+  R1 -->|patchConversationMeta (queued)| F[("/Documents/Chats/<id>.json<br/>archived:true")]
+  CI -->|POST /api/assistant/runs| R2["runs route<br/>(server)"]
+  R2 -->|getConversationMeta: archived?| F
+  R2 -->|"409 if archived (FR-009)"| CI
+```
+
+Containers are the two real BOS ones: the Next.js app page (single SPA context holding every built-in window) and the VFS (`/Documents/Chats`). There is no separate service/container introduced.
+
+---
+
+## 4. Concrete file / module plan (only what this feature creates or modifies)
+
+1. **`src/lib/agent/conversations.ts`** — *modify*
+   - `Conversation` interface: add `archived?: boolean`.
+   - `ConversationFile` interface: add `archived?: boolean`.
+   - `readConversationFile`: parse `archived: typeof parsed.archived === "boolean" ? parsed.archived : false` (missing → `false`).
+   - `loadFromVfs`: carry `archived` into each built `Conversation`.
+   - `newConversation`: include `archived` in the file write (defaults `false`, so effectively a no-op but keeps the shape complete).
+   - **`saveConversationMessages`**: carry `archived` over from `existing` when rebuilding the file (so a client message-save can never silently un-archive — mirrors the `activeFeatureBranch` preservation already there). See Risk R1.
+   - **New `setConversationArchived(id, archived)`**: optimistic `setState` map (early-return if unchanged, like `setConversationAgent`), then `fetch` the dedicated endpoint. This is the client's single archive/unarchive entry point.
+
+2. **`src/app/api/assistant/conversations/[conversationId]/archive/route.ts`** — *new*
+   - `PATCH { archived: boolean }` → `patchConversationMeta(conversationId, { archived })` (from `@/lib/assistant/conversation-store`), return the resulting metadata. 400 on bad body, 404 if the conversation file doesn't exist. Thin delegate, `force-dynamic`, matching the `feature-branches` route shape.
+
+3. **`src/app/api/assistant/runs/route.ts`** — *modify*
+   - In `POST`, after the existing `conversationId`/`agentId`/`message` validation and **before** `startAssistantRun`: `const meta = await getConversationMeta(conversationId); if (meta?.archived === true) return NextResponse.json({ error: "Conversation is archived and read-only — unarchive it to continue." }, { status: 409 });`
+   - This is the **single authoritative FR-009 gate** (it covers textarea send, Enter-to-send, edit-resubmit, and voice — all funnel through `sendMessage` → this route).
+
+4. **`src/components/apps/assistant/ConversationPanel.tsx`** — *modify*
+   - `ConvRow`: replace the two inline hover glyphs (Pencil/Delete) with a single **kebab (`more-vertical`) row menu** (see ADR-5). Menu items are state-dependent: default rows → Rename / **Archive** / Delete; archived rows → Rename / **Unarchive** / Delete. Double-click-to-rename can stay or fold into the menu (impl detail).
+   - Single-agent view: split `single.conversations` into a default block + an always-present **"Archived"** section (empty-state text when none) at the bottom of the scroll area.
+   - All-agents view: same default-vs-archived split; recommend **one pooled Archived section** across agents (matches the mockup) rather than per-agent archived buckets (see Risk R3).
+   - Archive/Unarchive click → `void setConversationArchived(c.id, !c.archived)`.
+
+5. **`src/components/apps/assistant/AgentSelector.tsx`** — *modify* (`ConversationSelector`)
+   - Split the `<select>` into two `<optgroup>`s: default and **"Archived"** (this is the FR-008 "always-visible section" expressed in the only form a `<select>` supports).
+   - Add a small **Archive/Unarchive button** beside the existing delete button, acting on the active conversation (same arm-then-confirm or direct pattern the delete button uses). This is the Build Studio row-level affordance; a dropdown cannot host a per-row kebab.
+
+6. **`src/components/agent/v2/ChatInputV2.tsx`** — *modify*
+   - Read the active conversation's `archived` (via `useActiveConversation` / pass a prop) to render the **client-side read-only state**: replace the composer with a locked placeholder + an amber "This conversation is archived and read-only … **Unarchive to continue**" banner (per the mockup). The banner button calls `void setConversationArchived(conversationId, false)`.
+   - This is UX only; the server route (item 3) remains the real block.
+
+No changes are required to `src/lib/assistant/conversation-store.ts`: `patchConversationMeta(id, { archived })` and `getConversationMeta(id)` are already generic over arbitrary metadata keys, and `saveConversationMessages` already preserves top-level fields. (Optionally type `archived?: boolean` on its `ConversationFile` for clarity — cosmetic.)
+
+---
+
+## 5. Integration points (existing mechanisms this design calls into but does not create)
+
+- **`useConversations` / `useAllConversations` / `useActiveConversation`** (`src/lib/agent/conversations.ts`) — the shared store both surfaces and the composer already read; the source of the `archived` flag.
+- **`patchConversationMeta` / `getConversationMeta`** (`src/lib/assistant/conversation-store.ts`) — the queue-serialized metadata writer/reader. `patchConversationMeta` already serializes against the agent loop's transcript writes via `enqueuePerKey` — the exact race protection `setConversationActiveFeatureBranch`'s doc comment describes.
+- **`enqueuePerKey` / write-queue** (`src/lib/agent/write-queue`) — the per-conversation critical section the archive write joins.
+- **`sendMessage` → `POST /api/assistant/runs`** (`src/lib/assistant/client/run-client.ts` → `src/app/api/assistant/runs/route.ts`) — the send path the FR-009 gate sits on.
+- **Desktop shell rendering of built-in apps in one page context** (`src/components/desktop/Window.tsx` + `src/components/apps/registry.tsx`) — the mechanism that makes cross-app propagation free (FR-005).
+- **`AssistantChatV2`** (`src/components/agent/v2/AssistantChatV2.tsx`) — the shared embed that decides panel-vs-toolbar per host and owns the `activeId`/`ensureConversation` wiring the read-only state reads.
+- **The `feature-branches` route** (`src/app/api/assistant/feature-branches/route.ts`) — the existing precedent for a dedicated thin PATCH that funnels a conversation-metadata change through the store queue; the archive route copies its shape.
+
+---
+
+## 6. ADRs
+
+### ADR-1 — Classification: `bos-core`, no new dependency, no service facet
+- **Context:** The feature is a data-model flag + UI on two existing windows + one API gate.
+- **Options:** (a) `bos-core` (modify conversation store, shared components, one API route); (b) `marketplace-item` service facet; (c) `builtin-app`.
+- **Decision:** (a).
+- **Alternatives considered:** (b) was explicitly checked and rejected — no raw protocol, no daemon, no own port, no installable unit; there is nothing Next.js "can't do" that a worker thread would. (c) rejected — no new window ships. No external dependency is introduced (state lives in the existing JSON file; the menu/banner use existing `lucide-react` icons).
+- **Consequences:** All change is additive to existing `src/` modules and one new thin route; no new runtime surface, no new lifecycle to manage.
+
+### ADR-2 — Enforce FR-009 (read-only) at the server route, not just the client
+- **Context:** "Sending a message requires unarchiving first" must hold for every send path.
+- **Options:** (a) client-only gate (disable the composer); (b) server gate at `POST /api/assistant/runs` (+ client gate for UX); (c) gate inside `startAssistantRun`.
+- **Decision:** (b).
+- **Consequences:** Authoritative and bypass-resistant — textarea, Enter, edit-resubmit and voice all converge on `sendMessage` → this route, so one check covers them. The client banner (mockup) is a fast, friendly duplicate, not the source of truth. (c) was considered but is deeper in the run path and would couple the gate to run internals; the route boundary is the natural SSR authority.
+
+### ADR-3 — Persist `archived` via a dedicated endpoint routed through the store queue (not a plain VFS write)
+- **Context:** `setConversationActiveFeatureBranch`'s doc comment records a real bug: a plain, unserialized VFS metadata write raced the agent loop's transcript save and silently reverted the user's change (last writer won with a stale field snapshot).
+- **Options:** (a) generic `/api/fs` write of the flag; (b) client-side `writeConversationFile` only; (c) dedicated endpoint calling `patchConversationMeta` (queue-serialized).
+- **Decision:** (c).
+- **Consequences:** The archive write joins the same `enqueuePerKey` critical section as message saves, so it can never be clobbered by a concurrent transcript write (and vice-versa). The optimistic `setState` in `setConversationArchived` gives instant UI feedback; the server write is durability. Avoids re-creating the documented race for a second field.
+
+### ADR-4 — Keep the store "full" and split default/archived at each surface
+- **Context:** FR-002 (hide archived from default lists) vs FR-008 (always-visible Archived section) vs FR-009 (the open archived conv must be readable + the unarchive affordance must reach its object).
+- **Options:** (a) store returns only non-archived by default + a separate archived selector; (b) store returns the full list (each item carries `archived`), and each surface splits it.
+- **Decision:** (b).
+- **Consequences:** `useActiveConversation` still returns the archived conv object (needed to render the read-only banner and its Unarchive button), and the all-agents panel can group archived items without a second store query. Cost: each consumer must remember to filter — mitigated by co-locating the split in the one `ConvRow`/`ConversationSelector` each app uses. The filter is a single boolean predicate, so it is cheap and hard to get wrong.
+
+### ADR-5 — Row affordance: kebab menu in the panel (mockup), optgroup+button in Build Studio
+- **Context:** The current `ConvRow` shows two inline hover glyphs (Pencil rename, Trash2 delete) plus double-click rename. The mockup replaces these with one kebab that opens a state-dependent menu.
+- **Options:** (a) add a third inline glyph for Archive; (b) kebab menu (mockup).
+- **Decision:** (b) for the panel.
+- **Consequences:** A state-dependent **Archive ↔ Unarchive** toggle plus a stable Rename/Delete fits naturally in one menu; three inline hover glyphs would be cramped and can't express the toggle cleanly. It's a contained change to `ConvRow`, which both panel views already share. For Build Studio the surface is a `<select>`, which cannot host a per-row kebab — so it gets `<optgroup>` split (default / Archived) for the FR-008 section and an Archive/Unarchive **button beside the dropdown** for the action. Consistent behavior (one shared store + `setConversationArchived`), per-surface affordance shaped by the widget it lives in.
+
+### ADR-6 — Self-archive: the open conversation stays open and goes read-only
+- **Context:** Edge case "what happens when the currently-open conversation is archived from within its own view?"
+- **Options:** (a) auto-switch to another conversation; (b) stay open, render read-only.
+- **Decision:** (b) — the mockup's behavior.
+- **Consequences:** The `activeByAgent` pointer is independent of the `archived` flag, so archiving does **not** change which conversation is "current" (answers the "most recent/active" edge case: no change). Staying open + read-only is the least-surprising outcome and requires zero extra state: `selectConversation`/`activeId` are untouched; the next send simply hits the FR-009 gate and the banner offers Unarchive. Rapid archive↔unarchive is safe because `setConversationArchived` early-returns when the value is unchanged and each write is queue-serialized.
+
+---
+
+## 7. Risks / open questions
+
+- **R1 — Client `saveConversationMessages` dropping the flag.** `src/lib/agent/conversations.ts` has a client-side `saveConversationMessages` that *rebuilds* the file from metadata. The authoritative server writer (`conversation-store.ts`) already preserves top-level fields, so the main loop is safe — but if the client version is still invoked by any live path, it must carry `archived` over from `existing` (planned in item 1; verify at `implement` that no caller reconstructs a file from a partial snapshot). This is the exact failure class as `activeFeatureBranch`.
+- **R2 — Multi-tab propagation.** The store is an in-memory module singleton; it does **not** sync across separate browser tabs (a pre-existing property of the store, not introduced here). FR-005/SC-004 are about "the other **app**," which in a single BOS instance is the same tab/context → satisfied. Cross-tab staleness is out of scope for v1 (same as today's behavior for every other conversation change). If it ever matters, it's a separate store-persistence/refresh concern.
+- **R3 — All-agents panel: pooled vs per-agent Archived section.** The mockup shows one pooled "Archived" at the bottom. The all-agents view otherwise buckets by agent. Recommend **pooled** (simpler, matches mockup); a per-agent archived bucket is the alternative if consistency with the bucketed layout is preferred — needs a human/`plan` decision, low cost either way.
+- **R4 — Build Studio affordance discoverability.** A `<select>` + one button is less discoverable than a per-row kebab. Acceptable for v1 (the FR-008 section is still always visible via the optgroup); flag as a possible future polish, not a blocker.
+- **Edge cases (from spec), resolved by the design:**
+  - *Open archived conv's URL / deep reference* → still opens (`useActiveConversation` returns it; `loadConversationMessages` reads it fine) and renders read-only (ADR-6). No redirect needed.
+  - *Archived conv deleted via normal flow* → `deleteConversation` removes the file; it disappears from the Archived section too (same store). Nothing to special-case.
+  - *Rapid archive/unarchive* → safe (ADR-6): idempotent + queue-serialized.
+  - *Is archiving the "current" conv changed?* → No (ADR-6).
+
+---
+
+## 8. UI mockup reference
+
+Path: `mockup.html` (same spec dir). It models the **Assistant** window only (left `ConversationPanel` + chat surface). Mapping onto §3/§4:
+
+- **Left panel, single-agent bucket** → `ConversationPanel` single-agent view: default rows + always-visible **Archived** section with a count badge and empty-state text.
+- **Kebab (`more-vertical`) row menu** → `ConvRow` change (ADR-5): default rows show *Rename / Archive / Delete*; archived rows show *Rename / Unarchive / Delete*.
+- **Chat header "Read-only" pill** → `ChatInputV2`/`AssistantChatV2` read-only indicator for the active archived conv.
+- **Amber "archived and read-only … Unarchive to continue" banner + locked composer** → `ChatInputV2` client gate (ADR-2); the banner button calls `setConversationArchived(id, false)`.
+- **Archived row opens read-only; self-archive stays open** → ADR-6.
+- **Not in the mockup (design fills the gap):** Build Studio's toolbar `<select>` form (optgroup split + archive button, ADR-5), and the all-agents pooled-Archived layout (R3). The mockup's two defaults (kebab, self-archive-stays-open) are both adopted as the cleaner options per the component structure.
