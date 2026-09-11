@@ -24,8 +24,8 @@ A user has a long list of past conversations in the Assistant app (or Build Stud
 
 1. **Given** a conversation is visible in the Assistant app list, **When** the user archives it, **Then** it no longer appears in that list, and its content is fully preserved.
 2. **Given** a conversation is visible in the Build Studio list, **When** the user archives it, **Then** it no longer appears in that list, and its content is fully preserved.
-3. **Given** a conversation has just been archived, **When** the user reopens it directly (e.g. from a link, deep reference, or the archived view), **Then** it opens and behaves normally, with all prior messages intact.
-4. **Given** a conversation is archived, **When** the user sends a new message to it, **Then** [NEEDS CLARIFICATION: does activity in an archived conversation auto-unarchive it and return it to the list?].
+3. **Given** a conversation has just been archived, **When** the user reopens it directly (e.g. from a link, deep reference, or the archived view), **Then** it opens and can be viewed normally, with all prior messages intact.
+4. **Given** a conversation is archived, **When** the user attempts to send a new message to it, **Then** the system requires the conversation to be unarchived first — an archived conversation is read-only until restored, and a message is only accepted after it is unarchived.
 
 ---
 
@@ -80,7 +80,8 @@ Whichever app surfaces a conversation list (Assistant today, Build Studio today,
 - **FR-005**: The archive state MUST be shared across apps — archiving in one app MUST cause the conversation to be hidden in all apps that list conversations.
 - **FR-006**: The system MUST expose an archive affordance in the conversation-list surface of the Assistant app.
 - **FR-007**: The system MUST expose an archive affordance in the conversation-list surface of Build Studio.
-- **FR-008**: [NEEDS CLARIFICATION: default visibility of the archived view — is it always visible as a section/tab, or opt-in behind a toggle/menu?]
+- **FR-008**: The system MUST present an always-visible "Archived" section or tab within each app's conversation-list surface, enumerating the user's archived conversations.
+- **FR-009**: An archived conversation MUST be read-only: it MAY be opened and viewed, but sending a new message to it MUST first unarchive it.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -100,6 +101,7 @@ Whichever app surfaces a conversation list (Assistant today, Build Studio today,
 ## Assumptions
 
 - Archiving is a property of the conversation itself, not of a particular app's list — hence one shared state, not two per-app lists.
+- An archived conversation is read-only: it can be opened and viewed, but resuming it (sending a new message) requires unarchiving it first.
 - "Not deleted" means content is fully retained and restorable; archiving is a visibility filter, not a purge.
 - The existing conversation list surfaces in the Assistant app and Build Studio are the only surfaces required to honor the filter in v1; other surfaces that list conversations will honor it for free if they read from the same state.
 - No retention period or auto-cleanup applies to archived conversations in v1 (they persist indefinitely until explicitly deleted or unarchived).
