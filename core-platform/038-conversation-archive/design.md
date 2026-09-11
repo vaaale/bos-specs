@@ -206,4 +206,4 @@ Path: `mockup.html` (same spec dir). It models the **Assistant** window only (le
 - **Chat header "Read-only" pill** → `ChatInputV2`/`AssistantChatV2` read-only indicator for the active archived conv.
 - **Amber "archived and read-only … Unarchive to continue" banner + locked composer** → `ChatInputV2` client gate (ADR-2); the banner button calls `setConversationArchived(id, false)`.
 - **Archived row opens read-only; self-archive stays open** → ADR-6.
-- **Not in the mockup (design fills the gap):** Build Studio's toolbar `<select>` form (optgroup split + archive button, ADR-5), and the all-agents pooled-Archived layout (R3). The mockup's two defaults (kebab, self-archive-stays-open) are both adopted as the cleaner options per the component structure.
+- **Not in the mockup (design fills the gap):** Build Studio's toolbar `<select>` form (optgroup split + archive button, ADR-5), and the all-agents per-agent-Archived-sub-section layout (R3, resolved: per-agent buckets). The mockup's two defaults (kebab, self-archive-stays-open) are both adopted as the cleaner options per the component structure.
