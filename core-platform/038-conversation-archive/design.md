@@ -114,17 +114,26 @@ Containers are the two real BOS ones: the Next.js app page (single SPA context h
 
 4. **`src/components/apps/assistant/ConversationPanel.tsx`** — *modify*
    - `ConvRow`: replace the two inline hover glyphs (Pencil/Delete) with a single **kebab (`more-vertical`) row menu** (see ADR-5). Menu items are state-dependent: default rows → Rename / **Archive** / Delete; archived rows → Rename / **Unarchive** / Delete. Double-click-to-rename can stay or fold into the menu (impl detail).
-   - Single-agent view: split `single.conversations` into a default block + an always-present **"Archived"** section (empty-state text when none) at the bottom of the scroll area.
-   - All-agents view: same default-vs-archived split, **per agent** — each agent bucket gets its own "Archived" sub-section at the bottom of that bucket's rows (decided: per-agent buckets, not a single pooled section; see Risk R3, now resolved).
+   - Single-agent view: split `single.conversations` into a default block + a **collapsible "Archived" section** at the bottom of the scroll area, **collapsed by default** (chevron header + count badge; empty-state text when expanded and none). Collapsed-by-default is the resting state because the feature's whole point is tidying the list.
+   - All-agents view: same split **per agent** — each agent bucket appends its own **collapsible "Archived" sub-section, collapsed by default** (see Risk R3, resolved: per-agent buckets, not pooled).
+   - Collapse state is per-section local UI state (not persisted); it does not affect the `archived` flag.
    - Archive/Unarchive click → `void setConversationArchived(c.id, !c.archived)`.
 
 5. **`src/components/apps/assistant/AgentSelector.tsx`** — *modify* (`ConversationSelector`)
-   - Split the `<select>` into two `<optgroup>`s: default and **"Archived"** (this is the FR-008 "always-visible section" expressed in the only form a `<select>` supports).
-   - Add a small **Archive/Unarchive button** beside the existing delete button, acting on the active conversation (same arm-then-confirm or direct pattern the delete button uses). This is the Build Studio row-level affordance; a dropdown cannot host a per-row kebab.
+   - The dropdown lists **only non-archived** conversations — archived ones are filtered out entirely (no archived `<optgroup>`). This is the user's requirement #2: in Build Studio, archived conversations should not show up in the dropdown at all.
+   - Add a small **Archive button** beside the existing delete button, acting on the active conversation (same arm-then-confirm pattern the delete button uses) → `void setConversationArchived(activeId, true)`. Since the dropdown never surfaces archived rows, the active conversation in Build Studio is normally non-archived, so this button only needs the *archive* direction.
+   - **Unarchiving a Build Studio conversation** is not done from the dropdown: it happens either (a) in-place via the shared `ChatInputV2` read-only banner (item 6), which is also rendered in Build Studio, or (b) from the Assistant app's collapsible Archived section. Both paths write the same shared flag, so the conversation returns to the Build Studio dropdown automatically (store re-render).
 
 6. **`src/components/agent/v2/ChatInputV2.tsx`** — *modify*
    - Read the active conversation's `archived` (via `useActiveConversation` / pass a prop) to render the **client-side read-only state**: replace the composer with a locked placeholder + an amber "This conversation is archived and read-only … **Unarchive to continue**" banner (per the mockup). The banner button calls `void setConversationArchived(conversationId, false)`.
    - This is UX only; the server route (item 3) remains the real block.
+
+7. **`src/lib/agent/conversations.ts`** — *modify* (auto-archive on promote, user requirement #3)
+   - **New `archiveConversationsForBranch(branch)`**: iterate the in-memory store's `s.conversations`, and for every conversation whose `activeFeatureBranch === branch` (and not already archived), call the existing `setConversationArchived(id, true)`. The in-store `activeFeatureBranch` is the existing conversation↔branch link, so "the conversation for a promoted feature" is well-defined without any new persistence or lookup helper.
+   - This is a thin client-side helper reusing the store (source of truth in-session) and the existing archive action (optimistic + PATCH). See ADR-7.
+
+8. **Both promote surfaces — `VersionControls` (desktop topbar) and `Settings → Versions`** — *modify*
+   - At the existing post-promote site where they call `notifySelfHealBranchSettled(branch, "promoted")` (`src/lib/self-heal/branch-settled-client.ts`), also call `void archiveConversationsForBranch(branch)` for the promoted branch. Both callers already reload right after, and the archive PATCHes are `keepalive` (same as the settle call), so they survive the navigation. For a *discarded* branch we do **not** auto-archive (only promote, per the user's request).
 
 No changes are required to `src/lib/assistant/conversation-store.ts`: `patchConversationMeta(id, { archived })` and `getConversationMeta(id)` are already generic over arbitrary metadata keys, and `saveConversationMessages` already preserves top-level fields. (Optionally type `archived?: boolean` on its `ConversationFile` for clarity — cosmetic.)
 
