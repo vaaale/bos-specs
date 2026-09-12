@@ -41,7 +41,9 @@
       <p class="mt-1.5 max-w-[640px] text-xs leading-relaxed text-white/45">
         Click any row’s <b class="text-white/70">⋯</b> menu to see the <b class="text-white/70">Archive</b> /
         <b class="text-white/70">Unarchive</b> affordance. Click a conversation to open it — archived ones open
-        <b class="text-white/70">read-only</b>. This is a static visual proxy of the real Assistant window, not live code.
+        <b class="text-white/70">read-only</b>. The <b class="text-white/70">Archived</b> section is
+        <b class="text-white/70">collapsed by default</b> (archived chats stay out of the way, not visible at rest) —
+        click its header to expand it. This is a static visual proxy of the real Assistant window, not live code.
       </p>
     </div>
 
@@ -89,16 +91,17 @@
               <div id="defaultList" class="space-y-0.5"></div>
             </div>
 
-            <!-- Always-visible Archived section (FR-008) -->
+            <!-- Collapsible Archived section — CLOSED by default: rows hidden at rest (FR-008) -->
             <div class="border-t border-white/10 pt-1.5">
-              <div class="flex items-center justify-between px-1 py-0.5">
-                <span class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-white/35">
-                  <i data-lucide="archive" class="h-3 w-3"></i>
-                  Archived
-                  <span id="archCount" class="rounded bg-white/10 px-1 text-[9px] font-medium text-white/50">0</span>
-                </span>
-              </div>
-              <div id="archivedList" class="space-y-0.5"></div>
+              <button id="archToggle" type="button" data-act="toggle-arch"
+                class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-wide text-white/45 hover:bg-white/5 hover:text-white/70"
+                title="Click to expand / collapse archived conversations">
+                <i data-lucide="chevron-right" id="archChevron" class="h-3 w-3 shrink-0 text-white/40 transition-transform"></i>
+                <i data-lucide="archive" class="h-3 w-3 shrink-0"></i>
+                Archived
+                <span id="archCount" class="rounded bg-white/10 px-1 text-[9px] font-medium text-white/50">0</span>
+              </button>
+              <div id="archivedList" class="hidden space-y-0.5"></div>
             </div>
 
           </div>
@@ -155,6 +158,7 @@
 
   let activeId = "a1";      // first paint: an archived conversation, opened read-only
   let openMenu = "c1";      // first paint: kebab open on a default-list row → shows “Archive”
+  let archOpen = false;     // Archived section CLOSED by default — archived chats are not visible at rest
 
   const $ = (id) => document.getElementById(id);
 
@@ -263,10 +267,21 @@
     const active = convs.filter((c) => !c.archived);
     const archived = convs.filter((c) => c.archived);
     $("defaultList").innerHTML = active.map(rowHTML).join("");
-    $("archivedList").innerHTML = archived.length
-      ? archived.map(rowHTML).join("")
-      : `<div class="px-2 py-1.5 text-[11px] text-white/30">Nothing archived yet.</div>`;
+
+    // Archived section: collapsible, CLOSED by default. Rows render only when open.
+    const archList = $("archivedList");
+    archList.classList.toggle("hidden", !archOpen);
+    archList.innerHTML = archOpen
+      ? (archived.length
+          ? archived.map(rowHTML).join("")
+          : `<div class="px-2 py-1.5 text-[11px] text-white/30">Nothing archived yet.</div>`)
+      : "";
     $("archCount").textContent = String(archived.length);
+
+    // Chevron: points right when closed, rotates to down when open.
+    const chev = $("archChevron");
+    if (chev) chev.classList.toggle("rotate-90", archOpen);
+
     $("chat").innerHTML = chatHTML();
     try { lucide.createIcons(); } catch (e) {}
   }
@@ -319,6 +334,8 @@
       toast(`“${name}” deleted`, "trash-2");
       render(); return;
     }
+    if (act === "toggle-arch") { archOpen = !archOpen; openMenu = null; render(); return; }
+
     // "noop" (Rename) — just close menu
     openMenu = null; render();
   });
