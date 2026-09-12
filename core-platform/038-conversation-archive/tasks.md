@@ -6,6 +6,8 @@
 
 **Note**: All tasks are executed by the Developer during `implement`. Paths are repo-relative. `[P]` = parallelizable (different file, no dependency).
 
+**Round 2 (scope-add)**: Phases 1–5 below were already implemented on `bos/038-conversation-archive`. The user then requested three adjustments — (1) the Assistant Archived section must be **collapsible, default collapsed**; (2) **Build Studio must not show archived conversations in the dropdown at all**; (3) **auto-archive the conversation(s) when a feature is promoted**. These are tracked in **Phase 6** (T021–T027), which amends the already-built behavior and adds the new US4.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 ## Phase 1: Foundational (Shared Infrastructure)
@@ -91,6 +93,34 @@
 - [ ] T020 Run the full `e2e/038-conversation-archive.spec.ts` suite green; confirm `tsc` + lint pass
 
 **Note on FR-007 / US3 acceptance**: phrase as "archive affordance **available in the Build Studio surface**" (not per-row) — a native `<select>` cannot host a per-row kebab (reviewer S3).
+
+---
+
+## Phase 6: Scope-Add (Round 2) — collapsible section, BS filter, auto-archive on promote
+
+**Purpose**: Implement the three user adjustments as a delta on the already-built feature. T021–T023 **amend** existing behavior (T012/T013, T016/T017); T024–T027 **add** the new User Story 4.
+
+### Tests (Round 2) ⚠️
+
+> Write first; the new auto-archive case must fail on the pre-round-2 build.
+
+- [ ] T026 [P] [US4] E2E: promote a feature branch and assert the conversation(s) whose `activeFeatureBranch` equals it are auto-archived (absent from the default list, present in the Assistant Archived section once expanded), content intact, and still restorable — in `e2e/038-conversation-archive.spec.ts`
+- [ ] T027 [P] [US2/US3] E2E: assert the Assistant Archived section is **collapsed by default** (rows not visible until the user expands it) and that archived conversations are **absent from the Build Studio dropdown entirely** (no archived `<optgroup>`) — in `e2e/038-conversation-archive.spec.ts`
+
+### Implementation (Round 2)
+
+- [ ] T021 [US2] **Amend** the Assistant `ConversationPanel` Archived sub-sections (from T012 single-agent + T013 per-agent) to be **collapsible and collapsed by default**: chevron header + count badge; expanding reveals the rows and the empty-state ("Nothing archived yet."). Collapse state is per-section local UI state — it does NOT affect the `archived` flag and is not persisted (design.md §4 item 4, R4).
+- [ ] T022 [US3] **Amend** `ConversationSelector` (`AgentSelector.tsx`): **remove the Archived `<optgroup>`** (from T016) — the `<select>` lists **only non-archived** conversations; archived ones are filtered out entirely (user requirement #2, design.md §4 item 5).
+- [ ] T023 [US3] **Amend** the Build Studio archive button (from T017) to be **Archive-only**, acting on the active conversation → `void setConversationArchived(activeId, true)` (the dropdown never surfaces archived rows, so no unarchive direction is needed there; restore happens in-place via the shared `ChatInputV2` banner or from the Assistant panel — design.md §4 item 5).
+- [ ] T024 [US4] Add `archiveConversationsForBranch(branch)` to `src/lib/agent/conversations.ts`: iterate the in-memory store and, for every conversation whose `activeFeatureBranch === branch` and is not already archived, call `setConversationArchived(id, true)` (design.md §4 item 7, ADR-7).
+- [ ] T025 [US4] At **both** promote surfaces — the desktop-topbar `VersionControls` and `Settings → Versions` — at the existing `notifySelfHealBranchSettled(branch, "promoted")` call site, also call `void archiveConversationsForBranch(branch)` (promote only; NOT on discard). The archive PATCHes are `keepalive`, so they survive the immediate post-promote reload (design.md §4 item 8, ADR-7, R5).
+- [ ] T028 [P] Update `docs/usage/assistant/archiving-conversations.md` (Build Studio: no archived optgroup; restore path) and the promote flow docs (auto-archive on promote) in the same change (Constitution VI).
+- [ ] T029 [P] Self-check the new edge cases (spec §Edge Cases, design.md R5): multiple conversations sharing a promoted branch are all archived; a lost settle/reload leaves a conversation un-archived (recoverable, no data loss, promote unaffected); a manually unarchived conversation later promoted stays the user's choice; auto-archived open conversation stays open read-only.
+- [ ] T030 Run the full `e2e/038-conversation-archive.spec.ts` suite green (existing T006–T015 plus new T026–T027); confirm `tsc` + lint pass.
+
+**Amended test note**: existing assertions that the conversation is "present in the Archived section" (T006, T011) must expand the now-collapsed section before asserting visibility; and the cross-app T015 assertion for Build Studio changes to "absent from the dropdown entirely."
+
+**Checkpoint (Round 2)**: Assistant Archived sections collapsible + default-collapsed; Build Studio dropdown hides archived; promoting a branch auto-archives its conversation(s). All prior US1–US3 behavior preserved.
 
 ---
 
