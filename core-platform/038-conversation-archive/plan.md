@@ -8,7 +8,7 @@
 
 ## Summary
 
-Add a persistent, reversible `archived` flag to the conversation data model so users can move long-standing conversations out of the way without deleting them. The flag filters archived conversations out of the **default** list in both the Assistant app (left `ConversationPanel`) and Build Studio (toolbar `ConversationSelector`), while an always-visible **Archived** section in each surface lets the user restore them. Archived conversations are read-only until unarchived (enforced authoritatively on the server). Because both apps are built-in windows sharing one `conversations.ts` store in a single JS context, cross-app propagation is free by construction. Full mechanism, ADRs, and risk analysis are in `design.md` — this plan is the task-level breakdown built on top of that design.
+Add a persistent, reversible `archived` flag to the conversation data model so users can move long-standing conversations out of the way without deleting them. In the **Assistant app** (left `ConversationPanel`) the flag hides archived conversations from the default list and a **collapsible Archived section (collapsed by default)** lets the user restore them. In **Build Studio** (toolbar `ConversationSelector`), archived conversations are **filtered out of the dropdown entirely** and an archive button acts on the active conversation. Archived conversations are read-only until unarchived (enforced authoritatively on the server). When a feature branch is **promoted**, the conversation(s) carrying that branch are **auto-archived**. Because both apps are built-in windows sharing one `conversations.ts` store in a single JS context, cross-app propagation is free by construction. Full mechanism, ADRs, and risk analysis are in `design.md` — this plan is the task-level breakdown built on top of that design.
 
 ## Technical Context
 
@@ -31,7 +31,7 @@ Add a persistent, reversible `archived` flag to the conversation data model so u
 - The archive write MUST go through `patchConversationMeta` (queue-serialized) — a plain VFS write would re-introduce the documented `activeFeatureBranch` race (ADR-3).
 - The read-only gate MUST be server-authoritative (Constitution II); the client banner is UX only.
 
-**Scale/Scope**: 4 modified files + 1 new route (see design.md §4). Two app surfaces, one shared store.
+**Scale/Scope**: ~5 modified files + 1 new route + 2 promote-surface hook sites (see design.md §4). Two app surfaces + a post-promote auto-archive seam, all on one shared store.
 
 ## Constitution Check
 
@@ -78,10 +78,14 @@ src/
 │       └── route.ts                                  # MODIFY: FR-009 409 gate (+ import getConversationMeta)
 └── components/
     ├── apps/assistant/
-    │   ├── ConversationPanel.tsx                     # MODIFY: ConvRow kebab menu; per-agent Archived sub-sections
-    │   └── AgentSelector.tsx                         # MODIFY: ConversationSelector optgroup split + active-row archive button
+    │   ├── ConversationPanel.tsx                     # MODIFY: ConvRow kebab menu; collapsible per-agent Archived sub-sections (default collapsed)
+    │   └── AgentSelector.tsx                         # MODIFY: ConversationSelector filters out archived + active-row archive button
     └── agent/v2/
         └── ChatInputV2.tsx                           # MODIFY: read-only banner / locked composer
+
+# MODIFY (auto-archive on promote — design.md §4 items 7-8, ADR-7):
+#   src/lib/agent/conversations.ts                    # + archiveConversationsForBranch(branch)
+#   VersionControls (desktop topbar) + Settings→Versions  # call it at the existing notifySelfHealBranchSettled(branch,"promoted") site
 
 # NOT modified (verified generic — design.md §4): src/lib/assistant/conversation-store.ts
 # Docs to update in the same change (Constitution VI): docs/dev/assistant/* + docs/usage archive page
@@ -91,11 +95,12 @@ src/
 
 ## Design Notes (folded from design.md)
 
-- **Shared store, not shared component** (design.md §3.1): Assistant = left `ConversationPanel` (all-agents); Build Studio = toolbar `ConversationSelector` `<select>` (single agent). Both read the same `conversations.ts` `useSyncExternalStore` singleton → each surface splits default-vs-archived locally.
+- **Shared store, not shared component** (design.md §3.1): Assistant = left `ConversationPanel` (all-agents); Build Studio = toolbar `ConversationSelector` `<select>` (single agent). Both read the same `conversations.ts` `useSyncExternalStore` singleton → each surface filters/splits locally, and they differ by design: **Assistant shows a collapsible Archived section (default collapsed); Build Studio filters archived out of the dropdown entirely**.
 - **Cross-app propagation is free** (§3.2): built-in non-iframe windows share one JS context; `setState→notify()` re-renders the other app (FR-005/SC-004).
 - **Read-only gate is server-authoritative** (ADR-2) at the single send funnel `POST /api/assistant/runs`.
 - **Persistence via queue** (ADR-3) avoids the documented `activeFeatureBranch` write-race.
 - **Layout decision (user)**: all-agents panel uses **per-agent archived sub-sections**, not a pooled section (design.md R3, resolved).
-- **Affordances** (ADR-5): kebab row menu in the panel; optgroup split + active-row Archive/Unarchive button in Build Studio (a native `<select>` cannot host a per-row kebab — FR-007 is therefore "archive affordance available in the Build Studio surface," not per-row).
+- **Affordances** (ADR-5, amended): kebab row menu (Archive/Unarchive) in the Assistant panel; in Build Studio the dropdown lists only non-archived conversations + a single **Archive button** on the active conversation (restore happens in-place via the shared read-only banner or from the Assistant panel).
 - **Self-archive** (ADR-6): the open conversation stays open and goes read-only; archiving does not change which conversation is "current."
+- **Auto-archive on promote** (ADR-7): new `archiveConversationsForBranch(branch)` over the store's `activeFeatureBranch` link, called at the existing post-promote site (both promote surfaces, alongside `notifySelfHealBranchSettled(branch, "promoted")`). No new event/route; best-effort, `keepalive`-surviving the reload; fires on promote only.
 - **R1 note (reviewer)**: the client-side `saveConversationMessages` *would* drop `archived`, but currently has **zero live callers** — the implement task is to *confirm* that dead-code status (and carry the flag defensively anyway), not to hunt for a caller.
