@@ -60,6 +60,22 @@ Whichever app surfaces a conversation list (Assistant today, Build Studio today,
 
 ---
 
+### User Story 4 - Auto-archive when its feature is promoted (Priority: P3)
+
+A user drives a feature through Build Studio on a feature branch. When they promote that feature to base, the conversation that carried the work is done — it should tidy itself into the Archived section so it stops cluttering the list, without them having to archive it manually. It is still there, restorable, if they come back to it.
+
+**Why this priority**: This extends the decluttering value to the natural "I'm done with this" moment (a promote). It is a convenience automation on top of the core archive mechanism and is not required for the primary problem to be solved.
+
+**Independent Test**: Drive a feature branch to a promoted state and verify the conversation(s) associated with that branch are automatically moved to the Archived section, still restorable and content-intact.
+
+**Acceptance Scenarios**:
+
+1. **Given** a conversation whose active feature branch is `bos/foo`, **When** `bos/foo` is promoted, **Then** that conversation is archived (hidden from the default list, present in the Archived section) without being deleted.
+2. **Given** the promoted conversation was the active conversation in Build Studio, **When** it is auto-archived, **Then** it no longer appears in the Build Studio dropdown and its content is intact in the Archived section.
+3. **Given** a conversation is auto-archived by a promote, **When** the user unarchives it from the Assistant app, **Then** it behaves exactly like any manually archived conversation.
+
+---
+
 ### Edge Cases
 
 - What happens when the currently-open conversation is archived from within its own view — does it stay open, and what does the list do next?
@@ -68,6 +84,9 @@ Whichever app surfaces a conversation list (Assistant today, Build Studio today,
 - Can a conversation be archived and unarchived rapidly/repeatedly without corrupting its state?
 - If a conversation is the most recent/active one, does archiving it change which conversation is "current"?
 - What happens to in-flight or pinned state on an archived conversation?
+- What happens when multiple conversations share the same promoted branch — are they all archived?
+- What happens if the auto-archive on promote fires but the promote's post-settle notification is lost (e.g. the page reloads) — is the conversation still eventually archived, or is this best-effort?
+- If the currently-open conversation is auto-archived by a promote, does it stay open (read-only) or is the user redirected?
 
 ## Requirements *(mandatory)*
 
@@ -80,8 +99,9 @@ Whichever app surfaces a conversation list (Assistant today, Build Studio today,
 - **FR-005**: The archive state MUST be shared across apps — archiving in one app MUST cause the conversation to be hidden in all apps that list conversations.
 - **FR-006**: The system MUST expose an archive affordance in the conversation-list surface of the Assistant app.
 - **FR-007**: The system MUST expose an archive affordance in the conversation-list surface of Build Studio.
-- **FR-008**: The system MUST present an always-visible "Archived" section or tab within each app's conversation-list surface, enumerating the user's archived conversations.
+- **FR-008**: The system MUST present a collapsible "Archived" section in the Assistant app's conversation panel that enumerates the user's archived conversations and is **collapsed by default** (so the tidy-up intent is the resting state). In Build Studio, archived conversations MUST NOT appear in the conversation dropdown at all — they are filtered out entirely. A Build Studio conversation is restored from the Assistant app's Archived section (the two surfaces share one archive state).
 - **FR-009**: An archived conversation MUST be read-only: it MAY be opened and viewed, but sending a new message to it MUST first unarchive it.
+- **FR-010**: When a feature branch is promoted, every conversation whose active feature branch is that branch MUST be archived automatically (not deleted, and still restorable from the Archived section).
 
 ### Key Entities *(include if feature involves data)*
 
@@ -97,6 +117,7 @@ Whichever app surfaces a conversation list (Assistant today, Build Studio today,
 - **SC-003**: A user can archive a conversation and later restore it in under 10 seconds without any data loss.
 - **SC-004**: Archiving a conversation in one app reflects in the other app's list with no manual refresh or re-login required.
 - **SC-005**: No conversation is ever deleted as a result of an archive or unarchive action.
+- **SC-006**: After promoting a feature branch, 100% of conversations associated with that branch are absent from the default list and present in the Archived section, with content intact.
 
 ## Assumptions
 
