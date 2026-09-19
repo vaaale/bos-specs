@@ -1,0 +1,6 @@
+{
+  "label": "System specs",
+  "owner": "system",
+  "writable": false,
+  "requiresPromote": true
+}
