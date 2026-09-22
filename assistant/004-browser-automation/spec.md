@@ -110,12 +110,15 @@ instructions.
   (the pinned `@playwright/mcp` answers actions with only a link to a snapshot
   file, which the model cannot read).
 - **FR-004**: BOS MUST launch the browser via `--executable-path` pointing at
-  the Chromium resolved by the shared capability probe (reusing the e2e
-  browser; no extra download). The probe MUST recognize both Playwright install
-  layouts (pre-CfT `chrome-linux/` and CfT `chrome-linux64/` etc.) and prefer
-  the newest build numerically. Server arguments are structured command+args
-  (no whitespace-splitting of values), with `--output-dir` pointed at the VFS
-  screenshots folder and `--output-mode stdout`.
+  the browser resolved by the shared capability probe (no extra download). The
+  probe MUST recognize both Playwright install layouts (pre-CfT `chrome-linux/`
+  and CfT `chrome-linux64/` etc.), prefer the newest build numerically, and —
+  when the browsers dir holds no bundled build — fall back to a system Chrome
+  channel install at the known OS locations (`/opt/google/chrome/chrome`, …;
+  the Docker image installs via `npx playwright install chrome`, leaving
+  `PLAYWRIGHT_BROWSERS_PATH` empty by design). Server arguments are structured
+  command+args (no whitespace-splitting of values), with `--output-dir` pointed
+  at the VFS screenshots folder and `--output-mode stdout`.
 - **FR-005**: The capability MUST be OFF by default. The tools stay registered
   and gate at execute time: disabled ⇒ an in-band error naming
   Settings → Browser Automation; no browser installed ⇒ the probe's install
