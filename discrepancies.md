@@ -1,1 +1,2 @@
 - user-specs/alpha/001-foo: found a drift
+- assistant/004-browser-automation FR-009: the consent policy (`per-use` | `per-session`) is persisted and shown in Settings but NOT enforced — the enforced controls are the `enabled` gate, origin filters, and the isolated profile. Follow-up: elicit consent from the chat (server tools can `ctx.elicit`) before the first browser call of a session (`per-session`) or before every call (`per-use`).
