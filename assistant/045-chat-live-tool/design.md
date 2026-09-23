@@ -256,6 +256,16 @@ defaulting collapsed when the card first opens (FR-015).
   A small mode label in the Output header ("markdown" / "json" / "code") indicates the chosen type
   (FR-014). **Empty/null result → no Output section** (FR, "empty → no Output section"); the
   mode label is suppressed.
+  **Precedence is a change from the current card, described accurately (N3).** Today
+  `ToolCallCard`'s ternary order is `liveNested` (in-flight `progress[]`) > `nested` (terminal
+  marker) > `mcpUi` (MCP-UI marker) > plain `<pre>`. This design's US3 done-state chain is
+  `mcp-ui` > `nested` > `json` > `markdown` — i.e. it moves **MCP-UI above the nested list**
+  (currently the nested list wins over MCP-UI) and **splits the terminal plain-text path into a
+  strict-JSON vs. markdown decision**. The reorder is practically harmless (a given result is one
+  content type — a delegation's `tool_result` is a nested marker, an MCP tool's is an MCP-UI
+  marker; they do not co-occur on the same call) but it *is* a change, noted here so the rework
+  diff is accurate.
+- **Recursion depth & scroll**:
 - **Delegation live state**: while running, the Output section renders the live nested
   projection — child cards as each nested tool settles, in-progress children show a spinner +
   their live progress (the recursion holds in the live state, not only after completion —
@@ -266,19 +276,29 @@ defaulting collapsed when the card first opens (FR-015).
   change).
 
 **Collapse-state model for US3 (the one genuine design decision).** The card-collapse registry
-is an *accordion* of a single open card per scope, keyed by a flat id. A recursive card needs
-independent per-section state that (a) survives streaming remounts and (b) does not fight the
-existing "newest card opens" accordion. Two viable shapes (see ADR-2):
+(`src/lib/agent/card-collapse.ts`) is an *accordion* of a single open card per scope, keyed by a
+flat id — and it is **shared with the reasoning cards** (`MessageListV2.tsx` registers
+`reason:<messageId>` into the same scoped accordion, so a tool card and a reasoning card compete
+for the one open slot). A recursive card needs independent per-section state (Input / Output)
+that (a) survives streaming remounts and (b) does not fight that cross-card accordion. Two viable
+shapes (see ADR-2):
 
 - **(A) Extend the registry** to key by a *compound* id (`tool:<callId>`, `tool:<callId>:in`,
-  `tool:<callId>:out`) and relax the accordion rule for section-level ids (sections are local
-  to their card, not part of the cross-card accordion).
-- **(B) Card-local section state** (module-side map keyed by callId, like the registry, but only
-  for Input/Output), keeping the registry strictly for the card header accordion.
+  `tool:<callId>:out`) and relax the accordion rule for section-level ids. This touches shared
+  code used by reasoning cards, so the "additive section tier" invariant must hold exactly:
+  section ids never open over a card-header id and never affect the reasoning accordion.
+- **(B) Card-local section state** (a module-side map keyed by `callId`, owned by the card
+  module), keeping the registry **strictly for the card-header + reasoning accordion** — its
+  cross-card "newest card opens" rule untouched.
 
-Both keep `useSyncExternalStore` and the remount-survival property. The design picks **A** —
-single source of truth for *all* collapse state, scoped, remount-safe — and treats sections as
-a sub-hierarchy of the card's accordion (see ADR-2 for the trade-off).
+Both keep `useSyncExternalStore` and the remount-survival property. **The design picks B (N2).**
+Option B is lower-risk to the shared accordion: it adds a private, card-scoped section map and
+changes nothing about `registerCard`/`toggleCard`/`useCardOpen` semantics that the reasoning
+(and tool) cards already rely on. Option A centralizes *all* collapse state in one place, but
+relaxing the single-open rule *inside the shared registry* is exactly the change most likely to
+leak into the reasoning accordion (Risk 7); that centralization benefit does not outweigh the
+risk for sections that are inherently per-card. The `card-collapse.ts` file is therefore
+**untouched**; the new section state is a new card-local module (see §4).
 
 ---
 
