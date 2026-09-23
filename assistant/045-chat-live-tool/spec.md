@@ -1,0 +1,240 @@
+# Feature Specification: Live Per-Tool Output & Individual Completion in Chat
+
+**Feature Branch**: `bos/045-chat-live-tool`
+
+**Created**: 2026-09-23
+
+**Status**: Draft
+
+**App Target**: bos-core
+
+**Input**: User description: "When the agent runs multiple tool calls in parallel, the tool outputs are not marked as completed until ALL tool calls finish, and the outputs are not updated live while multiple tools are executing. I want each tool call's output to update live, individually — e.g. if an agent runs 4 subagents in parallel, the output from each subagent should update live and its status should flip to completed as soon as that subagent finishes."
+
+## Context: what exists today
+
+The v2 assistant chat is driven entirely by a per-call run-event stream (NDJSON/SSE), not by
+CopilotKit message state. Each tool invocation is a first-class unit with its own identity and
+status, and the client is already fully capable of updating them independently:
+
+- **Per-call identity & status.** Every tool call has a distinct `callId`. The client store
+  (`src/lib/assistant/client/chat-store.ts`) holds `toolCalls: Record<callId, ToolCallView>` where
+  `ToolCallView.status ∈ { running, done, cancelled }`. On `tool_call` a call is `running`; on
+  its own `tool_result` it is `done`; on `tool_cancelled` it is `cancelled`. The live card
+  (`src/components/agent/v2/ToolCallCard.tsx`) flips purely off its own call's `status`.
+- **Per-call live channel.** A `tool_progress` run event carries `{ callId, event }`; the store
+  appends it to that call's `progress[]`, and the card renders it live while the call is running.
+  This channel already re-arms the call's idle timeout, so long-running work never times out.
+- **Parallel execution is deliberate.** `agent_delegate` is wrapped in `parallel(...)` and marked
+  `parallelSafe`; adjacent parallel-safe calls in a turn are grouped into one batch
+  (`batchToolCalls`) and run concurrently.
+
+Given all of the above, the two reported defects are both **upstream of the client**, and the fix
+is to reuse the existing per-call machinery rather than add new event types or protocol:
+
+1. **Batch-gated completion (defect a).** In `src/lib/assistant/agent-loop.ts`, the whole parallel
+   batch is awaited as a unit (`await Promise.all(batch.map(executeCall))`) and each call's
+   `tool_result` is emitted in a *trailing* loop after the **slowest** call settles. The three
+   fast subagents finish server-side long before, but their `tool_result` events — and therefore
+   their card flips — are held until the fourth lands, then all four fire in one burst. The client
+   is ready to flip each card the instant its own `tool_result` arrives; it simply never gets them
+   individually today.
+
+   The trailing loop deliberately **persists tool results in the original call order, never
+   completion order**, so the persisted transcript is deterministic across runs of the same input.
+   That invariant is correct and must be preserved — the fix must **decouple the order in which
+   live `tool_result` events are emitted (completion order, drives the UI) from the order in which
+   results are persisted (original call order, drives the transcript)**. Today those two concerns
+   are fused in one loop.
+
+2. **No live output for delegations (defect b).** For a subagent delegation, the inner loop
+   (`src/lib/assistant/inner-loop.ts`) reshapes the inner `tool_call` events into nested *starts*
+   and forwards them via the per-call `tool_progress` channel — so the parent card already shows a
+   live list of *which nested tools have started*. But it **swallows the inner loop's
+   `tool_result`/`tool_cancelled`**, and the card's live branch renders `output=""`
+   (`src/components/agent/v2/ToolCallCard.tsx`). Net effect: a delegation streams a list of starts
+   but shows **no nested results and no output until the whole delegation returns** — and that
+   return is itself batch-gated by defect (a).
+
+### New vs. existing
+
+- **Existing, reused unchanged:** per-call `ToolCallView` + `applyRunEvent` state machine; the
+  `tool_progress` run event and per-call `progress[]`; `ToolContext.onEvent` as the per-call
+  progress conduit; `encodeNested`/`parseNested` for serializing sub-agent events into a result;
+  the NDJSON/SSE transport and the per-call `tool_result` event shape.
+- **New (what this feature adds):** per-settle live `tool_result` emission decoupled from
+  original-order persistence in the run loop; forwarding of nested *results* (not just nested
+  *starts*) through the `tool_progress` channel for delegations; the card rendering live nested
+  results while running.
+- **Not introduced:** no new run-event type, no transport/protocol change, no client-store change,
+  no CopilotKit change.
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - Each parallel tool call completes the moment it finishes (Priority: P1)
+
+A user watching the agent run several independent tool calls at once (e.g. four subagents) wants
+each call's card to flip to "done" individually the instant that call finishes, instead of all of
+them appearing to complete together at the end. Today the three fast calls sit as "running" even
+though they have already returned, and the whole row flips at once when the slowest call lands.
+
+**Why this priority**: This is the headline defect and the single most visible problem. It is a
+self-contained backend fix (per-settle emission) with no client change required — the card already
+flips on its own `tool_result` — so it delivers the biggest win with the least risk.
+
+**Independent Test**: Trigger one agent turn that issues a batch of ≥2 parallel-safe tool calls
+with deliberately staggered completion times (e.g. multiple `agent_delegate` subagents of
+differing length, or a mix of a fast tool and a slow tool). Observe that each card transitions
+running→done at its *own* settle time, with no card waiting for the batch's slowest call.
+
+**Acceptance Scenarios**:
+
+1. **Given** a batch of four parallel-safe calls where calls A and B finish before C and D,
+   **When** A settles, **Then** A's card flips to "done" immediately, while B, C and D remain
+   "running" — A does not wait for C or D.
+2. **Given** the same batch, **When** all four have settled, **Then** every card is "done", each
+   having flipped at its own settle time rather than in a single simultaneous burst.
+3. **Given** the persisted transcript for the run, **When** it is read (live or on reload),
+   **Then** the tool-result messages appear in the **original call order**, independent of the
+   order in which the calls actually completed.
+
+---
+
+### User Story 2 - A running tool call shows its output live, as it happens (Priority: P1)
+
+A user watching a subagent run wants to see that subagent's work stream into its card *while it is
+running* — its nested tool results appearing as each one completes — rather than a static list of
+starts followed by a single all-at-once dump of output when the delegation returns.
+
+**Why this priority**: This is the second half of the request ("output should update live"). It is
+a wiring change on the existing `tool_progress` channel (forward nested results, render them), and
+it is what makes long-running delegations feel alive.
+
+**Independent Test**: Delegate to a local/ephemeral subagent whose inner run calls several tools.
+Watch the parent card while the subagent is still running: confirm the card's live progress list
+shows each nested tool's *result* appearing as it completes (not only the nested tool's start),
+and that the full output is not merely appended once at the very end.
+
+**Acceptance Scenarios**:
+
+1. **Given** a running subagent delegation that has completed 2 of 5 nested tools,
+   **When** the card renders while still "running", **Then** its live progress shows the results of
+   those 2 completed nested tools, plus the (still-pending) starts of the remainder.
+2. **Given** the same delegation, **When** a nested tool completes, **Then** its result appears in
+   the parent card's live list at that time without waiting for the delegation to return.
+3. **Given** a delegation that finishes, **When** its card flips to "done", **Then** the card shows
+   the full nested event list and the delegation's final output.
+
+---
+
+### Edge Cases
+
+- **Single-call batch.** A parallel-safe batch of one call degrades to current behavior: its
+  `tool_result` is emitted on its own settle. No regression.
+- **Mixed parallel and sequential in one turn.** A non-parallel-safe call (e.g. `dev_delegate`)
+  is never grouped into a batch and already completes individually; the fix MUST NOT change its
+  behavior. A parallel-safe batch followed by a sequential call keeps both correct.
+- **Aborted/cancelled batch.** If the run is cancelled mid-batch, each still-running call flips to
+  "cancelled" individually and promptly — not held until the batch would otherwise end.
+- **A call that errors.** A `executeCall` that rejects emits its own result/error for that call
+  individually and MUST NOT hold the remaining calls' `tool_result` emissions.
+- **Replay determinism.** Replaying a completed run (events `?since=`) and reloading a saved
+  conversation MUST present tool-result messages in the original call order. Two runs of the same
+  input MUST produce the same persisted transcript order even if live completion order differs.
+- **Non-delegation tools that never emit progress.** Tools that do not call the progress conduit
+  continue to show nothing until their (now individual) `tool_result`; this feature does not
+  mandate new progress emission from every tool — it only makes whatever is emitted appear live and
+  per-call.
+- **Claude-harness delegations.** The Claude/OpenCode CLI harness reports its final text once at the
+  end; US2's live output for such delegations covers streaming the nested tool activity/results the
+  harness does emit, and does not require token-by-token streaming of the harness's final prose.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: The run loop MUST emit each parallel-safe call's `tool_result` event **as that call
+  settles** (completion order), so the client receives a distinct `tool_result` per `callId` at the
+  moment that call finishes, rather than a single batched burst after all calls in the batch settle.
+
+- **FR-002**: Persistence of tool results MUST remain in the **original call order** (the order the
+  calls were issued), and MUST be independent of the order in which the calls completed. Live
+  emission order and persisted order are decoupled: the live event stream may follow completion
+  order while the persisted transcript follows original call order.
+
+- **FR-003**: A running tool call's card MUST reflect its own status individually: it MUST flip
+  running→done on receipt of **its own** `tool_result` and MUST NOT wait for any other call in the
+  same batch to complete.
+
+- **FR-004**: A cancelled or aborted call in a running batch MUST flip to "cancelled" individually
+  and promptly, without being held for the rest of the batch.
+
+- **FR-005**: For a subagent delegation, the inner run MUST forward each nested tool **result** (and
+  nested cancellation) through the per-call `tool_progress` channel, so the parent streams nested
+  completions live — not only nested tool *starts* as it does today.
+
+- **FR-006**: While a delegated call is still running, its card MUST render the live nested
+  progress (including completed nested results as they arrive), not only nested tool names/inputs.
+  On completion the card MUST render the full nested list plus the delegation's final output.
+
+- **FR-007**: The fix MUST reuse the existing per-call event vocabulary (`tool_call`,
+  `tool_progress`, `tool_result`, `tool_cancelled`), the per-call client store, and the
+  `encodeNested`/`parseNested` serialization. It MUST NOT introduce a new run-event type, a
+  transport/protocol change, a client-store schema change, or a CopilotKit dependency.
+
+- **FR-008**: A tool call that errors MUST emit its own result/error individually and MUST NOT delay
+  the `tool_result` emissions of other calls in the same batch.
+
+- **FR-009**: Replaying a completed run and reloading a saved conversation MUST present tool-result
+  messages in original call order. Two runs of the same input MUST yield the same persisted
+  transcript order regardless of live completion timing.
+
+- **FR-010**: This behavior MUST hold for every surface that renders the v2 assistant chat
+  (standalone Assistant and any embed), since they share the same run-event stream and
+  `ToolCallCard`.
+
+### Key Entities
+
+- **Tool call (`callId`)**: the identity of one tool invocation; the unit of live status, live
+  output, and individual completion.
+- **Parallel batch**: a group of adjacent parallel-safe calls in one turn, executed concurrently.
+- **Live progress event (`tool_progress`)**: an incremental, per-`callId` partial-output event on
+  the existing streaming channel.
+- **Live completion order vs. persisted (original call) order**: the two orderings this feature
+  keeps separate — the former drives the UI, the latter drives the deterministic transcript.
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: In a batch of N≥2 parallel-safe calls with staggered completion, 0 cards wait for the
+  batch's slowest call — each card transitions running→done at its own `tool_result` receipt.
+
+- **SC-002**: Persisted transcript order is invariant to completion order: two runs of identical
+  input produce byte-identical tool-result message ordering (0 order differences), even when live
+  completion order differs between the runs.
+
+- **SC-003**: For a subagent delegation, 100% of its nested tool results appear in the parent card's
+  live progress as each completes while the delegation is still running (not only in the terminal
+  `tool_result`).
+
+- **SC-004**: On mid-batch cancellation, each still-running call flips to "cancelled" within one
+  event round-trip of the cancel, individually (0 calls held for the batch's remainder).
+
+- **SC-005**: No new run-event type, transport, or client-store schema is introduced — verified by
+  a change surface that touches only run-loop emission ordering, delegation inner-loop forwarding,
+  and the live card render.
+
+## Assumptions
+
+- The client store and card are already per-call capable and require no schema change; the client
+  change is limited to rendering live nested results while running (FR-006).
+- "Live output" for a delegation means streaming the delegation's nested tool activity/results
+  through the existing per-call channel. It does **not** require token-by-token streaming of a
+  subagent's final answer prose; the Claude/OpenCode harness reports its final text once at the end,
+  and local delegations produce their final output at return — both unchanged.
+- This feature does not mandate that every tool emit live progress; it makes whatever progress a
+  tool emits appear live and per-call, and it makes every tool's completion individual.
+- `dev_delegate` is not parallel-safe and never batches, so it already completes individually and is
+  left unchanged.
+- The deterministic-transcript invariant (original call order) is treated as first-class and MUST be
+  preserved by the decoupling in FR-001/FR-002.
