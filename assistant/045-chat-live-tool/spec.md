@@ -57,16 +57,17 @@ is to reuse the existing per-call machinery rather than add new event types or p
    but shows **no nested results and no output until the whole delegation returns** — and that
    return is itself batch-gated by defect (a).
 
-3. **Raw input/output rendering (defect c).** The card
-   (`src/components/agent/v2/ToolCallCard.tsx`) renders the tool's **request** as a
-   pretty-printed JSON dump (`pretty(call.args)` → `JSON.stringify(..., null, 2)`) and the
-   **response** as a plain `<pre>` text blob (`resultText`), with the collapsed header showing
-   only the raw tool name and the status word. There is no human-readable one-line summary of
-   what the call is doing, no natural content-type rendering of the result (markdown / code /
-   JSON), and no syntax highlighting. The only special cases are the MCP-UI iframe and the
-   nested-delegation list. So even a successful, well-formed tool output — a file read, a web
-   search, a subagent's markdown report — displays as an unformatted text/JSON wall rather than
-   the readable, content-aware rendering users expect from modern chat products.
+3. **Flat, opaque rendering (defect c).** The card
+   (`src/components/agent/v2/ToolCallCard.tsx`) is a single-level expand/collapse: the collapsed
+   header shows only the raw tool name + status; expanding it reveals a **Request** section
+   (pretty-printed JSON dump via `pretty(call.args)`) and a **Response** section (a plain `<pre>`
+   text blob via `resultText`). There is no independent expand/collapse on Input vs. Output,
+   no human-readable action summary, no natural content-type rendering of the result (markdown /
+   code / JSON), and no syntax highlighting. The only special cases are the MCP-UI iframe and the
+   nested-delegation list — and even that list is a flat `<ul>` of tool-name + input rows, not
+   recursively expandable cards. So a delegation's nested work is a flat list until the terminal
+   `tool_result`, not a navigable tree; and a file read or web search shows as an unformatted
+   text/JSON wall rather than the readable, content-aware rendering users expect.
 
 ### New vs. existing
 
@@ -78,11 +79,13 @@ is to reuse the existing per-call machinery rather than add new event types or p
   MCP-UI iframe and nested-delegation renderers (preserved, taking precedence).
 - **New (what this feature adds):** per-settle live `tool_result` emission decoupled from
   original-order persistence in the run loop; forwarding of nested *results* (not just nested
-  *starts*) through the `tool_progress` channel for delegations; the card rendering live nested
-  results while running; a human-readable one-line action summary in each call's header;
-  structured rendering of the request arguments; and natural content-type rendering of the
-  result (markdown / syntax-highlighted code / formatted JSON), reusing the chat's existing
-  markdown renderer.
+  *starts*) through the `tool_progress` channel for delegations; and a reworked card that is a
+  **recursive, single-component collapsible tree**: a human-readable action summary in the header;
+  independently expandable **Input** (structured key–value, primary arg highlighted, raw-JSON
+  toggle) and **Output** (content-type rendered: markdown / highlighted JSON / highlighted code /
+  child tool-call cards) sections; and for delegations, the Output section is a list of child
+  tool-call cards — the same component, recursed at every depth. The mockup at
+  `mockup.html` in this spec directory is the binding UI contract.
 - **Not introduced:** no new run-event type, no transport/protocol change, no client-store change,
   no CopilotKit change.
 
@@ -144,43 +147,58 @@ and that the full output is not merely appended once at the very end.
 
 ---
 
-### User Story 3 - Readable, content-aware rendering of tool calls (Priority: P2)
+### User Story 3 - Recursive, navigable tree for tool call input and output (Priority: P2)
 
-A user reviewing a tool call wants to understand at a glance what it did and to read its input and
-output as properly formatted content — not as a raw JSON dump. Today both the request (arguments)
-and the response (result) render as pretty-printed JSON / plain text in the card, and the
-collapsed header shows only the tool name. This story adds the readable, content-aware rendering
-that modern chat products (Claude, ChatGPT) provide: a one-line summary of the action, the
-arguments shown as structured data, and the result rendered as its natural content type.
+A user reviewing a tool call wants a **recursive, collapsible tree** — not a flat card with two
+flat sections. The tool call header is expanded (as today); inside it, **Input** and **Output**
+are each independently expandable sections. For a delegation, the Output section contains child
+tool-call cards — the *same component*, recursed at every depth — so the user can drill into a
+subagent's nested work the same way they would into any other tool call. The binding UI contract
+is the mockup at `mockup.html` in this spec directory.
 
 **Why this priority**: It is the second half of the user's request and is presentational rather
 than behavioral — it does not change *when* or *whether* results arrive (US1/US2), only *how*
 they are displayed. It builds on the card that US1/US2 already drive, so it lands as P2 behind
-them, yet it is independently testable: any completed tool call can be checked for readable
-rendering without involving the live-update mechanism.
+them, yet it is independently testable: any completed tool call can be checked for tree structure
+without involving the live-update mechanism.
 
-**Independent Test**: Open the card of a completed tool call whose result is markdown (e.g. a file
-read or a web-search result) and one whose result is JSON. Confirm the markdown result renders as
-formatted markdown (headings, lists, code blocks), the JSON result renders as formatted,
-syntax-highlighted JSON, the arguments render as structured key–value data (not a raw JSON wall),
-and the collapsed header shows a human-readable summary of the action.
+**Independent Test**: Open the mockup and click through: expand a done tool call, expand its
+Input and Output independently, confirm Input shows structured key–value (not raw JSON), Output
+renders by content type (markdown / JSON / code). Then expand a delegation's Output: confirm
+child tool-call cards appear, and expand one of those children to confirm it has its own
+Input/Output — the same structure recursed.
 
 **Acceptance Scenarios**:
 
 1. **Given** a completed tool call, **When** its card header is collapsed, **Then** it shows a
-   human-readable one-line summary of the action (e.g. "Read file /path", "Web search for …",
-   "Delegate to <agent>"), not just the raw tool name.
-2. **Given** a tool call whose result is markdown/text, **When** its card is expanded, **Then**
-   the result renders as formatted markdown (headings, lists, tables, inline and fenced code)
-   rather than a single plain `<pre>` blob.
-3. **Given** a tool call whose result is valid JSON, **When** its card is expanded, **Then** it
-   renders as formatted, syntax-highlighted JSON.
-4. **Given** a tool call's arguments, **When** the card is expanded, **Then** they render as
-   structured key–value data with the primary argument (path/query/url/id) shown as a clean,
-   labeled value, rather than a pretty-printed JSON dump.
-5. **Given** a tool call whose result matches an MCP-UI or nested-delegation marker, **When** the
-   card renders, **Then** the existing MCP-UI iframe / nested-list rendering is preserved and
-   takes precedence over the natural content-type rendering.
+   human-readable one-line action summary (verb + key argument, e.g. "Read file /path", "Web
+   search for …", "Delegate to <agent>"), not just the raw tool name. The tool name is the
+   fallback when no per-tool summary is available.
+
+2. **Given** a tool call with its header expanded, **When** the Input section is expanded,
+   **Then** the arguments render as structured key–value rows (primary argument — path, query,
+   url, id, command — highlighted as a distinct labeled value). A "raw" toggle switches the
+   Input section to the full pretty-printed JSON dump.
+
+3. **Given** a tool call with its header expanded, **When** the Output section is expanded,
+   **Then** the result renders by content type in this precedence: (1) MCP-UI marker → existing
+   iframe renderer; (2) nested-delegation marker → list of child tool-call cards (see scenario 5);
+   (3) valid JSON object/array → formatted, syntax-highlighted JSON with a copy button; (4)
+   otherwise → markdown (headings, lists, tables, inline and fenced code) using the chat's
+   existing markdown renderer, with code blocks highlighted and a copy button.
+
+4. **Given** the Input and Output sections are both visible inside an expanded card, **When** the
+   user clicks the Input section header, **Then** only Input collapses/expands — Output is
+   unaffected, and vice versa.
+
+5. **Given** a delegation tool call, **When** its Output section is expanded, **Then** it shows
+   a list of child tool-call cards — each a full card with its own header (action summary +
+   status dot), its own independently expandable Input and Output, and its own content-type
+   rendering. The nesting is visually indicated by an indent and left border. This recurses:
+   a child that is itself a delegation shows its own child cards in its Output.
+
+6. **Given** a tool call with no output (empty/null result), **When** its card is expanded,
+   **Then** no Output section is shown (the Input section is unaffected).
 
 ---
 
@@ -263,28 +281,40 @@ and the collapsed header shows a human-readable summary of the action.
   (standalone Assistant and any embed), since they share the same run-event stream and
   `ToolCallCard`.
 
-- **FR-011**: Each tool call's collapsed card header MUST show a human-readable, one-line summary
-  of the action, derived from the tool name and its key argument (e.g. "Read file /path", "Web
-  search for …", "Delegate to <agent>"). A tool with no recognized summarizer MUST fall back to
-  the raw tool name. The summary MUST NOT display a raw JSON argument blob.
+- **FR-011**: The tool call card MUST be a single recursive component, used identically at every
+  nesting depth. Each card has a collapsed header (action summary + status dot) that expands to
+  reveal two independently collapsible sections: **Input** and **Output**. For a delegation, the
+  Output section is a list of child cards — the same component, recursed. The card MUST NOT use
+  a separate flat list component for nested delegation results; the nesting is structural (the
+  same component rendered inside the parent's Output), not representational.
 
-- **FR-012**: A tool call's arguments (request) MUST be rendered as structured key–value data, not
-  a pretty-printed JSON dump. The primary argument of interest (path, query, URL, id, command)
-  MUST be shown as a clean, labeled value (inline in the summary and/or as a distinct row);
-  remaining arguments MUST be shown as formatted key–value rows, or as syntax-highlighted JSON
-  only where no cleaner structured form applies.
+- **FR-012**: Each card's collapsed header MUST show a human-readable, one-line action summary
+  derived from the tool name and its key argument (e.g. "Read file /path", "Web search for …",
+  "Delegate to <agent>"). A tool with no recognized summarizer MUST fall back to the raw tool
+  name. The header MUST NOT display a raw JSON argument blob.
 
-- **FR-013**: A tool call's result (response) MUST be rendered as its natural content type, not a
-  plain text/JSON blob, resolved in this precedence order: (1) MCP-UI marker → the existing iframe
-  renderer; (2) nested-delegation marker → the existing nested list renderer; (3) result that
-  parses as a JSON object/array → formatted, syntax-highlighted JSON; (4) otherwise → rendered as
-  markdown (headings, lists, tables, inline and fenced code), reusing the chat's existing markdown
-  renderer. Code-like content MUST render in a syntax-highlighted code block with a copy
-  affordance.
+- **FR-013**: The Input section (inside an expanded card) MUST render the tool's arguments as
+  structured key–value rows: the primary argument (path, query, URL, id, command) as a distinct
+  labeled row with visual emphasis; remaining arguments as plain key–value rows. A "raw" toggle
+  MUST switch the Input section to the full pretty-printed JSON dump. Both views MUST be
+  available; the structured view is the default.
 
-- **FR-014**: The input/output rendering in FR-012/FR-013 MUST also apply to the live nested
-  results streamed by US2 (FR-005/FR-006), so that a delegated call's nested tool outputs render
-  as their natural content type while the delegation is still running — not as raw JSON.
+- **FR-014**: The Output section (inside an expanded card) MUST render the tool's result by
+  content type, in this precedence: (1) MCP-UI marker → existing iframe renderer; (2)
+  nested-delegation marker → list of child tool-call cards (FR-011); (3) result that parses as
+  a JSON object/array → formatted, syntax-highlighted JSON with a copy button; (4) otherwise →
+  markdown (headings, lists, tables, inline and fenced code) using the chat's existing markdown
+  renderer, with code blocks highlighted and a copy button. The content-type mode MUST be
+  visually indicated (e.g. a small label in the Output section header: "markdown", "json",
+  "code").
+
+- **FR-015**: The Input and Output sections MUST be independently expandable: clicking the Input
+  section header MUST toggle only Input (Output unaffected), and vice versa. Both MUST default
+  to collapsed when the card is first expanded.
+
+- **FR-016**: The input/output rendering in FR-013/FR-014 MUST also apply to the live nested
+  results streamed by US2 (FR-005/FR-006), so that a delegated call's child cards render their
+  outputs as their natural content type while the delegation is still running — not as raw JSON.
 
 ### Key Entities
 
@@ -321,15 +351,21 @@ and the collapsed header shows a human-readable summary of the action.
 - **SC-006**: 100% of completed tool-call cards show a human-readable header summary (or the tool
   name as fallback) with no raw JSON argument blob in the collapsed header.
 
-- **SC-007**: A tool result that is markdown/text renders as formatted markdown (at least one of
-  heading/list/table/code structure visible), not a single unstructured `<pre>` text blob.
+- **SC-007**: In an expanded card, the Input section renders structured key–value rows (not a raw
+  JSON dump) by default; the raw-JSON toggle is available and switches to the full dump.
 
-- **SC-008**: A valid-JSON tool result renders as formatted, syntax-highlighted JSON; a code
-  result renders in a highlighted code block with a copy affordance.
+- **SC-008**: A tool result that is markdown/text renders as formatted markdown (at least one of
+  heading/list/table/code structure visible), not a single unstructured `<pre>` text blob. A
+  valid-JSON result renders as formatted, syntax-highlighted JSON with a copy button. A code
+  result renders in a highlighted code block with a copy button.
 
-- **SC-009**: The MCP-UI iframe and nested-delegation list renderers are preserved with 0
-  regressions — a result matching either marker still renders as the iframe / nested list
-  respectively, taking precedence over natural content-type rendering.
+- **SC-009**: The MCP-UI iframe renderer is preserved with 0 regressions — a result matching that
+  marker still renders as the iframe. The nested-delegation flat list is replaced by the recursive
+  child-card tree (FR-011); child cards MUST render with the same structure as top-level cards.
+
+- **SC-010**: In a delegation card's Output, 100% of child tool calls render as full recursive
+  cards (own header, own Input, own Output, own content-type rendering). The tree is navigable
+  to at least 3 levels deep without structural change.
 
 ## Assumptions
 
@@ -353,5 +389,9 @@ and the collapsed header shows a human-readable summary of the action.
   renderer (plus syntax highlighting) is reused for tool output — not a new rendering stack.
 - Content-type detection (FR-013) is best-effort and heuristic; it MUST degrade gracefully (fall
   back to markdown/text) rather than fail on ambiguous or malformed content.
-- US3's header summary (FR-011) is derived per-tool from name + key argument; tools without a
+- US3's header summary (FR-012) is derived per-tool from name + key argument; tools without a
   recognized summarizer fall back to the tool name rather than forcing a summary.
+- The mockup at `mockup.html` in this spec directory is the binding UI contract for US3 and
+  FR-011–FR-016. Implementation MUST match the mockup's structure (recursive card, independent
+  Input/Output collapse, content-type rendering, child-card nesting) — visual details (exact
+  spacing, icon choices) may be refined to match the live card's Tailwind classes.
