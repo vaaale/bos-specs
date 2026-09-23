@@ -91,9 +91,16 @@ appended to its `progress[]`** — the channel this feature extends.
 
 **Delegation result envelope** — `src/lib/agent/nested-events.ts`: `encodeNested({ events,
 output })` / `parseNested(value)` with `NESTED_MARKER` ("" — an empty sentinel, located by
-`indexOf`). `events: { tool, input? }[]`, `output: string`. Produced at the end of every
-delegation (`delegate-local.ts`, `delegate-common.ts` claude branch) and **consumed by the card**
-to render the nested list.
+`indexOf`). Today `events: { tool, input? }[]`, `output: string` — **one shared output, no
+per-child result/status/callId** (a done delegation's child cards would render blank on reload:
+`progress[]` is empty after reload, only the persisted transcript survives). This feature widens
+`NestedEvent` (see §3.3 / ADR-3): each entry gains `result?` (string), `status?`
+(`"running"|"done"|"cancelled"`) and `nested?` (its own `NestedEvent[]` child list) — recursion by
+structure. The marker and the `encodeNested`/`parseNested` entry points are unchanged; only the
+*payload shape* changes (legal under FR-007 — a richer `tool_result` string is neither a new event
+type nor a store schema change). Produced at the end of every delegation
+(`delegate-local.ts`, `delegate-common.ts` claude branch) and **consumed by the card** to render
+the nested list.
 
 **MCP-UI result marker** — `src/lib/mcp/ui.ts`: `parseMcpUi(value)` / `MCPUI_MARKER` (""). The
 card already special-cases this (iframe) with highest precedence.
@@ -162,8 +169,11 @@ original-order loop.
   `runServerTool`'s `callAbort`) with `CANCELLED_RESULT` and emits its own `tool_cancelled`
   promptly — satisfying FR-004/SC-004 "within one event round-trip," not held for the batch.
 - **Errors are isolated.** `executeCall` already never throws (in-band `Error: …`), and the
-  `batch.map(executeCall).catch(…)` defensive wrapper remains. In the per-settle design a
-  rejection settles only its own call; siblings' emissions are unaffected (FR-008).
+  defensive wrapper remains — accurately, **one `.catch` per call inside the `batch.map`**
+  (`batch.map((call) => executeCall(call).catch((e) => ({ result: toolError(…) })))`, per-call),
+  **not** a single `.catch` on the `Promise.all`. In the per-settle design a rejection settles
+  only its own call; siblings' emissions are unaffected (FR-008). Keep the per-call shape when
+  moving emission to settle-time — do not collapse it into one outer catch (N1).
 - **The `tool_call` announcement stays up-front** (the whole batch is announced before awaiting
   any of it) so the browser can dispatch frontend tools together — unchanged.
 - **Replay determinism (FR-009/SC-002).** The persisted transcript is the *source of truth for
@@ -182,28 +192,41 @@ across calls. `lastSeq` dedupe (`applyRunEvent`) is per-run monotonic and unaffe
 
 The inner loop already reshapes and forwards events via `ctx.onEvent`. The change is to **also
 forward nested `tool_result`/`tool_cancelled`** (not just `tool_call` starts) for the non-frontend
-(server-exec) tools of a local delegation, and to make the Claude path surface its nested tool
-activity the same way.
+(server-exec) tools of a local delegation, to widen the terminal `encodeNested` payload to carry
+the per-child results (B1), and — for the Claude/OpenCode path — to surface the nested tool
+*starts* the harness emits (narrowed to starts-only; see the Claude bullet below, S1).
 
 - **Local/ephemeral/surface (inner-loop path).** In `runInnerLoop.emit`, extend the handler so a
   nested `tool_result`/`tool_cancelled` for a *server-exec* inner call is pushed through
   `ctx.onEvent` as a structured entry (e.g. `{ type: "tool_result", tool, result }` /
   `{ type: "tool_cancelled", tool }`). This lands in the **parent call's `progress[]`** via the
-  existing conduit — no new event type, no store change. The terminal `encodeNested` result is
-  unchanged and remains the canonical nested *list*; the live `progress[]` is the *in-flight*
-  projection (starts + results as they settle). `SC-003` ("100% of nested results appear in the
-  live progress while running") is met.
+  existing conduit — no new event type, no store change. The live `progress[]` is the *in-flight*
+  projection (starts + results as they settle); `SC-003` ("100% of nested results appear in the
+  live progress while running") is met. **The terminal `encodeNested` payload is widened, not
+  just the live projection (B1):** `runInnerLoop` must return the full per-child terminal result
+  list — the data is already computed by the inner loop's own transcript (each inner call settles
+  to a tool message keyed by `callId`), it is discarded today because
+  `InnerLoopResult.toolCalls` carries only the *starts* (`{ tool, input }`). Extend
+  `InnerLoopResult` with the per-child result list and thread it into `encodeNested` (see §4 /
+  ADR-3) so a done delegation's child cards render from the persisted payload after reload.
 - **Claude/OpenCode harness path** (`delegate-common.ts` claude branch → `runSubAgent`/
-  `runClaudeAgent`). The harness already streams `tool_use` (→ `onEvent({ tool, input })`) and
-  reports final text once at the end; the `SubAgentEvent` union
-  (`src/lib/agent/subagents/types.ts`) already *has* a `tool_result` member. The change is to
-  **surface nested tool *results* (not just `tool_use` starts) through the harness's `onEvent`**
-  where the CLI emits them, so the parent card's live progress reflects nested completions. Per
-  the spec's Claude edge case, this covers the nested tool activity/results the harness *does*
-  emit — **not** token-by-token final prose.
-- **`encodeNested`/`parseNested` are reused unchanged** for the terminal result; only the *shape*
-  of the *live* `progress[]` entries grows (they become discriminated: start vs. result vs.
-  cancel), which the card's recursive renderer consumes (US3).
+  `runClaudeAgent`). **Narrowed to starts-only (S1).** The harness
+  (`src/lib/agent/subagents/claude-runner.ts`) streams only `tool_use` blocks →
+  `onEvent({ tool, input })`; it never emits a per-tool `tool_result` (the CLI reports its final
+  text once, at the end). The `tool_result` member of the `SubAgentEvent` union
+  (`src/lib/agent/subagents/types.ts`) is documented as emitted *only by the local headless path
+  (`runLocalHeadless`)* — a different runner (self-heal / Workflow-Manager service), **not** this
+  interactive CLI delegation. So US2 for the Claude path surfaces the nested tool *starts* the
+  harness emits (matching the spec's own Claude edge case), and the terminal `encodeNested`
+  payload for a Claude delegation carries child entries with `result?` undefined and
+  `status: "done"` — the card renders them as done cards with no per-child Output. Extending
+  `claude-runner.ts` to parse the CLI's `tool_result` blocks is a **separate future change, out
+  of scope** for this feature.
+- **`encodeNested`/`parseNested` change payload shape** (the marker and entry points stay): the
+  terminal `NestedEvent` gains `result?`/`status?`/`nested?` (recursion by structure, ADR-3), so
+  a done delegation's child cards render from the persisted terminal payload **after reload**
+  (when `progress[]` is empty) — the fix for B1. The live `progress[]` entries also become
+  discriminated (start vs. result vs. cancel), which the card's recursive renderer consumes (US3).
 
 ### 3.4 US3 — a single recursive `ToolCallCard`
 
