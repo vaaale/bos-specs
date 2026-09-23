@@ -265,7 +265,6 @@ defaulting collapsed when the card first opens (FR-015).
   content type — a delegation's `tool_result` is a nested marker, an MCP tool's is an MCP-UI
   marker; they do not co-occur on the same call) but it *is* a change, noted here so the rework
   diff is accurate.
-- **Recursion depth & scroll**:
 - **Delegation live state**: while running, the Output section renders the live nested
   projection — child cards as each nested tool settles, in-progress children show a spinner +
   their live progress (the recursion holds in the live state, not only after completion —
