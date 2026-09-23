@@ -47,7 +47,7 @@
 
 ### Tests for US1 (write first, confirm FAIL)
 
-- [ ] T004 [US1] e2e test in `e2e/045-chat-live-tool.spec.ts`: (a) a staggered parallel batch emits a distinct `tool_result` per `callId` **as each settles** (not one burst after the slowest); (b) the persisted run log's `message` events for that batch are in **original call order** even when live completion order differs; (c) cancelling the run mid-batch emits `tool_cancelled` once per still-running call promptly. Written first; (a) and (c) FAIL on the current batched loop.
+- [ ] T004 [US1] e2e test in `e2e/045-chat-live-tool.spec.ts`: (a) a staggered parallel batch emits a distinct `tool_result` per `callId` **as each settles** (not one burst after the slowest); (b) the persisted run log's `message` events for that batch are in **original call order** even when live completion order differs; (c) cancelling the run mid-batch emits `tool_cancelled` once per still-running call promptly; (d) a batch where one call rejects/errors emits its own error `tool_result` individually and does **not** delay the `tool_result` of the other calls (FR-008); (e) a turn mixing a parallel-safe batch with a non-parallel-safe sequential call (e.g. `dev_delegate`) leaves the sequential call's behavior unchanged. Written first; (a), (c), and (d) FAIL on the current batched loop.
 
 ### Implementation for US1
 
@@ -88,7 +88,7 @@
 
 ### Tests for US3 (write first, confirm FAIL)
 
-- [ ] T009 [P] [US3] Component test at `src/components/agent/v2/__tests__/ToolCallCard.test.tsx`: (a) header shows a human-readable action summary (or tool-name fallback) with no raw JSON; (b) Input renders structured key-value with the primary arg emphasized, plus a raw-JSON toggle; (c) Output renders by content-type precedence (MCP-UI iframe → child cards → highlighted JSON → markdown) with a copy button on JSON/code; (d) Input and Output collapse independently; (e) a done delegation's Output renders full child cards navigable ≥3 levels from the terminal payload; (f) an empty result shows no Output section; (g) a running delegation renders live child cards (US2 progress) with one still running. Written first; FAILS until the card is reworked.
+- [ ] T009 [P] [US3] Component test at `src/components/agent/v2/__tests__/ToolCallCard.test.tsx`: (a) header shows a human-readable action summary (or tool-name fallback) with no raw JSON; (b) Input renders structured key-value with the primary arg emphasized, plus a raw-JSON toggle, and — for a tool with no clear primary arg — renders a clean key-value list with no forced/fabricated primary; (c) Output renders by content-type precedence (MCP-UI iframe → child cards → highlighted JSON → markdown) with a copy button on JSON/code, shows the content-type label in the section header, and — for a string that looks like JSON but is prose — degrades to markdown rather than throwing; (d) Input and Output collapse independently; (e) a done delegation's Output renders full child cards navigable ≥3 levels from the terminal payload; (f) an empty result shows no Output section; (g) a running delegation renders live child cards (US2 progress) with one still running. Written first; FAILS until the card is reworked.
 
 ### Implementation for US3
 
