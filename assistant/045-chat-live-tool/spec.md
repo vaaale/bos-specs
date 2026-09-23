@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-23
 
-**Status**: Specified — design, plan, tasks complete
+**Status**: Specified — analyzed, ready for implement
 
 **App Target**: bos-core
 
