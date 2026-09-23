@@ -312,33 +312,60 @@ Only files this feature creates or modifies. One-line purpose each.
 - `src/components/agent/v2/ToolCardSections.tsx` — the Input section (structured key–value + raw
   toggle) and the Output section (content-type renderer: mcp-ui / child-cards / json / markdown),
   each independently collapsible; consumed by `ToolCallCard` at every depth.
-- `src/lib/agent/card-collapse.tsx` (or an extension module) — *(if ADR-2 option A)* compound
-  section ids + a section-local collapse layer on top of the existing card accordion.
+- `src/components/agent/v2/ToolCardSectionState.ts` — **(ADR-2 option B, N2)** card-local,
+  module-side section state: a map keyed by `callId` holding the Input/Output section
+  open/closed flags (each defaulting collapsed when its card first opens). Module-side (not
+  React), mirroring the `card-collapse.ts` registry's own remount-survival rationale. The shared
+  `card-collapse.ts` registry is **untouched** — it stays strictly the cross-card header
+  accordion (tool + reasoning cards).
 
 ### Modify
 - `src/lib/assistant/agent-loop.ts` — **US1**: move the `tool_result`/`tool_cancelled` live
   emission to each call's settle point; keep `message` + `io.saveMessages` + `afterToolCall` in
   the original-order trailing loop; preserve per-call announce, cancel cascade, and error
-  isolation.
-- `src/lib/assistant/inner-loop.ts` — **US2 (local)**: forward nested `tool_result`/
-  `tool_cancelled` (server-exec inner calls) through `ctx.onEvent`, so the parent card streams
-  nested results live; terminal `encodeNested` unchanged.
-- `src/lib/assistant/tools/server/delegate-common.ts` — **US2 (claude)**: surface nested tool
-  results from the harness `onEvent` (`SubAgentEvent` `tool_result`) for the claude/OpenCode
-  path; `encodeNested` unchanged.
+  isolation (the per-call `.catch` inside `batch.map`, N1). **De-dup (S2):** a cancelled call
+  emits `tool_cancelled` **exactly once** (at settle); the trailing original-order loop still
+  *persists* its `CANCELLED_RESULT` message (`saveMessages`) but does **not** re-emit a terminal
+  event for an already-terminated call (see ADR-1).
+- `src/lib/assistant/inner-loop.ts` — **US2 (local)**: (a) forward nested `tool_result`/
+  `tool_cancelled` (server-exec inner calls) through `ctx.onEvent` so the parent card streams
+  nested results live; (b) **return the full per-child terminal result list (B1)** — extend
+  `InnerLoopResult` to carry, per inner call, its settled `result?` + `status?` (+ its own
+  `nested?` child list for recursion). The data is already computed in the inner loop's own
+  transcript (`messages`/outcomes); today only the last assistant text + starts
+  (`toolCalls`) are returned. Recursion is structural: an inner call that is itself a
+  delegation already holds its own `encodeNested` result, which this entry reuses as its
+  `nested?` list.
+- `src/lib/assistant/tools/server/delegate-common.ts` — **US2 (claude), narrowed to
+  starts-only (S1)**: pass the harness's starts-only `toolCalls` through to the terminal
+  `encodeNested` call, whose child entries carry `result?` undefined + `status: "done"` (done
+  cards, no per-child Output). It does **not** attempt to surface per-tool `tool_result` — the
+  CLI harness (`claude-runner.ts`) never emits one (§3.3; extending `claude-runner.ts` to parse
+  `tool_result` blocks is a separate future change, out of scope). The `encodeNested` call gains
+  the new per-child `status` field (shape change, B1) but no new result data from this path.
 - `src/components/agent/v2/ToolCallCard.tsx` — **US3**: rework from flat single-level to the
   single recursive component (header summary; Input/Output sections; delegation Output = child
-  cards); widen `ToolCardData` to carry nested child call data + live nested projection.
+  cards); widen `ToolCardData` to carry nested child call data + live nested projection. Its
+  **done state renders child cards from the extended `parseNested` payload** (B1) — per-child
+  `result?`/`status?`/`nested?` — not from the empty-after-reload `progress[]`. Section
+  open/closed state comes from the new card-local module (ADR-2 option B); the header toggle
+  still uses the shared `card-collapse` registry.
 - `src/components/agent/v2/MessageListV2.tsx` — **US3 (wiring only)**: build the card data's
   nested children for delegations from the existing `resultsByCall` / live `progress[]`; keep the
   virtualization + per-call memo comparator.
-- `src/lib/agent/nested-events.ts` — **US3 (type only)**: *(if the live `progress[]` gains
-  discriminated start/result/cancel entries)* export a typed `NestedProgressEntry` union for the
-  card; `encodeNested`/`parseNested`/marker unchanged.
+- `src/lib/agent/nested-events.ts` — **US2/US3 (payload-shape change, B1)**: `NestedEvent`
+  gains `result?` (string), `status?` (`"running"|"done"|"cancelled"`), and `nested?` (its own
+  `NestedEvent[]` child list) — recursion by structure. `encodeNested`/`parseNested` change
+  payload shape accordingly; the `NESTED_MARKER` and the two entry points stay, and `parseNested`
+  is extended to tolerate the new optional fields **and** legacy `{ tool, input }`-only payloads.
+  Also export a typed `NestedProgressEntry` union (start / result / cancel) for the card's live
+  `progress[]`. **This is a payload-shape change, not just a type export.**
 
 **Explicitly NOT touched** (hard-constraint guard, SC-005): no `run-events.ts` (no new event
-type), no transport/protocol, no `chat-store.ts` (no schema change), no CopilotKit dependency,
-no `card-collapse` behavior for non-tool cards (reasoning cards keep working).
+type), no transport/protocol, no `chat-store.ts` (no schema change — the richer `tool_result`
+string fits the existing `result?: string`), no CopilotKit dependency, and no `card-collapse.ts`
+(the shared registry stays strictly the cross-card header accordion — tool + reasoning cards —
+under ADR-2 option B; section state is the new card-local module).
 
 ---
 
@@ -362,8 +389,10 @@ no `card-collapse` behavior for non-tool cards (reasoning cards keep working).
   `CodeBlock`/`HtmlBlock`/mermaid + copy button). US3 reuses it for the "markdown" and
   "code"/"json" output modes (and the highlighted-JSON path). No new rendering stack.
 - **Card-collapse registry** (`src/lib/agent/card-collapse.ts`) — `registerCard`/`toggleCard`/
-  `useCardOpen`/`useCardScope`, scoped, remount-safe. US3's header toggle reuses it; its
-  Input/Output section state extends it (ADR-2).
+  `useCardOpen`/`useCardScope`, scoped, remount-safe, and **shared with the reasoning cards**
+  (`MessageListV2.tsx` registers `reason:<id>`). US3's header toggle reuses it *as-is*; the
+  Input/Output section state is a **separate card-local module** (`ToolCardSectionState.ts`,
+  ADR-2 option B), so the registry's cross-card accordion semantics are untouched.
 - **`applyRunEvent`** (`src/lib/assistant/client/chat-store.ts`) — the per-`callId` projection;
   US1's per-settle `tool_result` flips each card individually with **zero client changes** (the
   store already handles `tool_result` per callId). This is why US1 needs no client-store edit.
