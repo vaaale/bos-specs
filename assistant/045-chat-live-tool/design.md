@@ -427,11 +427,22 @@ after the batch has fully settled.
 - Cancellation: per-call linked abort (`runServerTool`'s `callAbort`) settles each still-running
   call with `CANCELLED_RESULT`; emitting `tool_cancelled` per-settle satisfies FR-004/SC-004
   ("within one event round-trip," not held for the batch).
+- **De-dup rule for cancelled calls (S2).** Today there are *two* places that emit a terminal
+  event — the post-await sweep (`batch.forEach` → `tool_cancelled` for `CANCELLED_RESULT`) and
+  the trailing loop (`tool_result` for all). The per-settle design adds a *third* (settle-time)
+  emission site. The rule, stated explicitly: **a cancelled call emits `tool_cancelled` exactly
+  once (at settle).** The trailing original-order loop **persists** the cancelled call (message +
+  `saveMessages`, so the transcript stays settled) but **does not re-emit a terminal event** for
+  an already-terminated call. Track settled state per `callId` so neither the sweep nor the
+  trailing loop re-fires a terminal event. This keeps "exactly one terminal event per call"
+  (below) holding with three emission sites instead of two.
 - **Cost/risk**: the per-settle path must still guarantee *every* call gets exactly one live
   terminal event (result or cancel) before the batch's persistence loop runs — otherwise a
   `tool_use` id would be stranded with no `tool_result` and wedge the next model turn (the exact
   hazard the current defensive `.catch` wrapper prevents). The settle-time emission must be
   idempotent per `callId` and ordered so a call can't be both "done" and "cancelled."
+  (The S2 de-dup rule is the mechanism that makes the per-settle site the single terminal-
+  emission authority the sweep and trailing loop defer to.)
 - **Alternative rejected** — "persist in completion order and re-sort the transcript": breaks the
   deterministic-transcript invariant and forces the client to sort by original order (which it
   can't know post-reload without re-deriving from the assistant message). Original-order
@@ -453,10 +464,14 @@ flat list. The flat `<NestedEventList>` is removed (SC-009).
 - **Reuse, not duplication**: the Input/Output sections and content-type renderer are written
   once and shared at every depth; a delegation's child is just the parent's own Output rendering
   another card.
-- **Single collapse-state source of truth**: header + Input + Output are three collapsible units
-  of the *same* logical card. Keeping them in one component (with the registry extended to
-  compound ids, option A) means the "newest card opens" accordion still governs the *card* while
-  *sections* are local sub-state — no separate store to keep in sync.
+- **Collapse-state split (option B, N2)**: the *card header* stays in the shared `card-collapse`
+  registry (the cross-card accordion, which also governs the **reasoning** cards registered as
+  `reason:<id>` in `MessageListV2.tsx`); the *Input/Output sections* live in a **new card-local,
+  module-side map** keyed by `callId` (each section defaulting collapsed). Keeping section state
+  out of the shared registry is the lower-risk choice: it leaves `registerCard`/`toggleCard`/
+  `useCardOpen` semantics — and the reasoning cards that depend on them — completely untouched.
+  Both the registry and the section map are module-side, so the remount-survival property holds
+  for both; there is no cross-card state to keep in sync (sections are local to their card).
 - **Alternative rejected** — "separate `NestedDelegationList` component": duplicates the card's
   render logic, breaks the "same component at every depth" contract, and makes the live nested
   results (US2) need a second code path to render children in-flight. The recursive card handles
@@ -471,8 +486,12 @@ flat list. The flat `<NestedEventList>` is removed (SC-009).
 
 **Decision.** US2 forwards nested `tool_result`/`tool_cancelled` as *structured entries* pushed
 through `ToolContext.onEvent` (→ `tool_progress` → `progress[]`), discriminated from the existing
-`{ tool, input }` start entry. The terminal `encodeNested` envelope is unchanged and remains the
-canonical nested list.
+`{ tool, input }` start entry. The terminal `encodeNested` envelope is the canonical nested list
+— and it is **widened to carry per-child data (B1)**: `NestedEvent` gains `result?` (string),
+`status?` (`"running"|"done"|"cancelled"`), and `nested?` (its own `NestedEvent[]` child list)
+(recursion by structure). The `NESTED_MARKER` and the `encodeNested`/`parseNested` entry points
+are unchanged — this is a *payload-shape* change to the `tool_result` string, not a new run-event
+type or a store schema change, so it stays inside FR-007.
 
 **Status.** Accepted.
 
@@ -485,12 +504,25 @@ canonical nested list.
   falls back to the live projection while `running` — which is how "children stream live, then
   the full list + final output on completion" (FR-006) works without ever changing the
   persistence contract.
+- **Why the widened payload is required (B1):** after a reload, `progress[]` is **empty** —
+  only the persisted transcript (the `tool_result` string) survives. The old shape
+  (`{ tool, input }` + one shared `output`) carried no per-child result/status/callId, so a done
+  delegation's child cards would render **blank** on reload, contradicting FR-011/US3 scenario 5
+  (each child is a full card with its own Input AND Output) and SC-010 (navigable ≥3 levels).
+  Carrying per-child `result?`/`status?`/`nested?` in the terminal payload lets the card's
+  done-state rebuild the full child-card tree from the persisted string alone.
 - **Alternative rejected** — "add a nested `tool_result` run-event": violates the no-new-event-
   type constraint and would require a client-store schema change to track per-nested-call state.
 - **Cost/risk**: `progress[]` is `unknown[]`, so the card must defensively discriminate entries
   (start vs. result vs. cancel) and tolerate the legacy `{ tool, input }` shape (existing runs /
-  the Claude path before US2 lands). The renderer must degrade gracefully for any unrecognized
-  entry (the existing `toNestedEvents` filter is the model to preserve).
+  the Claude path before US2 lands). `parseNested` must likewise tolerate both the new
+  per-child `result?`/`status?`/`nested?` fields and legacy `{ tool, input }`-only payloads. The
+  renderer must degrade gracefully for any unrecognized entry (the existing `toNestedEvents`
+  filter is the model to preserve). **Claude path (S1):** `claude-runner.ts` never emits a
+  per-tool `tool_result` (only `tool_use` starts), so a Claude delegation's terminal payload has
+  child entries with `result?` undefined and `status: "done"` — the card renders them as done
+  cards with no per-child Output (matching the spec's Claude edge case: final text reported once
+  at the end, nested tool results not individually available).
 
 ---
 
@@ -541,23 +573,33 @@ canonical nested list.
    emit the terminal `encodeNested` result, (b) forward the inner loop's own *top-level* events in
    a way that confuses the parent, or (c) change what `runLocalDelegation`'s returned string is
    (the `encodeNested` envelope is the contract the card's terminal render depends on). **Mitigation**:
-   forward *only* inner-tool results as `progress[]` entries; leave the `runAgentLoop` return
-   path (and thus the `encodeNested` payload) untouched. Add the `inner-loop.test.ts`-style
-   assertion that the parent's `progress[]` gains a result entry per nested settle while the
-   terminal result string is unchanged.
+   forward *only* inner-tool results as `progress[]` entries; the `runInnerLoop` **return** path
+   is extended to carry the per-child terminal result list (B1), and the `encodeNested` payload
+   therefore *gains* per-child `result?`/`status?`/`nested?` fields. Add the `inner-loop.test.ts`-
+   style assertion that the parent's `progress[]` gains a result entry per nested settle **and**
+   that the terminal `encodeNested` string round-trips through `parseNested` back to the full
+   per-child result list (so a done delegation's child cards render from the persisted payload
+   after reload, when `progress[]` is empty).
 
-6. **Claude-harness live output (US2 claude path, spec edge case).**
-   The harness streams `tool_use` (starts) and reports final text once; nested tool *results*
-   are not all guaranteed by every CLI version. **Mitigation**: US2 for the Claude path covers
-   "the nested tool activity/results the harness *does* emit" and explicitly does **not** require
-   token-by-token final prose (per spec). The card must render the live projection from whatever
-   arrives and fall back to the terminal `encodeNested` list, so a harness that only emits starts
-   still shows the full list on completion — no regression.
+6. **Claude-harness output (US2 claude path, narrowed to starts-only, S1).**
+   `claude-runner.ts` streams only `tool_use` blocks (`onEvent({ tool, input })`); it never emits
+   a per-tool `tool_result` — the `tool_result` member of the `SubAgentEvent` union is produced
+   only by the *local headless* runner (`runLocalHeadless`), a different path (self-heal /
+   Workflow-Manager service), not interactive CLI delegation. The CLI reports its final text once,
+   at the end. **Mitigation**: US2 for the Claude path surfaces only the nested tool *starts* the
+   harness emits (the spec's own Claude edge case); the terminal `encodeNested` payload carries
+   child entries with `result?` undefined + `status: "done"`, which the card renders as done cards
+   with no per-child Output. Extending `claude-runner.ts` to parse the CLI's `tool_result` blocks
+   is a **separate future change, out of scope** here. The card still falls back to the terminal
+   list, so a starts-only harness shows the full child list on completion — no regression.
 
-7. **Card-collapse registry extension (ADR-2 option A) leaking into the reasoning accordion.**
-   Relaxing the "single open per scope" rule for section-level ids must not let a tool card's
-   Input section "open" over the reasoning card or another tool card's header. **Mitigation**:
-   scope section ids as sub-ids of the card id and keep the *cross-card* accordion rule
-   (newest card opens) strictly on card-header ids; sections only compete *within* their own
-   card. This is the cleanest invariant to test (a card's Input opening must not close a
-   different card).
+7. **Card-collapse: section state vs. the shared header accordion (ADR-2 option B, N2).**
+   The `card-collapse.ts` registry is a single-open *cross-card* accordion **shared with the
+   reasoning cards** (`MessageListV2.tsx` registers `reason:<id>` alongside `tool:<callId>`). The
+   risk being avoided: a tool card's Input/Output section "opening" over, or closing, a reasoning
+   card or another tool card's header. **Mitigation**: section state is **not** put in the shared
+   registry — it lives in a new card-local, module-side map keyed by `callId` (option B), so the
+   registry's `registerCard`/`toggleCard`/`useCardOpen` semantics are untouched and the reasoning
+   accordion's behavior is preserved by construction. The cross-card "newest card opens" rule
+   still governs only card *headers*. Test: a card's Input section opening must not change which
+   card header is open (tool or reasoning).
