@@ -236,6 +236,13 @@ Input/Output — the same structure recursed.
   mangled or executed markup.
 - **Args with no clear primary.** A tool whose arguments have no single "thing it acts on" shows a
   clean key–value list rather than a forced/fabricated primary argument.
+- **Running delegation, nested cards.** A delegation still running shows its child cards live as
+  each nested tool completes (US2); each child card is a full recursive card (US3). A child that
+  is still running shows its own (empty or in-progress) Output with a spinner — the recursion
+  holds in the live state, not only after completion.
+- **Unbounded recursion.** There is no hard depth cap on nested cards; each level is the same
+  component. The per-section scroll clamp bounds the rendered height at any depth so a very deep
+  or very wide tree remains navigable.
 
 ## Requirements *(mandatory)*
 
