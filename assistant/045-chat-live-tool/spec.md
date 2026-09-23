@@ -333,8 +333,12 @@ and the collapsed header shows a human-readable summary of the action.
 
 ## Assumptions
 
-- The client store and card are already per-call capable and require no schema change; the client
-  change is limited to rendering live nested results while running (FR-006).
+- The client store is already per-call capable and requires no schema change. The client (card)
+  change is limited to: rendering live nested results while running (FR-006), the header summary
+  (FR-011), structured args (FR-012), and natural content-type result rendering (FR-013/FR-014).
+- `App Target` is `bos-core`: the core of the change is the server run loop
+  (`src/lib/assistant/agent-loop.ts`, `inner-loop.ts`), with a presentational change to the shared
+  v2 chat card (`src/components/agent/v2/ToolCallCard.tsx`) — not a standalone built-in app.
 - "Live output" for a delegation means streaming the delegation's nested tool activity/results
   through the existing per-call channel. It does **not** require token-by-token streaming of a
   subagent's final answer prose; the Claude/OpenCode harness reports its final text once at the end,
