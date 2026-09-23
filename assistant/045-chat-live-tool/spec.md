@@ -1,4 +1,4 @@
-# Feature Specification: Live Per-Tool Output & Individual Completion in Chat
+# Feature Specification: Live Per-Tool Updates & Rich Tool-Call Rendering in Chat
 
 **Feature Branch**: `bos/045-chat-live-tool`
 
@@ -9,6 +9,8 @@
 **App Target**: bos-core
 
 **Input**: User description: "When the agent runs multiple tool calls in parallel, the tool outputs are not marked as completed until ALL tool calls finish, and the outputs are not updated live while multiple tools are executing. I want each tool call's output to update live, individually — e.g. if an agent runs 4 subagents in parallel, the output from each subagent should update live and its status should flip to completed as soon as that subagent finishes."
+
+Second request (added while authoring): "Also, the tool call input and output are currently rendered as raw/pretty JSON. Render them properly the way Claude / ChatGPT do — a human-readable action summary in the card, the arguments shown as structured data, and the result rendered as its natural content type (markdown, syntax-highlighted code, or formatted JSON) rather than a text/JSON blob."
 
 ## Context: what exists today
 
@@ -55,16 +57,32 @@ is to reuse the existing per-call machinery rather than add new event types or p
    but shows **no nested results and no output until the whole delegation returns** — and that
    return is itself batch-gated by defect (a).
 
+3. **Raw input/output rendering (defect c).** The card
+   (`src/components/agent/v2/ToolCallCard.tsx`) renders the tool's **request** as a
+   pretty-printed JSON dump (`pretty(call.args)` → `JSON.stringify(..., null, 2)`) and the
+   **response** as a plain `<pre>` text blob (`resultText`), with the collapsed header showing
+   only the raw tool name and the status word. There is no human-readable one-line summary of
+   what the call is doing, no natural content-type rendering of the result (markdown / code /
+   JSON), and no syntax highlighting. The only special cases are the MCP-UI iframe and the
+   nested-delegation list. So even a successful, well-formed tool output — a file read, a web
+   search, a subagent's markdown report — displays as an unformatted text/JSON wall rather than
+   the readable, content-aware rendering users expect from modern chat products.
+
 ### New vs. existing
 
 - **Existing, reused unchanged:** per-call `ToolCallView` + `applyRunEvent` state machine; the
   `tool_progress` run event and per-call `progress[]`; `ToolContext.onEvent` as the per-call
   progress conduit; `encodeNested`/`parseNested` for serializing sub-agent events into a result;
-  the NDJSON/SSE transport and the per-call `tool_result` event shape.
+  the NDJSON/SSE transport and the per-call `tool_result` event shape; the chat's existing
+  markdown renderer (reused to render tool output that is text/markdown); and the existing
+  MCP-UI iframe and nested-delegation renderers (preserved, taking precedence).
 - **New (what this feature adds):** per-settle live `tool_result` emission decoupled from
   original-order persistence in the run loop; forwarding of nested *results* (not just nested
   *starts*) through the `tool_progress` channel for delegations; the card rendering live nested
-  results while running.
+  results while running; a human-readable one-line action summary in each call's header;
+  structured rendering of the request arguments; and natural content-type rendering of the
+  result (markdown / syntax-highlighted code / formatted JSON), reusing the chat's existing
+  markdown renderer.
 - **Not introduced:** no new run-event type, no transport/protocol change, no client-store change,
   no CopilotKit change.
 
@@ -126,6 +144,46 @@ and that the full output is not merely appended once at the very end.
 
 ---
 
+### User Story 3 - Readable, content-aware rendering of tool calls (Priority: P2)
+
+A user reviewing a tool call wants to understand at a glance what it did and to read its input and
+output as properly formatted content — not as a raw JSON dump. Today both the request (arguments)
+and the response (result) render as pretty-printed JSON / plain text in the card, and the
+collapsed header shows only the tool name. This story adds the readable, content-aware rendering
+that modern chat products (Claude, ChatGPT) provide: a one-line summary of the action, the
+arguments shown as structured data, and the result rendered as its natural content type.
+
+**Why this priority**: It is the second half of the user's request and is presentational rather
+than behavioral — it does not change *when* or *whether* results arrive (US1/US2), only *how*
+they are displayed. It builds on the card that US1/US2 already drive, so it lands as P2 behind
+them, yet it is independently testable: any completed tool call can be checked for readable
+rendering without involving the live-update mechanism.
+
+**Independent Test**: Open the card of a completed tool call whose result is markdown (e.g. a file
+read or a web-search result) and one whose result is JSON. Confirm the markdown result renders as
+formatted markdown (headings, lists, code blocks), the JSON result renders as formatted,
+syntax-highlighted JSON, the arguments render as structured key–value data (not a raw JSON wall),
+and the collapsed header shows a human-readable summary of the action.
+
+**Acceptance Scenarios**:
+
+1. **Given** a completed tool call, **When** its card header is collapsed, **Then** it shows a
+   human-readable one-line summary of the action (e.g. "Read file /path", "Web search for …",
+   "Delegate to <agent>"), not just the raw tool name.
+2. **Given** a tool call whose result is markdown/text, **When** its card is expanded, **Then**
+   the result renders as formatted markdown (headings, lists, tables, inline and fenced code)
+   rather than a single plain `<pre>` blob.
+3. **Given** a tool call whose result is valid JSON, **When** its card is expanded, **Then** it
+   renders as formatted, syntax-highlighted JSON.
+4. **Given** a tool call's arguments, **When** the card is expanded, **Then** they render as
+   structured key–value data with the primary argument (path/query/url/id) shown as a clean,
+   labeled value, rather than a pretty-printed JSON dump.
+5. **Given** a tool call whose result matches an MCP-UI or nested-delegation marker, **When** the
+   card renders, **Then** the existing MCP-UI iframe / nested-list rendering is preserved and
+   takes precedence over the natural content-type rendering.
+
+---
+
 ### Edge Cases
 
 - **Single-call batch.** A parallel-safe batch of one call degrades to current behavior: its
@@ -147,6 +205,19 @@ and that the full output is not merely appended once at the very end.
 - **Claude-harness delegations.** The Claude/OpenCode CLI harness reports its final text once at the
   end; US2's live output for such delegations covers streaming the nested tool activity/results the
   harness does emit, and does not require token-by-token streaming of the harness's final prose.
+- **Empty result.** A call with no output shows no Response section (current behavior);
+  content-type detection MUST NOT invent content for an empty/null result.
+- **Large result.** Very large outputs MUST remain performant inside the card's existing scroll
+  clamp; markdown/JSON rendering MUST NOT remove the scroll/max-height behavior or render an
+  unbounded document.
+- **Ambiguous content.** A string that looks like JSON but is prose (or vice versa) is resolved
+  best-effort; when ambiguous, prefer the markdown/text rendering so display degrades gracefully
+  rather than throwing.
+- **Content that resembles markup/code.** A result containing raw `<`, `>`, `&`, backticks, or
+  markdown-like syntax MUST render safely — code-like content shows as code (highlighted), not as
+  mangled or executed markup.
+- **Args with no clear primary.** A tool whose arguments have no single "thing it acts on" shows a
+  clean key–value list rather than a forced/fabricated primary argument.
 
 ## Requirements *(mandatory)*
 
@@ -192,6 +263,29 @@ and that the full output is not merely appended once at the very end.
   (standalone Assistant and any embed), since they share the same run-event stream and
   `ToolCallCard`.
 
+- **FR-011**: Each tool call's collapsed card header MUST show a human-readable, one-line summary
+  of the action, derived from the tool name and its key argument (e.g. "Read file /path", "Web
+  search for …", "Delegate to <agent>"). A tool with no recognized summarizer MUST fall back to
+  the raw tool name. The summary MUST NOT display a raw JSON argument blob.
+
+- **FR-012**: A tool call's arguments (request) MUST be rendered as structured key–value data, not
+  a pretty-printed JSON dump. The primary argument of interest (path, query, URL, id, command)
+  MUST be shown as a clean, labeled value (inline in the summary and/or as a distinct row);
+  remaining arguments MUST be shown as formatted key–value rows, or as syntax-highlighted JSON
+  only where no cleaner structured form applies.
+
+- **FR-013**: A tool call's result (response) MUST be rendered as its natural content type, not a
+  plain text/JSON blob, resolved in this precedence order: (1) MCP-UI marker → the existing iframe
+  renderer; (2) nested-delegation marker → the existing nested list renderer; (3) result that
+  parses as a JSON object/array → formatted, syntax-highlighted JSON; (4) otherwise → rendered as
+  markdown (headings, lists, tables, inline and fenced code), reusing the chat's existing markdown
+  renderer. Code-like content MUST render in a syntax-highlighted code block with a copy
+  affordance.
+
+- **FR-014**: The input/output rendering in FR-012/FR-013 MUST also apply to the live nested
+  results streamed by US2 (FR-005/FR-006), so that a delegated call's nested tool outputs render
+  as their natural content type while the delegation is still running — not as raw JSON.
+
 ### Key Entities
 
 - **Tool call (`callId`)**: the identity of one tool invocation; the unit of live status, live
@@ -224,6 +318,19 @@ and that the full output is not merely appended once at the very end.
   a change surface that touches only run-loop emission ordering, delegation inner-loop forwarding,
   and the live card render.
 
+- **SC-006**: 100% of completed tool-call cards show a human-readable header summary (or the tool
+  name as fallback) with no raw JSON argument blob in the collapsed header.
+
+- **SC-007**: A tool result that is markdown/text renders as formatted markdown (at least one of
+  heading/list/table/code structure visible), not a single unstructured `<pre>` text blob.
+
+- **SC-008**: A valid-JSON tool result renders as formatted, syntax-highlighted JSON; a code
+  result renders in a highlighted code block with a copy affordance.
+
+- **SC-009**: The MCP-UI iframe and nested-delegation list renderers are preserved with 0
+  regressions — a result matching either marker still renders as the iframe / nested list
+  respectively, taking precedence over natural content-type rendering.
+
 ## Assumptions
 
 - The client store and card are already per-call capable and require no schema change; the client
@@ -238,3 +345,9 @@ and that the full output is not merely appended once at the very end.
   left unchanged.
 - The deterministic-transcript invariant (original call order) is treated as first-class and MUST be
   preserved by the decoupling in FR-001/FR-002.
+- The chat already renders the assistant's own message text as markdown; that existing markdown
+  renderer (plus syntax highlighting) is reused for tool output — not a new rendering stack.
+- Content-type detection (FR-013) is best-effort and heuristic; it MUST degrade gracefully (fall
+  back to markdown/text) rather than fail on ambiguous or malformed content.
+- US3's header summary (FR-011) is derived per-tool from name + key argument; tools without a
+  recognized summarizer fall back to the tool name rather than forcing a summary.
