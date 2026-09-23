@@ -67,7 +67,7 @@
 
 ### Tests for US2 (write first, confirm FAIL)
 
-- [ ] T006 [US2] e2e test (append to `e2e/045-chat-live-tool.spec.ts`): a local/ephemeral delegation forwards nested `tool_result` events live through `tool_progress` as each nested tool settles; the terminal `tool_result` payload's `nested?` list carries per-child `result?`/`status?`. Written first; FAILS until the inner loop forwards results.
+- [ ] T006 [US2] e2e test (append to `e2e/045-chat-live-tool.spec.ts`, after T004 creates it): a local/ephemeral delegation forwards nested `tool_result` events live through `tool_progress` as each nested tool settles; the terminal `tool_result` payload's `nested?` list carries per-child `result?`/`status?`. Written first; FAILS until the inner loop forwards results.
 
 ### Implementation for US2
 
