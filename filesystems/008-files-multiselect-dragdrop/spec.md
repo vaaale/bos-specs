@@ -10,11 +10,13 @@
 
 **Input**: User description: "Improvements to the Files app — (1) select multiple items via shift-click or by dragging a rectangle (marquee); (2) right-click context-menu actions must apply to all selected items; (3) move/copy items — including multiple selected items — via drag and drop."
 
+**Clarifications (2026-09-26)**: (a) Ctrl/Cmd+click toggling of a single item is **in scope** for multi-select; (b) drag-and-drop must **also** work between two separately-open Files app instances (cross-window), not only within a single window.
+
 ## User Scenarios & Testing
 
 ### User Story 1 — Select multiple items (Priority: P1)
 
-A user browsing a folder selects a group of items in one continuous gesture: they click the first item, hold **Shift** and click a later item to include everything in between; or they press and drag an empty area of the file list to draw a rectangle that captures every item it touches.
+A user browsing a folder selects a group of items in one continuous gesture: they click the first item, hold **Shift** and click a later item to include everything in between; they press and drag an empty area of the file list to draw a rectangle that captures every item it touches; or they **Ctrl/Cmd+click** individual items to add to or remove from the current selection one at a time.
 
 **Why this priority**: Multi-selection is the foundation for both later stories. Without a way to select more than one item at a time, "apply an action to all selected items" and "drag multiple items" have nothing to act on.
 
@@ -26,6 +28,7 @@ A user browsing a folder selects a group of items in one continuous gesture: the
 2. **Given** no items are selected, **When** the user clicks and drags from an empty area of the list to form a rectangle, **Then** on mouse-up every item whose row is intersected by the rectangle is selected, and the rectangle indicator is removed.
 3. **Given** several items are selected, **When** the user clicks a single item without any modifier, **Then** only that item is selected and all previously selected items are deselected.
 4. **Given** items are selected, **When** the user presses **Ctrl/Cmd + A** (or clicks a "Select all" affordance), **Then** every item in the current folder is selected.
+5. **Given** a set of items is selected, **When** the user Ctrl/Cmd+clicks an item that is *not* selected, **Then** it is added to the selection; **When** they Ctrl/Cmd+click an item that *is* selected, **Then** it is removed from the selection, with all other selections unchanged.
 
 ---
 
@@ -48,7 +51,7 @@ With multiple items selected, the user right-clicks and picks a single action fr
 
 ### User Story 3 — Drag-and-drop to move or copy (Priority: P3)
 
-The user drags one item or a group of selected items and drops them onto a destination folder. A drop into a *different* folder **moves** the items; a drop back into the *same* folder **copies** them. A drop onto the empty area of the current folder is a no-op (the items stay put).
+The user drags one item or a group of selected items and drops them onto a destination folder. A drop into a *different* folder **moves** the items; a drop back into the *same* folder **copies** them. A drop onto the empty area of the current folder is a no-op (the items stay put). The same gesture MUST also work **across two separately-open Files app windows**: dragging an item (or the current selection) out of one instance and dropping it into another performs the move/copy in the shared VFS and updates both views.
 
 **Why this priority**: Drag-and-drop is the most expressive but least essential of the three capabilities; move/copy are also reachable via the context menu (US2). It is last because it is the most complex interaction to get right and depends on both selection (US1) and the copy/move operations (US2).
 
@@ -60,6 +63,8 @@ The user drags one item or a group of selected items and drops them onto a desti
 2. **Given** a single item is in a folder, **When** the user drags it and drops it in the *same* folder, **Then** a copy is created with a non-colliding name (e.g. `file (1).txt`) and the original is unchanged.
 3. **Given** several items are selected, **When** the user starts a drag, **Then** the drag preview reflects the whole selection (count badge, e.g. "3 items"), not just the first item.
 4. **Given** items are being dragged, **When** the user drops onto an invalid or empty target, **Then** the items are returned to their original location with no error state.
+5. **Given** two Files app instances are open, showing different folders, **When** the user drags a selection out of instance A and drops it into a folder in instance B, **Then** the items appear in that folder in instance B, are removed from instance A's view, and both instances reflect the shared VFS change.
+6. **Given** two Files app instances are open showing the *same* folder, **When** the user drags an item from one instance and drops it into the other, **Then** a correctly-named copy is created (same-folder semantics) and the original in both views is unchanged.
 
 ---
 
@@ -72,6 +77,8 @@ The user drags one item or a group of selected items and drops them onto a desti
 - **Mixed types in a selection**: A selection containing both files and folders can be moved, copied, and deleted as a group; per-item actions that are type-specific (e.g. "Open", "Rename") reflect set-appropriate availability in the menu.
 - **Selection across folder navigation**: Selecting items, then navigating into a subfolder, clears the selection (selection is scoped to the current folder).
 - **Large selection**: Selecting and then dragging/deleting a large number of items (tens) completes without the UI freezing perceptibly (see SC-003).
+- **Cross-instance, same folder**: Two open instances pointing at the same folder behave as a same-folder copy on a drop between them (a new named copy, original intact in both views) — see US3 scenario 6.
+- **Cross-instance, destination navigated mid-drag**: If the destination instance's folder changes between drag start and drop, the drop is a no-op (items return to origin); the user must re-initiate the drag.
 
 ## Requirements
 
@@ -90,6 +97,9 @@ The user drags one item or a group of selected items and drops them onto a desti
 - **FR-011**: Selection MUST be scoped to the current folder and cleared on folder navigation.
 - **FR-012**: A drop onto an invalid or empty target MUST be a no-op that leaves all dragged items in their original location.
 - **FR-013**: All existing single-item behaviors (open, rename, delete, copy, move, download) MUST remain unchanged for the one-item case (no regression).
+- **FR-014**: Ctrl/Cmd+click MUST toggle a single item in or out of the current selection without changing any other selected item.
+- **FR-015**: Drag-and-drop of one item or a selection MUST work between two separately-open Files app instances (cross-window), not only within a single instance.
+- **FR-016**: After a cross-instance move or copy, BOTH the source and destination instances MUST reflect the resulting VFS change (the source view drops moved items; the destination view shows the moved/copied items).
 
 ### Key Entities
 
@@ -97,6 +107,8 @@ The user drags one item or a group of selected items and drops them onto a desti
 - **Selection**: The set of currently-selected items in the active folder, plus a selection *anchor* (the item a Shift-range is measured from).
 - **Marquee**: The transient rectangle drawn while a selection drag is in progress.
 - **Destination**: A folder that is the target of a move or copy operation.
+- **Files instance**: A separately-open window of the Files app; each observes the shared VFS, so a change made by any instance is visible in all.
+- **Shared drag payload**: The data carried by an in-progress drag (the VFS paths of the dragged items) that any Files instance can read to complete a cross-window move/copy.
 
 ## Success Criteria
 
@@ -107,6 +119,7 @@ The user drags one item or a group of selected items and drops them onto a desti
 - **SC-003**: Moving or copying a selection of up to 50 items via drag-and-drop completes without a perceptible UI freeze (interaction remains responsive throughout).
 - **SC-004**: A drag into the same folder always produces a correctly-named copy and never overwrites an existing file.
 - **SC-005**: No regression in single-item operations: every pre-existing one-item context-menu action behaves identically after the change.
+- **SC-006**: A drag from one Files instance to another completes the move/copy in the shared VFS, and both instances reflect the result without requiring a manual refresh of either.
 
 ## Assumptions
 
@@ -115,4 +128,5 @@ The user drags one item or a group of selected items and drops them onto a desti
 - Copy is the same-folder drop semantics; move is the different-folder drop semantics. Explicit Copy/Move are also available from the context menu (US2) independent of drag-drop.
 - Non-colliding copy naming follows the conventional `name (n).ext` suffix scheme.
 - Selection is not persisted across navigation within a session; it is ephemeral to the current folder view.
-- Keyboard modifiers: Shift for range; Ctrl/Cmd+A for select-all. (Ctrl/Cmd+click toggle is out of scope for v1 — Shift-click + marquee cover the requested behaviors.)
+- Keyboard modifiers: Shift for range; Ctrl/Cmd+A for select-all; Ctrl/Cmd+click toggles a single item in/out of the selection.
+- Two open Files app instances are independent windows but both observe the **same shared VFS**; a move/copy made by either is reflected in both. The cross-window drag payload carries VFS paths that any Files instance can interpret to complete the operation (the mechanism by which one window hands a drag to another is an implementation detail left to `design`).
