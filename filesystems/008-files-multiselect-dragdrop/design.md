@@ -282,6 +282,6 @@ v1 fires per-item server ops concurrently (`Promise.all`) then one refresh. If 5
 **Nits (fold in where cheap):**
 
 - **N-1** — §1's "correction to the spec's wording" is a false premise: FR-013 already states Copy/Move are *new*. The conclusion (no-regression = open/rename/delete/download/open-with/upload) is correct and matches the spec; only the "correction" framing is wrong — drop the framing.
-- **N-2** — The `setDragImage` ghost element must be in the rendered DOM (`position:fixed; top:-9999px`), not `display:none`, or the drag image renders blank in some browsers.
+- **N-2** — The `setDragImage` ghost element must be in the rendered DOM (`position:fixed; top:-9999px`), not `display:none`, or the drag image renders blank in some browsers. The ghost's op tag always reads **MOVE** (the default op): the actual move-vs-copy decision is only known at **drop** (it depends on the destination, §2.7), and `setDragImage`'s element cannot be reset mid-drag — so the tag shows the default, not a live prediction.
 - **N-3** — Chip semantics: the mockup distinguishes **MOVED** (cross-instance) from **NEW/COPY** (created). `fresh` should carry a reason (moved vs created) so the chip matches the confirmed surface, rather than lumping both into "NEW".
 - **N-4** — Destination double-refresh: the operating instance both self-refreshes (§2.8 step 1) and would receive its own `bos:files:changed`. Let the CustomEvent be the single refresh trigger for *all* instances (including the destination) to avoid a double fetch.
