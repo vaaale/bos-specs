@@ -241,7 +241,8 @@ var ICONS = {
   pinoff:'<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414L8 20"/><path d="m8 8 4 4"/><circle cx="18" cy="6" r="3"/><path d="m2 2 20 20"/>',
   return:'<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>',
   checkc:'<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
-  cursor:'<path d="M5 3l4.5 13.5 2.2-5.3 5.3-2.2z"/>'
+  cursor:'<path d="M5 3l4.5 13.5 2.2-5.3 5.3-2.2z"/>',
+  plus:'<path d="M12 5v14"/><path d="M5 12h14"/>'
 };
 function ic(n,cls){cls=cls||"";return '<svg class="i '+cls+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(ICONS[n]||"")+'</svg>';}
 function cur(x,y,n){n=n||"cursor";return '<span class="cur" style="left:'+x+'px;top:'+y+'px">'+ic(n)+'</span>';}
@@ -321,15 +322,13 @@ function us1(){
     + '</div>'),
     "<b>Marquee</b> (FR-003): press on <b>empty list space</b> and drag. The translucent rectangle selects every row it intersects — here <span class='dim'>report.pdf · notes.md · screenshot</span> added to the existing set. On mouse-up the rectangle is removed.");
   // P4 toggle
-  var plusTag = '<span class="rtag"><span class="tag plus">'+ic("plus")+'</span><span class="tag toggle">Ctrl/⌘-click</span></span>';
-  out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("4 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP4,{11:"<span class='rtag'><span class='tag plus' style='margin-left:0'>&nbsp;</span></span>"})+'</div>'
+  out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("4 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP4,{11:"<span class='rtag'><span class='tag plus'>"+ic('plus')+"</span><span class='tag toggle'>Ctrl/⌘-click</span></span>"})+'</div>'
     + cur(330,210) + '</div>'),
     "<b>Ctrl/⌘-click toggle</b> (FR-014): a <b>non-contiguous</b> set — <span class='dim'>README.md, notes.md, screenshot, todo.md</span> with gaps. Clicking an unselected item adds it; clicking a selected one removes it, leaving the rest unchanged. The visual signature of toggle multi-select is the gaps.");
   // P5 select all
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("14 selected"), "") + '<div class="listwrap" style="position:relative"><div class="cmdbadge">⌘A</div><div class="list">'+R_ALL+'</div></div>'),
     "<b>Select all</b> (FR-005): <b>Ctrl/⌘ + A</b> selects every item in the current folder — all fourteen rows highlighted. Selection stays scoped to this folder.");
-  // P6 same as select-all but via affordance? -> use P6 = "select all" already. Replace P6 with the "clear the rest" is P7. We have 6 panels planned: P1..P7 minus? Let's keep 6: single, range, marquee, toggle, select-all, clear. That's 6. Good.
-  // P7 clear the rest
+  // P7 plain click clears the rest
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("1 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP7, extraP7)+'</div></div>'),
     "<b>Plain click clears the rest</b> (FR-004): with a prior multi-selection, a plain click selects <b>only</b> report.pdf and deselects all others.");
   return out;
