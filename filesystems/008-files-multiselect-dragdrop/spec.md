@@ -12,6 +12,10 @@
 
 **Clarifications (2026-09-26)**: (a) Ctrl/Cmd+click toggling of a single item is **in scope** for multi-select; (b) drag-and-drop must **also** work between two separately-open Files app instances (cross-window), not only within a single window.
 
+**Design decisions (confirmed at the design step, 2026-09-26)**:
+- **View model (Q1=B)**: the file list switches from the current icon-tile **grid** to a **row list** as the Files app's primary view. Multi-select, Shift-click range, marquee, and drag-drop are all implemented over the row list.
+- **Context menu (Q2=A)**: right-click opens a **full context menu** (Open / Rename / Copy / Move / Download / Delete), replacing the current Download-only menu. Single-only actions (Open, Rename) grey out for a multi-item selection; batch actions (Copy, Move, Delete, Download) apply to the whole selection.
+
 ## User Scenarios & Testing
 
 ### User Story 1 — Select multiple items (Priority: P1)
