@@ -248,7 +248,7 @@ function cur(x,y,n){n=n||"cursor";return '<span class="cur" style="left:'+x+'px;
 
 /* ---------- shared folder contents (US1/US2/US3 compare in one list) ---------- */
 var ITEMS = [
-  ["Documents","dir"],["Downloads","dir"],["Pictures","dir"],["Projects","dir"],["Videos","dir"],
+  ["Documents","dir"],["Downloads","dir"],["Photos","dir"],["Projects","dir"],["Videos","dir"],
   ["README.md","file"],["report.pdf","file"],["notes.md","file"],["screenshot-2026-08-31.png","img"],
   ["invoice-2026-q3.pdf","file"],["archive-2025.zip","file"],["todo.md","file"],["wallpaper.png","img"],["config.json","file"]
 ];
@@ -269,15 +269,15 @@ var R_NONE = rowsHtml([]);
 function selOf(a){var s={};for(var i=0;i<a.length;i++)s[a[i]]=1;return s;}
 var selP1=selOf([2]);
 var selP2=selOf([1,2,3,4,5]);
-var selP3=selOf([2,3,4,11,13]);
+var selP3=selOf([2,3,4,10,12]);
 var selP4=selOf([2,4,8,12]);
 var selP7=selOf([2]);
 var selP8=selOf([2,4,8]);
 var selP10=selOf([2,3,4]);
 var extraP7={2:'<span class="rtag">'+ic("cursor")+'</span>'};
-var extraP10={2:"dim",3:"dim drop",4:"dim"};
+var extraP10={0:"drop",2:"dim",3:"dim",4:"dim"};
 var extraP11={2:"dim",4:"dim"};
-var extraP12={2:"dim",3:"dim",4:"dim"};
+var extraP12={};
 
 /* ---------- window frame + toolbar ---------- */
 function toolbar(pathParts, chip, right){
@@ -311,11 +311,11 @@ function us1(){
     "Single-item selection — <b>plain click</b> (FR-004). Only <b>report.pdf</b> is highlighted; everything else is unselected. <span class='dim'>Same affordance as today’s single-select; no regression (FR-013).</span>");
   // P2 shift range
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("5 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP2,{1:"<span class='rtag'><span class='tag anchor'>anchor</span></span>",5:"<span class='rtag'><span class='tag end'>⌃ end</span></span>"})+'</div></div>'),
-    "<b>Shift-click range</b> (FR-002): anchor <b>Downloads</b> → Shift+click <b>Videos</b>. The contiguous run <span class='dim'>Downloads · Pictures · Projects · Videos</span> is selected, inclusive, in list order.");
+    "<b>Shift-click range</b> (FR-002): anchor <b>Downloads</b> → Shift+click <b>Videos</b>. The contiguous run <span class='dim'>Downloads · Photos · Projects · Videos</span> is selected, inclusive, in list order.");
   // P3 marquee
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("5 selected"), "") +
     '<div class="listwrap"><div class="list">'+rowsHtml(selP3)+'</div>'
-    + '<div class="marquee" style="left:10px;top:12px;width:262px;height:121px"></div>'
+    + '<div class="marquee" style="left:10px;top:12px;width:262px;height:116px"></div>'
     + '<span class="badge" style="left:16px;top:18px">marquee</span>'
     + cur(272,124)
     + '</div>'),
@@ -391,10 +391,10 @@ function us3(){
   // P10 drop target
   out += panel("US3", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("3 selected"), "") +
     '<div class="listwrap" style="position:relative"><div class="list">'+rowsHtml(selP10, extraP10)+'</div>'
-    + '<div class="badge" style="left:12px;top:12px">drag in progress — hover over Documents</div>'
-    + ghost(3,"move",150,150)
+    + '<div class="badge" style="left:12px;top:12px">drag in progress</div>'
+    + ghost(3,"move",150,188)
     + '</div>'),
-    "<b>Drop-target highlight</b> (FR-008): dragging the 3-item selection, the <b>Documents</b> folder row (a <i>different</i> folder) lights up as a valid target. Ghost carries a <b>“3 items” count badge</b> (FR-009). Dropping here <b>moves</b> the items.");
+    "<b>Drop-target highlight</b> (FR-008): dragging the 3-item selection (README · report · notes, shown dimmed/in transit), the <b>Documents</b> folder row — a <i>different, non-selected</i> folder — lights up as the valid target with a “drop to move” badge. The ghost carries a <b>“3 items” count badge</b> (FR-009); dropping here <b>moves</b> the items.");
   // P11 same-folder copy outcome
   var list11 = '<div class="list" style="--h:150px">'
     + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Documents</span></div>'
@@ -417,9 +417,9 @@ function us3(){
     + rowsHtml(selP12 = selOf([2,3,4]), extraP12)
     + '<div class="emptyregion cancelled">released over empty space — no folder</div>'
     + '</div>'
-    + '<div class="toast noop">'+ic("return")+' <span><b>No valid drop target</b> — items returned to origin (FR-012)</span></div>'
+    + '<div class="toast noop">'+ic("return")+' <span><b>No valid drop target</b> — items returned to origin, still selected (FR-012)</span></div>'
     + '</div>'),
-    "<b>Invalid / no-op drop</b> (FR-012): releasing over empty space (or a target that vanished) is a no-op — the items <b>return to origin</b> with no error, and the selection is preserved.");
+    "<b>Invalid / no-op drop</b> (FR-012): releasing over empty space (or a target that vanished) is a no-op — the items <b>return to origin</b> (still selected, no error state). The selection is preserved so the user can retry.");
   return out;
 }
 
@@ -444,7 +444,7 @@ function xiscene(){
     '<div class="listwrap"><div class="list" style="--h:300px">'
     + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Documents</span></div>'
     + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Downloads</span></div>'
-    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Pictures</span></div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Photos</span></div>'
     + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Projects</span></div>'
     + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Videos</span></div>'
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">README.md</span></div>'
