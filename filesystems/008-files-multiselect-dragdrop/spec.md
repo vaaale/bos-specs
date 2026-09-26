@@ -55,7 +55,7 @@ With multiple items selected, the user right-clicks and picks a single action fr
 
 ### User Story 3 — Drag-and-drop to move or copy (Priority: P3)
 
-The user drags one item or a group of selected items and drops them onto a destination folder. A drop into a *different* folder **moves** the items; a drop back into the *same* folder **copies** them. A drop onto the empty area of the current folder is a no-op (the items stay put). The same gesture MUST also work **across two separately-open Files app windows**: dragging an item (or the current selection) out of one instance and dropping it into another performs the move/copy in the shared VFS and updates both views.
+The user drags one item or a group of selected items and drops them onto a destination folder. A drop into a *different* folder **moves** the items; a drop back into the *same* folder **copies** them. A drop onto the empty area of the current folder is a same-folder drop and therefore a **copy** (same semantics as dropping onto a folder in the same location); an *invalid* target — a file row, the dragged item itself, a descendant of a dragged folder, or a destination that changed mid-drag — is a no-op (the items stay put). The same gesture MUST also work **across two separately-open Files app windows**: dragging an item (or the current selection) out of one instance and dropping it into another performs the move/copy in the shared VFS and updates both views.
 
 **Why this priority**: Drag-and-drop is the most expressive but least essential of the three capabilities; move/copy are also reachable via the context menu (US2). It is last because it is the most complex interaction to get right and depends on both selection (US1) and the copy/move operations (US2).
 
@@ -127,7 +127,7 @@ The user drags one item or a group of selected items and drops them onto a desti
 
 ## Assumptions
 
-- The Files app's file list is a vertical, scrollable row-based list; "the rectangle touches a row" means horizontal overlap with any part of the row.
+- The Files app's file list is a vertical, scrollable row-based list (this feature switches the app from its current icon-tile grid to the row list — see Design decisions, Q1=B); "the rectangle touches a row" means horizontal overlap with any part of the row.
 - Marquee selection and drag-move are distinguished by the *origin* of the pointer-down (empty space = select, item = move/copy).
 - Copy is the same-folder drop semantics; move is the different-folder drop semantics. Explicit Copy/Move are also available from the context menu (US2) independent of drag-drop.
 - Non-colliding copy naming follows the conventional `name (n).ext` suffix scheme.
