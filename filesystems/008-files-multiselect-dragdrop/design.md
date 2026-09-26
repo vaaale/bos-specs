@@ -1,7 +1,7 @@
 # Design — Files: Multi-Selection & Drag-and-Drop
 
 **Feature**: `008-files-multiselect-dragdrop` · **Role**: architect · **Date**: 2026-09-26
-**Spec**: `spec.md` (FR-001…FR-016) · **UI contract**: `mockup.html` (row-list + full context menu are the confirmed surface, Q1=B / Q2=A)
+**Spec**: `spec.md` (FR-001…FR-017) · **UI contract**: `mockup.html` (row-list + full context menu are the confirmed surface, Q1=B / Q2=A / Q3=B)
 
 This design is grounded in the actual source. Where docs and source disagreed, source won. Real names used throughout: `fsClient` (`src/lib/os-client.ts`), `vfs.*` (`src/os/vfs.ts`), `/api/fs` (`src/app/api/fs/route.ts`), `useOSStore` (`src/store/os-provider.tsx`), `Window.tsx` (`src/components/desktop/Window.tsx`), `VfsEntry` (`src/os/types.ts`).
 
@@ -85,6 +85,8 @@ Keyboard: a single `keydown` listener on the list (focused) handles **Ctrl/Cmd+A
 ### 2.4 Row-list view + marquee + item drag (`src/apps/files/FileList.tsx`)
 
 Replaces the current `<div className="grid … grid-cols-[repeat(auto-fill,minmax(96px,1fr))]">` grid with a **vertical row list** (the confirmed Q1=B surface; mockup `.row` layout: icon + name, 37px rows, `sel` highlight, `drop` highlight, `new` chip).
+
+**Row width cap (FR-017, Q3=B — added post-implementation).** The rows are **width-capped and left-aligned** (≈65% of the list width; the name truncates within the cap; size/mtime right-aligned within the cap) so that a **persistent empty region** — the space to the right of the rows *and* the area below the last row (the list container keeps its full height) — is **always present**, regardless of item names. This is what makes the empty-space-origin marquee reliably reachable: with full-width rows (the as-shipped defect) there is no reachable empty space, so every click-and-drag landed on a row and became a file drag instead of a marquee. The width cap guarantees the two-pointer-down-target split below always has two distinct, reachable targets. The list container stays the full window width (the cap is on each row, not the container), so the marquee overlay can still span the full list width.
 
 Per-row interactions, **disambiguated by pointer-down target** (the spec's own assumption and Edge Case "Marquee starting on an item vs empty space"):
 
@@ -249,8 +251,8 @@ The guarantee rests on *both* Files instances living in the **same document** (i
 - *Mitigation:* (a) Files is inline today and the design depends on it — assert this in a unit/e2e test that two Files instances share a document; (b) the source prunes selection on refresh so a moved item can't linger as a dead selection; (c) "instances" are scoped to **one BOS session / one document** (the spec's Key Entities: "two separately-open Files app instances … both observe the same shared VFS"); distinct browser tabs are out of scope by definition.
 
 **R2 — Marquee-vs-move/copy gesture disambiguation (pointer-down origin).**
-Both gestures start with a `pointerdown`; a mis-classification either steals a marquee into a drag or a drag into a marquee.
-- *Mitigation:* separate by **target element at pointerdown** — rows are `draggable` (native drag on movement), the list *background* starts the marquee via pointer capture. A row is not the background, so the paths cannot overlap; the native drag only begins after a movement threshold, so plain-click / dblclick / contextmenu selection are preserved. Cover with a test: drag-from-row ⇒ move/copy; drag-from-gap ⇒ marquee; click-on-row ⇒ select; none of these should trigger the other.
+Both gestures start with a `pointerdown`; a mis-classification either steals a marquee into a drag or a drag into a marquee. **The as-shipped defect proved the latent weakness of this split: with full-width rows the "empty space" target did not actually exist, so every drag originated on a row.**
+- *Mitigation:* separate by **target element at pointerdown** — rows are `draggable` (native drag on movement), the list *background* starts the marquee via pointer capture. A row is not the background, so the paths cannot overlap; the native drag only begins after a movement threshold, so plain-click / dblclick / contextmenu selection are preserved. **The background target is guaranteed to exist and be reachable by FR-017/Q3 (width-capped rows ⇒ a persistent empty region to the right and below the rows).** Cover with a test: drag-from-row ⇒ move/copy; drag-from-empty-region ⇒ marquee (including in a folder whose rows carry long names — SC-007); click-on-row ⇒ select; none of these should trigger the other.
 
 **R3 — Grid→row-list is a regression-sensitive change to an existing app (FR-013 / SC-005), including the upload-drop path.**
 We are replacing the primary view of a shipping app. The existing upload drag-and-drop, open (dblclick), rename, delete, download, open-with handlers, in-app viewer, and set-as-wallpaper must all keep working.
