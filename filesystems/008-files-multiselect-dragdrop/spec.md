@@ -15,12 +15,13 @@
 **Design decisions (confirmed at the design step, 2026-09-26)**:
 - **View model (Q1=B)**: the file list switches from the current icon-tile **grid** to a **row list** as the Files app's primary view. Multi-select, Shift-click range, marquee, and drag-drop are all implemented over the row list.
 - **Context menu (Q2=A)**: right-click opens a **full context menu** (Open / Rename / Copy / Move / Download / Delete), replacing the current Download-only menu. Single-only actions (Open, Rename) grey out for a multi-item selection; batch actions (Copy, Move, Delete, Download) apply to the whole selection.
+- **Row width / marquee region (Q3=B, added post-implementation 2026-09-26)**: rows are **width-capped and left-aligned** (≈65% of the list width, name truncated within the cap) so that a **persistent empty region** — the space to the right of the rows and below the last row — is always present and is the marquee-start zone. This keeps the existing pointer-down-origin gesture split (on a row = drag/click, on empty space = marquee) reliable: because the rows no longer extend full width, there is always reachable empty space to start a marquee, regardless of item names.
 
 ## User Scenarios & Testing
 
 ### User Story 1 — Select multiple items (Priority: P1)
 
-A user browsing a folder selects a group of items in one continuous gesture: they click the first item, hold **Shift** and click a later item to include everything in between; they press and drag an empty area of the file list to draw a rectangle that captures every item it touches; or they **Ctrl/Cmd+click** individual items to add to or remove from the current selection one at a time.
+A user browsing a folder selects a group of items in one continuous gesture: they click the first item, hold **Shift** and click a later item to include everything in between; they press and drag from the **empty region of the list** (the space to the right of the width-capped rows, or below the last row) to draw a rectangle that crosses the rows; or they **Ctrl/Cmd+click** individual items to add to or remove from the current selection one at a time.
 
 **Why this priority**: Multi-selection is the foundation for both later stories. Without a way to select more than one item at a time, "apply an action to all selected items" and "drag multiple items" have nothing to act on.
 
@@ -29,7 +30,7 @@ A user browsing a folder selects a group of items in one continuous gesture: the
 **Acceptance Scenarios**:
 
 1. **Given** a single item is selected, **When** the user Shift-clicks another item, **Then** every item from the originally selected item to the newly clicked item (inclusive, in list order) becomes selected.
-2. **Given** no items are selected, **When** the user clicks and drags from an empty area of the list to form a rectangle, **Then** on mouse-up every item whose row is intersected by the rectangle is selected, and the rectangle indicator is removed.
+2. **Given** no items are selected, **When** the user clicks and drags from the list's empty region (right of the rows, or below the last row) to form a rectangle that crosses some rows, **Then** on mouse-up every item whose row is intersected by the rectangle is selected, and the rectangle indicator is removed.
 3. **Given** several items are selected, **When** the user clicks a single item without any modifier, **Then** only that item is selected and all previously selected items are deselected.
 4. **Given** items are selected, **When** the user presses **Ctrl/Cmd + A** (or clicks a "Select all" affordance), **Then** every item in the current folder is selected.
 5. **Given** a set of items is selected, **When** the user Ctrl/Cmd+clicks an item that is *not* selected, **Then** it is added to the selection; **When** they Ctrl/Cmd+click an item that *is* selected, **Then** it is removed from the selection, with all other selections unchanged.
@@ -76,7 +77,7 @@ The user drags one item or a group of selected items and drops them onto a desti
 
 - **Empty folder**: Marquee drag and Shift-click with no items present select nothing and cause no error.
 - **Single-item folder**: Shift-click and marquee degrade gracefully to single-item selection.
-- **Marquee starting on an item vs. empty space**: A drag that begins on an existing item initiates a *move/copy drag* (US3); a drag that begins on empty list space initiates a *selection marquee* (US1). The two gestures must not conflict.
+- **Marquee starting on an item vs. empty space**: A drag that begins on a row initiates a *move/copy drag* (US3); a drag that begins on the empty region (right of the rows, or below the last row) initiates a *selection marquee* (US1). Because rows are width-capped (Q3), the empty region is always present, so the marquee is always reachable; the two gestures are disambiguated by pointer-down origin and must not conflict.
 - **Name collision on copy**: When a copy's target name already exists, the app appends/adjusts a numeric suffix so no existing file is overwritten.
 - **Mixed types in a selection**: A selection containing both files and folders can be moved, copied, and deleted as a group; per-item actions that are type-specific (e.g. "Open", "Rename") reflect set-appropriate availability in the menu.
 - **Selection across folder navigation**: Selecting items, then navigating into a subfolder, clears the selection (selection is scoped to the current folder).
@@ -104,6 +105,7 @@ The user drags one item or a group of selected items and drops them onto a desti
 - **FR-014**: Ctrl/Cmd+click MUST toggle a single item in or out of the current selection without changing any other selected item.
 - **FR-015**: Drag-and-drop of one item or a selection MUST work between two separately-open Files app instances (cross-window), not only within a single instance.
 - **FR-016**: After a cross-instance move or copy, BOTH the source and destination instances MUST reflect the resulting VFS change (the source view drops moved items; the destination view shows the moved/copied items).
+- **FR-017**: Rows in the file list MUST be width-capped and left-aligned so that a persistent empty region (to the right of the rows and below the last row) is always available to start a marquee selection, regardless of the lengths of the item names.
 
 ### Key Entities
 
@@ -124,10 +126,11 @@ The user drags one item or a group of selected items and drops them onto a desti
 - **SC-004**: A drag into the same folder always produces a correctly-named copy and never overwrites an existing file.
 - **SC-005**: No regression in single-item operations: every pre-existing one-item context-menu action behaves identically after the change.
 - **SC-006**: A drag from one Files instance to another completes the move/copy in the shared VFS, and both instances reflect the result without requiring a manual refresh of either.
+- **SC-007**: A marquee can always be started from the reserved empty region — including in a folder whose rows carry long names — and selects exactly the rows it crosses.
 
 ## Assumptions
 
-- The Files app's file list is a vertical, scrollable row-based list (this feature switches the app from its current icon-tile grid to the row list — see Design decisions, Q1=B); "the rectangle touches a row" means horizontal overlap with any part of the row.
+- The Files app's file list is a vertical, scrollable row-based list (this feature switches the app from its current icon-tile grid to the row list — see Design decisions, Q1=B). Rows are **width-capped and left-aligned** (≈65% of the list width, name truncated within the cap, Q3) so a persistent empty region — the space to the right of the rows and below the last row — is always present as the marquee-start zone; a row is selected when the marquee rectangle intersects the row's box.
 - Marquee selection and drag-move are distinguished by the *origin* of the pointer-down (empty space = select, item = move/copy).
 - Copy is the same-folder drop semantics; move is the different-folder drop semantics. Explicit Copy/Move are also available from the context menu (US2) independent of drag-drop.
 - Non-colliding copy naming follows the conventional `name (n).ext` suffix scheme.
