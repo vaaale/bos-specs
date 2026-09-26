@@ -28,7 +28,10 @@
 - [x] User scenarios cover primary flows
 - [x] Feature meets measurable outcomes defined in Success Criteria
 - [x] No implementation details leak into specification
+- [x] Cross-instance (cross-window) drag-and-drop requirement captured (FR-015/016, US3 scenarios 5-6, SC-006)
+- [x] Ctrl/Cmd+click toggle requirement captured (FR-014, US1 scenario 5)
 
 ## Notes
 
 - Items marked incomplete require spec updates before CLARIFY or PLAN.
+- 2026-09-26: User added two in-scope items after initial draft — Ctrl/Cmd+click toggle and cross-instance DnD. Both now explicit in the spec.
