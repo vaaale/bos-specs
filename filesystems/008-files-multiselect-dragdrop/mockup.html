@@ -270,7 +270,7 @@ var R_NONE = rowsHtml([]);
 function selOf(a){var s={};for(var i=0;i<a.length;i++)s[a[i]]=1;return s;}
 var selP1=selOf([2]);
 var selP2=selOf([1,2,3,4,5]);
-var selP3=selOf([2,3,4,10,12]);
+var selP3=selOf([2,3,4]);
 var selP4=selOf([2,4,8,12]);
 var selP7=selOf([2]);
 var selP8=selOf([2,4,8]);
@@ -316,11 +316,11 @@ function us1(){
   // P3 marquee
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("5 selected"), "") +
     '<div class="listwrap"><div class="list">'+rowsHtml(selP3)+'</div>'
-    + '<div class="marquee" style="left:10px;top:84px;width:262px;height:114px"></div>'
+    + '<div class="marquee" style="left:10px;top:84px;width:262px;height:111px"></div>'
     + '<span class="badge" style="left:16px;top:90px">marquee</span>'
     + cur(274,190)
     + '</div>'),
-    "<b>Marquee</b> (FR-003): press on <b>empty list space</b> and drag. The translucent rectangle selects every row it intersects — here <span class='dim'>report.pdf · notes.md · screenshot</span> added to the existing set. On mouse-up the rectangle is removed.");
+    "<b>Marquee</b> (FR-003): press on <b>empty list space</b> and drag. The translucent rectangle selects every row it intersects — exactly <span class='dim'>report.pdf · notes.md · screenshot</span> (the three highlighted rows). On mouse-up the rectangle is removed.");
   // P4 toggle
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("4 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP4,{11:"<span class='rtag'><span class='tag plus'>"+ic('plus')+"</span><span class='tag toggle'>Ctrl/⌘-click</span></span>"})+'</div>'
     + cur(330,210) + '</div>'),
