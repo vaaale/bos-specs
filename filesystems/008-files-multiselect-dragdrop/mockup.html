@@ -9,7 +9,7 @@
    Mirrors the Files app (src/apps/files/index.tsx) + BOS style guide:
    dark-only, white/black opacity palette, #0f1117 body, #15171e chrome,
    lucide-style icons, text-xs density. The spec assumes a ROW list; the
-   shipping app is an icon-tile GRID — rows are used per the spec (see OQ 1). */
+   shipping app is an icon-tile GRID — rows are used per the spec (Q1 = B, confirmed). */
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --body:#0f1117; --chrome:#15171e; --menu:#171922;
@@ -83,7 +83,7 @@ section{margin-top:34px}
   scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) transparent}
 .list::-webkit-scrollbar{width:8px}
 .list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
-.row{position:relative;height:37px;flex:none;display:flex;align-items:center;gap:9px;padding:0 8px;border-radius:7px;cursor:default;transition:background .08s}
+.row{position:relative;height:37px;flex:none;display:flex;align-items:center;gap:9px;padding:0 8px;border-radius:7px;cursor:default;transition:background .08s;max-width:65%}
 .row .ico{width:17px;height:17px;flex:none;color:rgba(255,255,255,.7)}
 .row.dir .ico{color:var(--sky)}
 .row.img .ico{color:var(--emerald)}
@@ -166,6 +166,10 @@ section{margin-top:34px}
 .oq li b{color:var(--txt);font-weight:600}
 .oq li .n{flex:none;width:20px;height:20px;border-radius:6px;background:rgba(139,92,246,.16);border:1px solid rgba(196,181,253,.35);color:var(--violet);font-size:10px;font-weight:800;display:grid;place-items:center;margin-top:1px}
 .oq li .dft{color:var(--sky)}
+.oq h3{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin:0 0 11px;color:var(--txt3)}
+.oq h3.ok{color:var(--emerald)}
+.oq li.ok .n{background:rgba(110,231,183,.16);border-color:rgba(110,231,183,.4);color:var(--emerald)}
+.oq .oq-sub{margin-top:15px;padding-top:15px;border-top:1px solid var(--line)}
 .foot{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--txt3);font-size:11px;line-height:1.6;max-width:900px}
 .foot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--txt2);background:rgba(255,255,255,.05);padding:1px 5px;border-radius:4px}
 </style>
@@ -180,6 +184,7 @@ section{margin-top:34px}
       <span class="chip k">US1 · Select multiple items</span>
       <span class="chip k">US2 · Context menu on the selection</span>
       <span class="chip k">US3 · Drag &amp; drop, within + across instances</span>
+      <span class="chip k">Q3 · Width-capped rows (marquee region)</span>
       <span class="chip">Mirrors the Files app palette, toolbar &amp; context-menu</span>
       <span class="chip">⌘ = macOS · Ctrl = Windows</span>
     </div>
@@ -215,7 +220,7 @@ section{margin-top:34px}
   </section>
 
   <footer class="foot">
-    Visual proxy for review — not implementation. Built from <code>src/apps/files/index.tsx</code>, <code>src/apps/files/manifest.ts</code>, <code>src/components/desktop/Window.tsx</code> and the BOS <code>style-guide.md</code> (dark opacity palette, <code>#0f1117</code> body / <code>#15171e</code> chrome, lucide icons, <code>text-xs</code> density). <b>Note:</b> the shipping Files app renders an icon-tile <i>grid</i>; this mockup uses the <i>row list</i> the spec assumes (OQ 1).
+    Visual proxy for review — not implementation. Built from <code>src/apps/files/index.tsx</code>, <code>src/apps/files/manifest.ts</code>, <code>src/components/desktop/Window.tsx</code> and the BOS <code>style-guide.md</code> (dark opacity palette, <code>#0f1117</code> body / <code>#15171e</code> chrome, lucide icons, <code>text-xs</code> density). <b>Note:</b> the shipping Files app renders an icon-tile <i>grid</i>; this mockup uses the <i>row list</i> the spec assumes (Q1 = B, confirmed).
   </footer>
 
 </div>
@@ -313,14 +318,14 @@ function us1(){
   // P2 shift range
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("5 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP2,{1:"<span class='rtag'><span class='tag anchor'>anchor</span></span>",5:"<span class='rtag'><span class='tag end'>⌃ end</span></span>"})+'</div></div>'),
     "<b>Shift-click range</b> (FR-002): anchor <b>Downloads</b> → Shift+click <b>Videos</b>. The contiguous run <span class='dim'>Downloads · Photos · Projects · Videos</span> is selected, inclusive, in list order.");
-  // P3 marquee
+  // P3 marquee — originates from the empty region (right of the 65%-capped rows), dragged leftward
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("3 selected"), "") +
     '<div class="listwrap"><div class="list">'+rowsHtml(selP3)+'</div>'
-    + '<div class="marquee" style="left:10px;top:84px;width:262px;height:111px"></div>'
-    + '<span class="badge" style="left:16px;top:90px">marquee</span>'
-    + cur(274,190)
+    + '<div class="marquee" style="left:10%;top:84px;width:60%;height:111px"></div>'
+    + '<span class="badge" style="left:66%;top:74px">origin · empty region</span>'
+    + cur(40,182)
     + '</div>'),
-    "<b>Marquee</b> (FR-003): press on <b>empty list space</b> and drag. The translucent rectangle selects every row it intersects — exactly <span class='dim'>report.pdf · notes.md · screenshot</span> (the three highlighted rows). On mouse-up the rectangle is removed.");
+    "<b>Marquee</b> (FR-003 · Q3=B): rows are <b>width-capped at 65%</b>, so the band to their right is <b>visible empty list space</b>. The marquee is <b>started in that empty region</b> (right of the rows) and dragged <b>leftward</b> to cross them — it selects every row it intersects: <span class='dim'>Photos · Projects · Videos</span> (the three highlighted rows). On mouse-up the rectangle is removed.");
   // P4 toggle
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("4 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP4,{11:"<span class='rtag'><span class='tag plus'>"+ic('plus')+"</span><span class='tag toggle'>Ctrl/⌘-click</span></span>"})+'</div>'
     + cur(330,210) + '</div>'),
@@ -331,6 +336,21 @@ function us1(){
   // P7 plain click clears the rest
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("1 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP7, extraP7)+'</div></div>'),
     "<b>Plain click clears the rest</b> (FR-004): with a prior multi-selection, a plain click selects <b>only</b> report.pdf and deselects all others.");
+  // P9 long names (SC-007) — long filenames fill the capped 65% width, truncate with ellipsis; empty region to the right remains; marquee starts from it
+  var longRows =
+    '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">quarterly-financial-report-2026-final-v3-reviewed.pdf</span></div>'
+  + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">screenshot-2026-08-31-142233-full-page-capture.png</span></div>'
+  + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">very-long-project-directory-name-for-testing-purposes</span></div>'
+  + '<div class="row file sel"><span class="ico">'+ic("filetext")+'</span><span class="name">export-of-user-data-from-the-last-fiscal-year.csv</span></div>'
+  + '<div class="row file sel"><span class="ico">'+ic("filetext")+'</span><span class="name">meeting-notes-with-detailed-action-items-and-owners.md</span></div>'
+  + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">archive-backup-2025-complete-disk-image.tar.gz</span></div>';
+  out += panel("US1", "Files — /Projects", win("Files — /Projects", toolbar(["Projects"], chip("2 selected"), "") +
+    '<div class="listwrap"><div class="list" style="--h:270px">'+longRows+'</div>'
+    + '<div class="marquee" style="left:10%;top:110px;width:60%;height:82px"></div>'
+    + '<span class="badge" style="left:66%;top:100px">origin · empty region</span>'
+    + cur(40,186)
+    + '</div>'),
+    "<b>Long names (SC-007)</b>: rows with long filenames <b>fill the capped 65% width</b> and truncate with an ellipsis, yet the <b>empty region to the right is still present</b> and the marquee is <b>started from it</b> — a truncated name never eats the empty band.");
   return out;
 }
 
@@ -521,17 +541,21 @@ function edge(){
 
 /* ---------- open questions ---------- */
 function oqs(){
+  var confirmed = [
+    "<b>Row layout — CONFIRMED (Q1 = B).</b> The primary view is the vertical <b>row list</b>; rows are <b>width-capped at 65%</b>, leaving a visible empty band to their right.",
+    "<b>Marquee — CONFIRMED (Q3 = B).</b> The marquee <b>originates from the empty region</b> right of the capped rows and is dragged <b>leftward</b> to cross them; it is <b>additive</b>, sky-translucent, and can only start on empty space."
+  ];
   var q = [
-    "<b>Row list vs. the current grid.</b> The spec assumes a vertical <b>row list</b>; the shipping Files app is an icon-tile <b>grid</b>. This mockup follows the spec (rows) and carries over the Files palette/toolbar/context-menu. <span class='dft'>Default: adopt rows as spec’d</span> — confirm whether the grid should also gain multi-select, or whether the list is the new primary view.",
     "<b>Move vs. copy drag affordance.</b> The spec is silent on how to read the operation while dragging. <span class='dft'>Default (this mockup): a cursor-following badge on the ghost — <b>MOVE</b> arrow for a different folder, <b>COPY</b> for the same folder</span>, mirroring OS conventions. Confirm, or prefer a cursor-only badge.",
     "<b>Marking newly created copies.</b> Spec is silent on post-copy visual feedback. <span class='dft'>Default: a brief row highlight + a “NEW” chip, plus a confirmation toast</span>. (OQ for a persistent “NEW” tag vs. a decaying flash.)",
     "<b>Cross-instance presentation.</b> <span class='dft'>Default (this mockup): one continuous scene with two separate Files window frames sharing the drag</span> — reads as a real OS drag across windows. Alternative: two independent before/after panels per instance.",
-    "<b>Marquee behavior.</b> Style + whether a marquee <b>adds to</b> or <b>replaces</b> an existing selection, and whether it can start <b>on an item</b> (spec: item-origin = move/copy drag, empty-space = marquee). <span class='dft'>Default: empty-space only, additive, sky translucent fill with a dashed/solid border</span> (matches the existing drop-overlay accent).",
     "<b>Context-menu completeness.</b> The current app’s context menu only offers <b>Download</b>; Open/Rename/Copy/Move/Delete live in hover buttons or prompts. <span class='dft'>Default: the full set above, with a “Move to…” submenu</span>. Confirm the exact menu + whether a submenu is wanted."
   ];
-  var html = '<div class="oq"><ol>';
-  for(var i=0;i<q.length;i++) html += '<li><span class="n">'+(i+1)+'</span><span>'+q[i]+'</span></li>';
-  html += '</ol></div>';
+  var html = '<div class="oq"><h3 class="ok">✓ Confirmed decisions</h3><ol>';
+  for(var i=0;i<confirmed.length;i++) html += '<li class="ok"><span class="n">✓</span><span>'+confirmed[i]+'</span></li>';
+  html += '</ol><div class="oq-sub"><h3>Open</h3><ol>';
+  for(var j=0;j<q.length;j++) html += '<li><span class="n">'+(j+1)+'</span><span>'+q[j]+'</span></li>';
+  html += '</ol></div></div>';
   return html;
 }
 
