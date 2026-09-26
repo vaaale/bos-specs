@@ -157,5 +157,5 @@ From the Constitution (a change is complete only when):
 2. `docs/usage` (Files app) and `docs/dev` updated in the same change (Principle VI — task T-docs).
 3. `npx tsc --noEmit` passes.
 4. `npm run lint` passes.
-5. e2e tests pass: selection gestures (shift/ctrl/marquee/select-all/clear), context-menu set-enabling, in-window move/copy, cross-instance move/copy (non-overlapping windows, PD-2), collision-safe naming, descendant/self-drop no-op (PD-3), upload-path no-regression (D4), and the `drop`-fires-on-both-targets assertion (PD-1).
+5. e2e tests pass: selection gestures (shift/ctrl/marquee/select-all/clear), context-menu set-enabling, in-window move/copy (empty-area drop in the current folder = same-folder **copy**; invalid targets = no-op), cross-instance move/copy (non-overlapping windows, PD-2), collision-safe naming, descendant/self-drop no-op (PD-3), a **50-item** drag-drop completing within the responsiveness budget (SC-003), upload-path no-regression (D4), and the `drop`-fires-on-both-targets assertion (PD-1).
 6. Existing Files `data-testid` contract intact (R3) — existing tests still pass.
