@@ -264,3 +264,22 @@ Two copies/moves into the same folder at once can compute the same `name (1).ext
 
 **R6 — SC-003 (50 items, no perceptible freeze).**
 v1 fires per-item server ops concurrently (`Promise.all`) then one refresh. If 50 concurrent requests prove janky, add a batched `move`/`copy` server op (accepts `from[]`, returns `to[]`) — a small, isolated follow-up. The ops themselves are `fs.rename`/`fs.cp`, both fast; the risk is request fan-out, not per-op cost.
+
+---
+
+## 7. Design review — verdict & folded findings (architect-reviewer, 2026-09-26)
+
+**Verdict: Ready for plan.** All seven load-bearing source claims independently verified true (no `copy`/`move` op today; `read` is utf8-only; `/api/fs` POST switch is the right additive seam; `vfs.rename` atomic + cross-mount-refusing + clobbering; `fs.cp` the natural recursive primitive; builtin apps render inline in one document; window is CSS-transform-positioned hence the portal; Files is non-singleton so multi-instance already works). No blockers; every FR/SC/edge case is covered. The findings below are **non-blocking** and must be **baked into plan.md / tasks.md**.
+
+**Should-fix (load-bearing for the plan):**
+
+- **SF-1 — `onDragOver` must `preventDefault()` for the in-app VFS drag, or `drop` never fires.** The existing `onDragOver` returns early without `preventDefault()` for any drag not containing `"Files"` (`index.tsx`). A VFS drag carries the custom MIME, not `"Files"`, so under the current guard it is rejected as a drop target. The `isVfsDrag`-first ordering must be made explicit and load-bearing, and the plan must include a test asserting `drop` actually fires on **both** same-instance and cross-instance targets.
+- **SF-2 — Drag-start auto-raises the source window, which fights cross-window drop routing under default geometry.** `Window.tsx` fires `onPointerDown={() => focus(win.id)}` → `os-store.focus` bumps `zIndex`; starting a drag in instance A lifts A to the front, so a drop lands on B only where B is *exposed* (not covered by the now-top A). With `launchSize` = 80% viewport and `nextLaunchOrigin` cascading by 28px, two consecutive Files windows overlap heavily. The plan must (a) include a **non-overlapping-window** e2e for the cross-instance case, and (b) record a decision: either drag-start suppresses the source raise, or the reliable cross-instance case is documented as side-by-side (non-overlapping) windows — the mockup's depiction.
+- **SF-3 — Make the descendant/self-drop rule airtight and evaluate it *before* the op-decision.** §2.7's `op = (parentOf(p) === destFolder) ? "copy" : "move"` would classify "drag folder `A`, drop onto its descendant `A/sub`" as a **move** and attempt `fs.rename(A → A/sub/A)`, which fails. §2.6 already names this "no-op" but with a confusing "no-op / or same-folder copy" slash. Pin it: **drop-onto-a-dragged-folder-itself and drop-onto-a-descendant-of-a-dragged-folder are invalid → clean no-op (FR-012), checked in `resolveDest` before any op is computed.**
+
+**Nits (fold in where cheap):**
+
+- **N-1** — §1's "correction to the spec's wording" is a false premise: FR-013 already states Copy/Move are *new*. The conclusion (no-regression = open/rename/delete/download/open-with/upload) is correct and matches the spec; only the "correction" framing is wrong — drop the framing.
+- **N-2** — The `setDragImage` ghost element must be in the rendered DOM (`position:fixed; top:-9999px`), not `display:none`, or the drag image renders blank in some browsers.
+- **N-3** — Chip semantics: the mockup distinguishes **MOVED** (cross-instance) from **NEW/COPY** (created). `fresh` should carry a reason (moved vs created) so the chip matches the confirmed surface, rather than lumping both into "NEW".
+- **N-4** — Destination double-refresh: the operating instance both self-refreshes (§2.8 step 1) and would receive its own `bos:files:changed`. Let the CustomEvent be the single refresh trigger for *all* instances (including the destination) to avoid a double fetch.
