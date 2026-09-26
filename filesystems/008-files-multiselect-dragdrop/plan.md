@@ -10,7 +10,7 @@
 
 ## Summary
 
-Add multi-selection (Shift-click range, Ctrl/Cmd+click toggle, marquee rectangle, Select-all) and drag-and-drop move/copy — including cross-instance between two open Files windows — to the built-in Files app, with the right-click context menu applying to the whole selection. The UI surface is a **row list** (replacing the current icon-tile grid) and a **full right-click context menu** (replacing the Download-only menu), per confirmed design decisions Q1=B / Q2=A.
+Add multi-selection (Shift-click range, Ctrl/Cmd+click toggle, marquee rectangle, Select-all) and drag-and-drop move/copy — including cross-instance between two open Files windows — to the built-in Files app, with the right-click context menu applying to the whole selection. The UI surface is a **row list** (replacing the current icon-tile grid) and a **full right-click context menu** (replacing the Download-only menu), per confirmed design decisions Q1=B / Q2=A, with **width-capped, left-aligned rows** (Q3=B) guaranteeing a persistent empty region for the marquee.
 
 Technical approach (from [design.md](design.md)): extract a pure selection model, a row-list component, and a generalized context menu under `src/apps/files/`; add two collision-safe server ops (`copy`, `move`) to `vfs.ts` + `/api/fs` + `fsClient`; and exploit the fact that built-in apps render **inline in one document** to get cross-instance DnD (shared `dataTransfer`) and both-views-update (same-document `CustomEvent`) with **zero** changes to `Window.tsx`, `os-store.ts`, or `manifest.ts`.
 
@@ -111,7 +111,7 @@ The full structural design lives in [design.md](design.md) (read it; this plan d
 Pure `selection.ts` ops over an **anchor + Set** model, keyed by absolute `VfsEntry.path`, scoped to `cwd`, cleared on navigation (FR-011). Plain-click re-anchors; Shift-range measures from the *current* anchor; Ctrl/Cmd toggle leaves other paths untouched.
 
 ### D2 — Row list + gesture split (US1/US3, R2, SF-3)
-`FileList.tsx` replaces the grid. **Pointer-down target is the disambiguator**: a row-origin gesture = move/copy (native `draggable`) or select (click/shift/ctrl/dblclick/contextmenu); an empty-list-space-origin gesture = marquee (pointer-captured, `position:absolute` overlay inside the scrollable list — **not** `fixed`, because window chrome is `transform`-positioned). A row is not the background, so the two paths cannot overlap.
+`FileList.tsx` replaces the grid. **Pointer-down target is the disambiguator**: a row-origin gesture = move/copy (native `draggable`) or select (click/shift/ctrl/dblclick/contextmenu); an empty-list-space-origin gesture = marquee (pointer-captured, `position:absolute` overlay inside the scrollable list — **not** `fixed`, because window chrome is `transform`-positioned). A row is not the background, so the two paths cannot overlap. **The empty-space target is guaranteed to exist and be reachable by FR-017/Q3**: rows are width-capped and left-aligned (≈65% of the list width, name truncated within the cap), so a persistent empty region — right of the rows and below the last row — is always present as the marquee-start zone, regardless of item names. *(Without this, the as-shipped defect occurred: full-width rows left no reachable empty space, so every click-and-drag began on a row and became a file drag instead of a marquee.)*
 
 ### D3 — Context menu (US2, FR-006/007, FR-013)
 `ContextMenu.tsx` generalizes `CursorMenu` (portal to `document.body` + viewport clamp preserved, `data-testid="files-context-menu"` kept). Open/Rename are single-only (greyed for >1); Copy/Move/Delete/Download are batch. Right-click on an unselected row promotes it to the selection; on a selected row it keeps the whole selection. One-item case = length-1 of the batch handlers → structurally no regression.
@@ -153,9 +153,9 @@ Design §2.7's `op = (parentOf(p) === destFolder) ? "copy" : "move"` would miscl
 ## Deliverables & Quality Gates
 
 From the Constitution (a change is complete only when):
-1. Code implements FR-001…FR-016 per design.md + this plan (D1–D6, PD-1…PD-4).
+1. Code implements FR-001…FR-017 per design.md + this plan (D1–D6, PD-1…PD-4).
 2. `docs/usage` (Files app) and `docs/dev` updated in the same change (Principle VI — task T-docs).
 3. `npx tsc --noEmit` passes.
 4. `npm run lint` passes.
-5. e2e tests pass: selection gestures (shift/ctrl/marquee/select-all/clear), context-menu set-enabling, in-window move/copy (empty-area drop in the current folder = same-folder **copy**; invalid targets = no-op), cross-instance move/copy (non-overlapping windows, PD-2), collision-safe naming, descendant/self-drop no-op (PD-3), a **50-item** drag-drop completing within the responsiveness budget (SC-003), upload-path no-regression (D4), and the `drop`-fires-on-both-targets assertion (PD-1).
+5. e2e tests pass: selection gestures (shift/ctrl/marquee/select-all/clear), **marquee startable from the reserved empty region in a folder whose rows carry long names (SC-007 / FR-017 / Q3)**, context-menu set-enabling, in-window move/copy (empty-area drop in the current folder = same-folder **copy**; invalid targets = no-op), cross-instance move/copy (non-overlapping windows, PD-2), collision-safe naming, descendant/self-drop no-op (PD-3), a **50-item** drag-drop completing within the responsiveness budget (SC-003), upload-path no-regression (D4), and the `drop`-fires-on-both-targets assertion (PD-1).
 6. Existing Files `data-testid` contract intact (R3) — existing tests still pass.
