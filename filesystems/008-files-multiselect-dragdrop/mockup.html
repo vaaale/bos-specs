@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Files — Multi-Selection &amp; Drag-and-Drop · UI mockup</title>
+<style>
+/* Self-contained visual proxy for spec 008-files-multiselect-dragdrop.
+   Mirrors the Files app (src/apps/files/index.tsx) + BOS style guide:
+   dark-only, white/black opacity palette, #0f1117 body, #15171e chrome,
+   lucide-style icons, text-xs density. The spec assumes a ROW list; the
+   shipping app is an icon-tile GRID — rows are used per the spec (see OQ 1). */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --body:#0f1117; --chrome:#15171e; --menu:#171922;
+  --line:rgba(255,255,255,.10); --line2:rgba(255,255,255,.16);
+  --txt:rgba(255,255,255,.90); --txt2:rgba(255,255,255,.60); --txt3:rgba(255,255,255,.40);
+  --sky:#7dd3fc; --emerald:#6ee7b7; --violet:#c4b5fd;
+  --sel:rgba(255,255,255,.15); --hov:rgba(255,255,255,.08);
+}
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Geist Sans",sans-serif;
+  color:var(--txt); font-size:12px; line-height:1.45; -webkit-font-smoothing:antialiased;
+  background:radial-gradient(1200px 700px at 50% -12%, #212842 0%, #14171f 46%, #0c0e13 100%) fixed;
+  padding:34px 22px 70px;
+}
+.page{max-width:1240px;margin:0 auto}
+svg.i{width:14px;height:14px;flex:none;vertical-align:-2px}
+a{color:var(--sky);text-decoration:none}
+
+/* ---------- page chrome ---------- */
+.hero{margin-bottom:30px}
+.hero h1{font-size:22px;font-weight:650;letter-spacing:-.01em}
+.hero .sub{margin-top:8px;color:var(--txt2);max-width:880px;font-size:12.5px}
+.hero .chips{margin-top:13px;display:flex;flex-wrap:wrap;gap:7px}
+.chip{font-size:10px;font-weight:600;letter-spacing:.03em;padding:3px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--txt2);background:rgba(255,255,255,.04)}
+.chip.k{color:var(--violet);border-color:rgba(196,181,253,.35);background:rgba(139,92,246,.12)}
+
+section{margin-top:34px}
+.sec-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.sec-h h2{font-size:15px;font-weight:650}
+.sec-h .fr{font-size:10.5px;color:var(--txt3);letter-spacing:.02em}
+.sec-p{color:var(--txt2);margin:6px 0 18px;max-width:820px;font-size:12.5px}
+.sec-p b{color:var(--txt);font-weight:600}
+
+/* ---------- panels ---------- */
+.panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px}
+.panels.wide{grid-template-columns:repeat(auto-fit,minmax(480px,1fr))}
+.panel{position:relative;padding-top:2px}
+.panel.us{margin-top:20px}
+.panel.us::after{content:attr(data-us);position:absolute;top:0;right:6px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:2px 6px;border-radius:5px;background:rgba(139,92,246,.18);border:1px solid rgba(196,181,253,.3);color:var(--violet)}
+.cap{margin-top:9px;color:var(--txt2);font-size:11.5px;line-height:1.5}
+.cap b{color:var(--txt);font-weight:600}
+.cap .dim{color:var(--txt3)}
+.x2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;position:relative}
+.x2 .panel{margin-top:0}
+
+/* ---------- Files window frame ---------- */
+.win{background:rgba(21,23,30,.96);border:1px solid var(--line2);border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.4);overflow:hidden;display:flex;flex-direction:column}
+.win.small{min-height:0}
+.titlebar{height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgba(255,255,255,.05);border-bottom:1px solid var(--line);cursor:grab;user-select:none}
+.tl{width:11px;height:11px;border-radius:50%;flex:none}
+.tl.r{background:#ff5f57}.tl.y{background:#febc2e}.tl.g{background:#28c840}
+.title{flex:1;text-align:center;font-size:11.5px;font-weight:500;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pin{width:48px;flex:none;text-align:right;color:rgba(255,255,255,.25)}
+.pin .i{width:12px;height:12px}
+.winbody{background:var(--body);flex:1;display:flex;flex-direction:column;min-height:0}
+
+/* ---------- app toolbar ---------- */
+.toolbar{flex:none;display:flex;align-items:center;gap:4px;padding:6px 8px;background:rgba(255,255,255,.04);border-bottom:1px solid var(--line)}
+.tb{width:27px;height:25px;flex:none;display:grid;place-items:center;border-radius:6px;color:var(--txt2);background:none;border:0}
+.crumbs{flex:1;min-width:0;overflow:hidden;white-space:nowrap;font-size:11px;color:var(--txt3);padding:0 4px;display:flex;align-items:center;gap:4px}
+.crumbs b{color:var(--txt2);font-weight:500}
+.crumbs .sel-crumb{color:var(--txt);background:var(--sel);border-radius:4px;padding:1px 5px}
+.selchip{flex:none;display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--sky);background:rgba(56,189,248,.14);border:1px solid rgba(125,211,252,.28);padding:2px 8px;border-radius:999px}
+.selchip .i{width:11px;height:11px}
+
+/* ---------- file list (row layout per spec) ---------- */
+.listwrap{position:relative;flex:1;min-height:0;padding:8px}
+.list{position:relative;height:var(--h,532px);overflow:hidden;display:flex;flex-direction:column;gap:1px;
+  background-image:repeating-linear-gradient(to bottom, transparent 0 37px, var(--line) 37px 38px);
+  scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) transparent}
+.list::-webkit-scrollbar{width:8px}
+.list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+.row{position:relative;height:37px;flex:none;display:flex;align-items:center;gap:9px;padding:0 8px;border-radius:7px;cursor:default;transition:background .08s}
+.row .ico{width:17px;height:17px;flex:none;color:rgba(255,255,255,.7)}
+.row.dir .ico{color:var(--sky)}
+.row.img .ico{color:var(--emerald)}
+.row .name{flex:1;min-width:0;font-size:12px;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row:hover{background:var(--hov)}
+.row.sel{background:var(--sel)}
+.row.sel .name{color:var(--txt)}
+.row.sel .ico{filter:brightness(1.18)}
+.row.dim{opacity:.32}
+.row .rtag{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:flex;gap:4px;align-items:center}
+.row .more{height:22px;flex:none;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--txt3)}
+/* copy result (newly created) */
+.row.new .name{color:var(--sky)}
+.row.new .ico{color:var(--sky)}
+.row.new{background:rgba(56,189,248,.07)}
+.row.new .nchip{margin-left:7px;font-size:9px;font-weight:800;letter-spacing:.05em;color:var(--sky);border:1px solid rgba(125,211,252,.35);border-radius:4px;padding:0 4px;line-height:14px}
+/* empty / empty-space region */
+.emptymsg{padding:40px 0;text-align:center;font-size:12px;color:var(--txt3)}
+.emptyregion{height:58px;flex:none;margin-top:2px;border:1px dashed rgba(255,255,255,.14);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--txt3)}
+.emptyregion.cancelled{border-color:rgba(125,211,252,.5);background:rgba(56,189,248,.06);color:var(--sky)}
+
+/* small tags on rows / overlays */
+.tag{position:absolute;z-index:4;font-size:9px;font-weight:800;letter-spacing:.05em;padding:2px 5px;border-radius:4px;line-height:1;white-space:nowrap;pointer-events:none}
+.tag.anchor{right:6px;top:4px;background:rgba(255,255,255,.16);color:var(--txt);border:1px solid var(--line2)}
+.tag.end{right:6px;top:4px;background:rgba(125,211,252,.16);color:var(--sky);border:1px solid rgba(125,211,252,.4)}
+.tag.toggle{right:6px;top:4px;background:rgba(196,181,253,.16);color:var(--violet);border:1px solid rgba(196,181,253,.4)}
+.tag.noclip{right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:var(--txt2);border:1px solid var(--line2)}
+.tag.plus{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:4px;background:rgba(196,181,253,.2);border:1px solid rgba(196,181,253,.45);margin-left:7px}
+.tag.plus .i{width:11px;height:11px;color:var(--violet)}
+.badge{position:absolute;z-index:5;left:6px;top:6px;font-size:9px;font-weight:800;letter-spacing:.05em;padding:2px 5px;border-radius:4px;background:rgba(21,23,30,.9);border:1px solid var(--line2);color:var(--sky);pointer-events:none;white-space:nowrap}
+.cmdbadge{position:absolute;z-index:5;right:8px;top:8px;display:flex;gap:4px;align-items:center;font-size:10px;font-weight:700;color:var(--violet);background:rgba(139,92,246,.16);border:1px solid rgba(196,181,253,.4);padding:2px 7px;border-radius:5px;pointer-events:none}
+
+/* marquee */
+.marquee{position:absolute;z-index:6;border:1.5px solid rgba(125,211,252,.85);background:rgba(56,189,248,.13);border-radius:3px;pointer-events:none;box-shadow:0 0 0 1px rgba(56,189,248,.05),inset 0 0 14px rgba(56,189,248,.06)}
+
+/* drop target */
+.drop{border:1.5px dashed rgba(125,211,252,.7)!important;background:rgba(56,189,248,.10)!important}
+.drop .name{color:var(--sky)!important}
+.dropbadge{position:absolute;z-index:6;right:8px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:var(--sky);background:rgba(21,23,30,.92);border:1px solid rgba(125,211,252,.4);padding:2px 8px;border-radius:999px;pointer-events:none}
+.dropbadge .i{width:12px;height:12px}
+
+/* drag ghost */
+.ghost{position:absolute;z-index:40;display:flex;align-items:center;gap:8px;background:rgba(21,23,30,.94);border:1px solid rgba(125,211,252,.4);border-radius:10px;padding:7px 9px;box-shadow:0 10px 28px rgba(0,0,0,.55);pointer-events:none}
+.ghost .stack{position:relative;width:34px;height:30px;flex:none}
+.ghost .stack span{position:absolute;left:0;top:0;width:34px;height:28px;display:flex;align-items:center;justify-content:center;background:var(--chrome);border:1px solid var(--line2);border-radius:6px}
+.ghost .stack span:nth-child(1){transform:translate(5px,5px)}
+.ghost .stack span:nth-child(2){transform:translate(2.5px,2.5px);z-index:1}
+.ghost .stack span:nth-child(3){transform:translate(0,0);z-index:2;border-color:rgba(125,211,252,.5)}
+.ghost .stack span .i{width:15px;height:15px;color:var(--sky)}
+.ghost .gmeta{display:flex;flex-direction:column;gap:4px}
+.ghost .gcount{font-size:11px;font-weight:700;color:var(--txt);display:flex;align-items:center;gap:6px}
+.ghost .gcount .cb{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:rgba(56,189,248,.2);border:1px solid rgba(125,211,252,.45);font-size:10px;font-weight:800;color:var(--sky)}
+.ghost .gtag{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;letter-spacing:.05em;color:var(--sky)}
+.ghost .gtag .i{width:11px;height:11px}
+.cur{position:absolute;z-index:41;color:#fff;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
+.cur .i{width:20px;height:20px}
+
+/* context menu (shape from src/apps/files CursorMenu) */
+.menu{position:absolute;z-index:30;min-width:226px;background:var(--menu);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:5px 0;box-shadow:0 18px 44px rgba(0,0,0,.62);font-size:12px}
+.menu .mhead{padding:5px 12px 6px;font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--txt3);border-bottom:1px solid var(--line);margin-bottom:4px}
+.mi{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:6px 12px;border:0;background:none;cursor:default}
+.mi .i{width:14px;height:14px;color:var(--txt2);flex:none}
+.mi .lb{flex:1;color:var(--txt)}
+.mi .kb{color:var(--txt3);font-size:11px}
+.mi.d{opacity:.35}
+.mi.d .lb,.mi.d .i{color:var(--txt3)}
+
+/* toast */
+.toast{position:absolute;z-index:35;left:50%;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(23,25,34,.96);border:1px solid var(--line2);border-radius:9px;padding:7px 12px;font-size:11px;color:var(--txt);box-shadow:0 10px 26px rgba(0,0,0,.5);white-space:nowrap}
+.toast .i{width:13px;height:13px;color:var(--sky)}
+.toast b{font-weight:700}
+.toast.ok{border-color:rgba(110,231,183,.3)}
+.toast.ok .i{color:var(--emerald)}
+.toast.noop{border-color:rgba(125,211,252,.32)}
+
+/* open questions */
+.oq{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.oq ol{list-style:none;display:flex;flex-direction:column;gap:11px}
+.oq li{display:flex;gap:11px;font-size:12px;color:var(--txt2);line-height:1.5}
+.oq li b{color:var(--txt);font-weight:600}
+.oq li .n{flex:none;width:20px;height:20px;border-radius:6px;background:rgba(139,92,246,.16);border:1px solid rgba(196,181,253,.35);color:var(--violet);font-size:10px;font-weight:800;display:grid;place-items:center;margin-top:1px}
+.oq li .dft{color:var(--sky)}
+.foot{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--txt3);font-size:11px;line-height:1.6;max-width:900px}
+.foot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--txt2);background:rgba(255,255,255,.05);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <h1>Files — Multi-Selection &amp; Drag-and-Drop</h1>
+    <p class="sub">UI mockup for the spec-kit <b>design</b> step · <code style="font-family:ui-monospace,Menlo,monospace;font-size:11px">builtin-app</code> at <code style="font-family:ui-monospace,Menlo,monospace;font-size:11px">src/apps/files/</code> · visual proxy for the shipped React app (no build step). Every panel is mapped to a user story (US badge, top-right) and a requirement.</p>
+    <div class="chips">
+      <span class="chip k">US1 · Select multiple items</span>
+      <span class="chip k">US2 · Context menu on the selection</span>
+      <span class="chip k">US3 · Drag &amp; drop, within + across instances</span>
+      <span class="chip">Mirrors the Files app palette, toolbar &amp; context-menu</span>
+      <span class="chip">⌘ = macOS · Ctrl = Windows</span>
+    </div>
+  </header>
+
+  <section id="s-us1">
+    <div class="sec-h"><h2>US1 — Multi-selection</h2><span class="fr">FR-001 · FR-002 · FR-003 · FR-004 · FR-005 · FR-014</span></div>
+    <p class="sec-p">One folder, fourteen items. Each panel shows a distinct selection state in the same list so the states can be compared at a glance. A selection chip in the toolbar always names the active set.</p>
+    <div id="p-us1" class="panels"></div>
+  </section>
+
+  <section id="s-us2">
+    <div class="sec-h"><h2>US2 — Context menu on the whole selection</h2><span class="fr">FR-006 · FR-007 · FR-013</span></div>
+    <p class="sec-p">The right-click menu acts on the <b>entire selection</b>, and its enabled/disabled set depends on the selection: batch actions stay available, single-only actions (Rename, Open) grey out for &gt;1 item. No regression for the one-item case.</p>
+    <div id="p-us2" class="panels"></div>
+  </section>
+
+  <section id="s-us3">
+    <div class="sec-h"><h2>US3 — Drag-and-drop to move or copy</h2><span class="fr">FR-008 · FR-009 · FR-010 · FR-011 · FR-012 · FR-015 · FR-016</span></div>
+    <p class="sec-p">A drag that begins <b>on an item</b> moves/copies; a drag that begins <b>on empty space</b> is the US1 marquee — the two never conflict. A ghost with a count badge follows the cursor; a folder row lights up as the drop target. Cross-instance is shown as one continuous scene across two Files windows over the shared VFS.</p>
+    <div id="p-us3" class="panels wide"></div>
+    <div id="p-xi" class="panels wide"></div>
+  </section>
+
+  <section id="s-edge">
+    <div class="sec-h"><h2>Edge cases</h2><span class="fr">spec §Edge Cases · FR-011 · FR-012</span></div>
+    <div id="p-edge" class="panels"></div>
+  </section>
+
+  <section id="s-oq">
+    <div class="sec-h"><h2>Open questions</h2><span class="fr">decisions left to review / design</span></div>
+    <div id="p-oq"></div>
+  </section>
+
+  <footer class="foot">
+    Visual proxy for review — not implementation. Built from <code>src/apps/files/index.tsx</code>, <code>src/apps/files/manifest.ts</code>, <code>src/components/desktop/Window.tsx</code> and the BOS <code>style-guide.md</code> (dark opacity palette, <code>#0f1117</code> body / <code>#15171e</code> chrome, lucide icons, <code>text-xs</code> density). <b>Note:</b> the shipping Files app renders an icon-tile <i>grid</i>; this mockup uses the <i>row list</i> the spec assumes (OQ 1).
+  </footer>
+
+</div>
+
+<script>
+/* ---------- lucide-style icons (stroke) ---------- */
+var ICONS = {
+  up:'<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  refresh:'<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  folderplus:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/>',
+  fileplus:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="M15 15h-6"/>',
+  trash:'<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  pencil:'<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
+  folder:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  filetext:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  image:'<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+  x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  copy:'<rect x="8" y="8" width="14" height="14" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  move:'<path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/>',
+  open:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  pinoff:'<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414L8 20"/><path d="m8 8 4 4"/><circle cx="18" cy="6" r="3"/><path d="m2 2 20 20"/>',
+  return:'<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>',
+  checkc:'<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
+  cursor:'<path d="M5 3l4.5 13.5 2.2-5.3 5.3-2.2z"/>',
+  plus:'<path d="M12 5v14"/><path d="M5 12h14"/>'
+};
+function ic(n,cls){cls=cls||"";return '<svg class="i '+cls+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(ICONS[n]||"")+'</svg>';}
+function cur(x,y,n){n=n||"cursor";return '<span class="cur" style="left:'+x+'px;top:'+y+'px">'+ic(n)+'</span>';}
+
+/* ---------- shared folder contents (US1/US2/US3 compare in one list) ---------- */
+var ITEMS = [
+  ["Documents","dir"],["Downloads","dir"],["Photos","dir"],["Projects","dir"],["Videos","dir"],
+  ["README.md","file"],["report.pdf","file"],["notes.md","file"],["screenshot-2026-08-31.png","img"],
+  ["invoice-2026-q3.pdf","file"],["archive-2025.zip","file"],["todo.md","file"],["wallpaper.png","img"],["config.json","file"]
+];
+var N = ITEMS.length;
+function rowsHtml(sel,extra){
+  sel = sel||[]; var out = "";
+  for(var i=0;i<N;i++){
+    var t = ITEMS[i][0], k = ITEMS[i][1];
+    var cls = "row " + k + (sel[i] ? " sel" : "") + ((extra&&extra[i]) ? " "+extra[i] : "");
+    var ico = k==="dir" ? "folder" : (k==="img" ? "image" : "filetext");
+    var rt = (extra && extra[i] && extra[i].indexOf("rt-")===0) ? extra[i] : "";
+    out += '<div class="'+cls+'" data-i="'+i+'"><span class="ico">'+ic(ico)+'</span><span class="name">'+t+'</span>'+rt+'</div>';
+  }
+  return out;
+}
+var R_ALL = rowsHtml();
+var R_NONE = rowsHtml([]);
+function selOf(a){var s={};for(var i=0;i<a.length;i++)s[a[i]]=1;return s;}
+var selP1=selOf([2]);
+var selP2=selOf([1,2,3,4,5]);
+var selP3=selOf([2,3,4]);
+var selP4=selOf([2,4,8,12]);
+var selP7=selOf([2]);
+var selP8=selOf([2,4,8]);
+var selP10=selOf([2,3,4]);
+var extraP7={2:'<span class="rtag">'+ic("cursor")+'</span>'};
+var extraP10={0:"drop",2:"dim",3:"dim",4:"dim"};
+var extraP11={2:"dim",4:"dim"};
+var extraP12={};
+
+/* ---------- window frame + toolbar ---------- */
+function toolbar(pathParts, chip, right){
+  var cr = '<span>root</span>';
+  for(var i=0;i<pathParts.length;i++){
+    cr += '<span>/</span>' + (i===pathParts.length-1 ? '<b>'+pathParts[i]+'</b>' : '<span>'+pathParts[i]+'</span>');
+  }
+  return '<div class="toolbar">'
+    + '<span class="tb">'+ic("up")+'</span>'
+    + '<span class="tb">'+ic("refresh")+'</span>'
+    + '<div class="crumbs">'+cr+'</div>'
+    + (chip||"")
+    + '<span class="tb">'+ic("folderplus")+'</span>'
+    + '<span class="tb">'+ic("fileplus")+'</span>'
+    + '</div>';
+}
+function chip(txt){return '<span class="selchip">'+ic("checkc")+txt+'</span>';}
+function win(title, bodyHtml, h){
+  var style = h ? ' style="--h:'+h+'px"' : "";
+  return '<div class="win"><div class="titlebar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="title">'+title+'</span><span class="pin">'+ic("pinoff")+'</span></div><div class="winbody">'+bodyHtml+'</div></div>';
+}
+function panel(us, title, inner, cap){
+  return '<div class="panel'+(us?" us":"")+'"'+(us?' data-us="'+us+'"':'')+'>'+inner+'<div class="cap">'+cap+'</div></div>';
+}
+
+/* ---------- US1 ---------- */
+function us1(){
+  var out = "";
+  // P1 single
+  out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("1 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP1)+'</div></div>'),
+    "Single-item selection — <b>plain click</b> (FR-004). Only <b>report.pdf</b> is highlighted; everything else is unselected. <span class='dim'>Same affordance as today’s single-select; no regression (FR-013).</span>");
+  // P2 shift range
+  out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("5 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP2,{1:"<span class='rtag'><span class='tag anchor'>anchor</span></span>",5:"<span class='rtag'><span class='tag end'>⌃ end</span></span>"})+'</div></div>'),
+    "<b>Shift-click range</b> (FR-002): anchor <b>Downloads</b> → Shift+click <b>Videos</b>. The contiguous run <span class='dim'>Downloads · Photos · Projects · Videos</span> is selected, inclusive, in list order.");
+  // P3 marquee
+  out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("3 selected"), "") +
+    '<div class="listwrap"><div class="list">'+rowsHtml(selP3)+'</div>'
+    + '<div class="marquee" style="left:10px;top:84px;width:262px;height:111px"></div>'
+    + '<span class="badge" style="left:16px;top:90px">marquee</span>'
+    + cur(274,190)
+    + '</div>'),
+    "<b>Marquee</b> (FR-003): press on <b>empty list space</b> and drag. The translucent rectangle selects every row it intersects — exactly <span class='dim'>report.pdf · notes.md · screenshot</span> (the three highlighted rows). On mouse-up the rectangle is removed.");
+  // P4 toggle
+  out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("4 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP4,{11:"<span class='rtag'><span class='tag plus'>"+ic('plus')+"</span><span class='tag toggle'>Ctrl/⌘-click</span></span>"})+'</div>'
+    + cur(330,210) + '</div>'),
+    "<b>Ctrl/⌘-click toggle</b> (FR-014): a <b>non-contiguous</b> set — <span class='dim'>README.md, notes.md, screenshot, todo.md</span> with gaps. Clicking an unselected item adds it; clicking a selected one removes it, leaving the rest unchanged. The visual signature of toggle multi-select is the gaps.");
+  // P5 select all
+  out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("14 selected"), "") + '<div class="listwrap" style="position:relative"><div class="cmdbadge">⌘A</div><div class="list">'+R_ALL+'</div></div>'),
+    "<b>Select all</b> (FR-005): <b>Ctrl/⌘ + A</b> selects every item in the current folder — all fourteen rows highlighted. Selection stays scoped to this folder.");
+  // P7 plain click clears the rest
+  out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("1 selected"), "") + '<div class="listwrap"><div class="list">'+rowsHtml(selP7, extraP7)+'</div></div>'),
+    "<b>Plain click clears the rest</b> (FR-004): with a prior multi-selection, a plain click selects <b>only</b> report.pdf and deselects all others.");
+  return out;
+}
+
+/* ---------- US2 context menus ---------- */
+function mhead(txt){return '<div class="mhead">'+txt+'</div>';}
+function mi(icon,label,extra){
+  var cls = "mi" + (extra && extra.d ? " d" : "");
+  return '<button class="'+cls+'"'+((extra&&extra.d)?" disabled":"")+'><span class="ic">'+ic(icon)+'</span><span class="lb">'+label+'</span>'+(extra&&extra.kb?'<span class="kb">'+extra.kb+'</span>':'')+(extra&&extra.note?'<span class="note" style="color:var(--txt3);font-size:10px">'+extra.note+'</span>':'')+'</button>';
+}
+function div(){return '<div class="mdiv" style="height:1px;background:var(--line);margin:4px 8px"></div>';}
+function us2(){
+  var out = "";
+  // multi menu
+  var multi = '<div class="menu" style="left:150px;top:74px">'
+    + mhead("3 items selected")
+    + mi("open","Open", {d:true, note:"single item only"})
+    + mi("pencil","Rename", {d:true, note:"single item only"})
+    + div()
+    + mi("copy","Copy", {kb:"⌘C"})
+    + mi("move","Move…", {kb:"⌘M"})
+    + mi("download","Download", {kb:"⌘D"})
+    + div()
+    + mi("trash","Delete", {kb:"⌫"})
+    + '</div>';
+  out += panel("US2", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("3 selected"), "") + '<div class="listwrap" style="position:relative"><div class="list">'+rowsHtml(selP8)+'</div>' + multi + cur(176,96) + '</div>'),
+    "<b>Multi-item menu</b> (FR-006/007): right-click over a 3-item selection. The header names the set; <b>Copy / Move / Download / Delete</b> are enabled and apply to <b>all 3</b>; single-only <b>Open / Rename</b> are greyed out.");
+  // single menu
+  var single = '<div class="menu" style="left:150px;top:150px">'
+    + mhead("1 item")
+    + mi("open","Open", {kb:"↵"})
+    + mi("pencil","Rename…", {kb:"⌘R"})
+    + div()
+    + mi("copy","Copy", {kb:"⌘C"})
+    + mi("move","Move…", {kb:"⌘M"})
+    + mi("download","Download", {kb:"⌘D"})
+    + div()
+    + mi("trash","Delete", {kb:"⌫"})
+    + '</div>';
+  out += panel("US2", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("1 selected"), "") + '<div class="listwrap" style="position:relative"><div class="list">'+rowsHtml(selP7)+'</div>' + single + cur(176,172) + '</div>'),
+    "<b>Single-item menu</b> (FR-013, no regression): exactly one item — the <b>full</b> menu, everything enabled, behaving exactly as it does today.");
+  return out;
+}
+
+/* ---------- US3 drag & drop ---------- */
+function ghost(n, op, x, y){
+  var opIcon = op==="copy" ? "copy" : "move";
+  var opLabel = op==="copy" ? "COPY" : "MOVE";
+  return '<div class="ghost" style="left:'+x+'px;top:'+y+'px">'
+    + '<div class="stack"><span>'+ic("folder")+'</span><span>'+ic("folder")+'</span><span>'+ic(op==="copy"?"folder":"filetext")+'</span></div>'
+    + '<div class="gmeta"><span class="gcount"><span class="cb">'+n+'</span> items</span>'
+    + '<span class="gtag">'+ic(opIcon)+' '+opLabel+'</span></div>'
+    + '</div>' + cur(x+78, y+34);
+}
+function dropbadge(txt){return '<span class="dropbadge">'+ic("move")+' '+txt+'</span>';}
+function us3(){
+  var out = "";
+  // P10 drop target
+  out += panel("US3", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("3 selected"), "") +
+    '<div class="listwrap" style="position:relative"><div class="list">'+rowsHtml(selP10, extraP10)+'</div>'
+    + '<div class="badge" style="left:12px;top:12px">drag in progress</div>'
+    + ghost(3,"move",150,188)
+    + '</div>'),
+    "<b>Drop-target highlight</b> (FR-008): dragging the 3-item selection (README · report · notes, shown dimmed/in transit), the <b>Documents</b> folder row — a <i>different, non-selected</i> folder — lights up as the valid target with a “drop to move” badge. The ghost carries a <b>“3 items” count badge</b> (FR-009); dropping here <b>moves</b> the items.");
+  // P11 same-folder copy outcome
+  var list11 = '<div class="list" style="height:296px">'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Documents</span></div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Downloads</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">README.md</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">notes.md</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">report (1).pdf</span><span class="nchip">NEW</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">notes (1).md</span><span class="nchip">NEW</span></div>'
+    + '<div class="more">… 9 more in this folder</div>'
+    + '</div>';
+  out += panel("US3", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("2 selected"), "") +
+    '<div class="listwrap" style="position:relative;padding-bottom:42px">' + list11
+    + '<div class="toast ok" style="bottom:14px">'+ic("checkc")+' <span><b>Copied 2 items</b> — name suffix avoids overwriting (FR-010)</span></div>'
+    + '</div>'),
+    "<b>Same-folder drop = copy</b> (FR-008/FR-010): dropping back into the <i>same</i> folder creates <b>report (1).pdf</b> and <b>notes (1).md</b>; the originals stay intact. Non-colliding <code style='font-family:ui-monospace,Menlo,monospace'>name (n).ext</code> naming, never an overwrite.");
+  // P12 invalid / no-op
+  var list12 = '<div class="list" style="height:136px">'
+    + '<div class="row file sel"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
+    + '<div class="row file sel"><span class="ico">'+ic("filetext")+'</span><span class="name">notes.md</span></div>'
+    + '<div class="row file sel"><span class="ico">'+ic("filetext")+'</span><span class="name">screenshot-2026-08-31.png</span></div>'
+    + '<div class="more">… 11 more in this folder</div>'
+    + '</div>';
+  out += panel("US3", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("3 selected"), "") +
+    '<div class="listwrap" style="position:relative;padding-bottom:44px">' + list12
+    + '<div class="emptyregion cancelled" style="margin-top:6px">released over empty space — no folder</div>'
+    + '<div class="toast noop">'+ic("return")+' <span><b>No valid drop target</b> — items returned to origin, still selected (FR-012)</span></div>'
+    + '</div>'),
+    "<b>Invalid / no-op drop</b> (FR-012): releasing over empty space (or a target that vanished) is a no-op — the items <b>return to origin</b> (still selected, no error state). The selection is preserved so the user can retry.");
+  return out;
+}
+
+/* cross-instance scene (two windows, one continuous scene) */
+function xiscene(){
+  var src = win("Files — /Home (A)", toolbar(["Home"], chip("3 selected"), "") +
+    '<div class="listwrap"><div class="list" style="--h:300px">'+rowsHtml(selP10, {2:"dim",3:"dim",4:"dim"})+'</div></div>');
+  var dst = win("Files — /Projects (B)", toolbar(["Projects"], "", "") +
+    '<div class="listwrap"><div class="list" style="--h:300px">'
+    + '<div class="row dir sel"><span class="ico">'+ic("folder")+'</span><span class="name">assets</span>' + dropbadge("drop to move") + '</div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">src</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">package.json</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">README.md</span></div>'
+    + '</div></div>');
+  // mid-drag
+  var mid = '<div class="x2">'
+    + '<div class="panel"><div style="position:relative">'+src + ghost(3,"move",255,120) + '</div></div>'
+    + '<div class="panel">'+dst+'</div>'
+    + '</div>';
+  // outcome
+  var srcAfter = win("Files — /Home (A)", toolbar(["Home"], "", "") +
+    '<div class="listwrap"><div class="list" style="--h:300px">'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Documents</span></div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Downloads</span></div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Photos</span></div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Projects</span></div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Videos</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">README.md</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">notes.md</span></div>'
+    + '</div></div>');
+  var dstAfter = win("Files — /Projects (B)", toolbar(["Projects"], "", "") +
+    '<div class="listwrap" style="position:relative;padding-bottom:44px"><div class="list" style="--h:300px">'
+    + '<div class="row dir sel"><span class="ico">'+ic("folder")+'</span><span class="name">assets</span></div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">src</span></div>'
+    + '<div class="row file new"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span><span class="nchip">MOVED</span></div>'
+    + '<div class="row file new"><span class="ico">'+ic("filetext")+'</span><span class="name">notes.md</span><span class="nchip">MOVED</span></div>'
+    + '<div class="row file new"><span class="ico">'+ic("filetext")+'</span><span class="name">screenshot-2026-08-31.png</span><span class="nchip">MOVED</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">package.json</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">README.md</span></div>'
+    + '</div>'
+    + '<div class="toast ok" style="bottom:12px">'+ic("checkc")+' <span><b>Moved 3 items</b> — both views updated (FR-016)</span></div>'
+    + '</div>');
+  var after = '<div class="x2">'
+    + '<div class="panel">'+srcAfter+'</div>'
+    + '<div class="panel">'+dstAfter+'</div>'
+    + '</div>';
+  return panel("US3", "", '<div style="display:flex;flex-direction:column;gap:26px">' + mid + after + '</div>',
+    "<b>Cross-instance move</b> (FR-015/016): instance A <span class='dim'>(/Home)</span> → instance B <span class='dim'>(/Projects/assets)</span>. <b>Mid-drag:</b> ghost follows the cursor across both windows; B’s folder row is the lit target. <b>Outcome:</b> A drops the 3 moved items; B shows them. Both windows observe the shared VFS, so no manual refresh. <span class='dim'>Presented as one scene, two separate window frames (OQ 3).</span>");
+}
+
+/* ---------- edge cases ---------- */
+function edge(){
+  var out = "";
+  // empty folder marquee
+  out += panel("EDGE", "Files — /Empty", win("Files — /Empty", toolbar(["Empty"], "", "") +
+    '<div class="listwrap" style="position:relative"><div class="list" style="--h:210px"><div class="emptymsg">This folder is empty</div></div>'
+    + '<div class="marquee" style="left:14px;top:20px;width:250px;height:150px"></div>'
+    + '<span class="badge" style="left:20px;top:26px">marquee over nothing</span>' + cur(262,168)
+    + '</div>'),
+    "<b>Empty folder</b>: marquee and Shift-click with no items select nothing and cause no error.");
+  // cross-instance same folder
+  var winA = win("Files — /Documents (A)", toolbar(["Documents"], chip("1 selected"), "") +
+    '<div class="listwrap"><div class="list" style="--h:150px">'
+    + '<div class="row file dim"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">brief.docx</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">data.csv</span></div>'
+    + '</div></div>');
+  var winB = win("Files — /Documents (B)", toolbar(["Documents"], "", "") +
+    '<div class="listwrap" style="position:relative;padding-bottom:40px"><div class="list" style="--h:150px">'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
+    + '<div class="row file new"><span class="ico">'+ic("filetext")+'</span><span class="name">report (1).pdf</span><span class="nchip">COPY</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">brief.docx</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">data.csv</span></div>'
+    + '</div><div class="toast ok" style="bottom:10px">'+ic("copy")+' <span><b>Copied 1 item</b></span></div></div>');
+  out += panel("EDGE", "", '<div class="x2" style="gap:12px"><div class="panel" style="position:relative">'+winA+ghost(1,"copy",120,40)+'</div><div class="panel">'+winB+'</div></div>',
+    "<b>Cross-instance, same folder</b> (US3 scenario 6): two instances on <b>/Documents</b>. Dragging report.pdf from A into B is <b>same-folder semantics</b> → a correctly-named copy <b>report (1).pdf</b>; the original is unchanged in <b>both</b> views.");
+  // navigation clears selection
+  var navA = win("Files — /Home (A)", toolbar(["Home"], chip("2 selected"), "") +
+    '<div class="listwrap"><div class="list" style="--h:150px">'
+    + '<div class="row dir sel"><span class="ico">'+ic("folder")+'</span><span class="name">Documents</span></div>'
+    + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Downloads</span></div>'
+    + '<div class="row dir sel"><span class="ico">'+ic("folder")+'</span><span class="name">Projects</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">README.md</span></div>'
+    + '</div></div>');
+  var navB = win("Files — /Home/Documents (B)", toolbar(["Home","Documents"], "", '<span class="sel-crumb"></span>') +
+    '<div class="listwrap" style="position:relative;padding-bottom:40px"><div class="list" style="--h:150px">'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">notes.md</span></div>'
+    + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">brief.docx</span></div>'
+    + '</div><div class="toast noop">'+ic("x")+' <span><b>Selection cleared</b> on navigation (FR-011)</span></div></div>');
+  out += panel("EDGE", "", '<div class="x2" style="gap:12px"><div class="panel">'+navA+'</div><div class="panel">'+navB+'</div></div>',
+    "<b>Navigation clears the selection</b> (FR-011): selecting in /Home then navigating into <b>Documents</b> (or pressing Up) clears the set — selection is scoped to the current folder.");
+  return out;
+}
+
+/* ---------- open questions ---------- */
+function oqs(){
+  var q = [
+    "<b>Row list vs. the current grid.</b> The spec assumes a vertical <b>row list</b>; the shipping Files app is an icon-tile <b>grid</b>. This mockup follows the spec (rows) and carries over the Files palette/toolbar/context-menu. <span class='dft'>Default: adopt rows as spec’d</span> — confirm whether the grid should also gain multi-select, or whether the list is the new primary view.",
+    "<b>Move vs. copy drag affordance.</b> The spec is silent on how to read the operation while dragging. <span class='dft'>Default (this mockup): a cursor-following badge on the ghost — <b>MOVE</b> arrow for a different folder, <b>COPY</b> for the same folder</span>, mirroring OS conventions. Confirm, or prefer a cursor-only badge.",
+    "<b>Marking newly created copies.</b> Spec is silent on post-copy visual feedback. <span class='dft'>Default: a brief row highlight + a “NEW” chip, plus a confirmation toast</span>. (OQ for a persistent “NEW” tag vs. a decaying flash.)",
+    "<b>Cross-instance presentation.</b> <span class='dft'>Default (this mockup): one continuous scene with two separate Files window frames sharing the drag</span> — reads as a real OS drag across windows. Alternative: two independent before/after panels per instance.",
+    "<b>Marquee behavior.</b> Style + whether a marquee <b>adds to</b> or <b>replaces</b> an existing selection, and whether it can start <b>on an item</b> (spec: item-origin = move/copy drag, empty-space = marquee). <span class='dft'>Default: empty-space only, additive, sky translucent fill with a dashed/solid border</span> (matches the existing drop-overlay accent).",
+    "<b>Context-menu completeness.</b> The current app’s context menu only offers <b>Download</b>; Open/Rename/Copy/Move/Delete live in hover buttons or prompts. <span class='dft'>Default: the full set above, with a “Move to…” submenu</span>. Confirm the exact menu + whether a submenu is wanted."
+  ];
+  var html = '<div class="oq"><ol>';
+  for(var i=0;i<q.length;i++) html += '<li><span class="n">'+(i+1)+'</span><span>'+q[i]+'</span></li>';
+  html += '</ol></div>';
+  return html;
+}
+
+/* ---------- mount ---------- */
+document.getElementById("p-us1").innerHTML = us1();
+document.getElementById("p-us2").innerHTML = us2();
+document.getElementById("p-us3").innerHTML = us3();
+document.getElementById("p-xi").innerHTML = xiscene();
+document.getElementById("p-edge").innerHTML = edge();
+document.getElementById("p-oq").innerHTML = oqs();
+</script>
+</body>
+</html>
