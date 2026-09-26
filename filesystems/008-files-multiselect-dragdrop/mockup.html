@@ -316,9 +316,9 @@ function us1(){
   // P3 marquee
   out += panel("US1", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("5 selected"), "") +
     '<div class="listwrap"><div class="list">'+rowsHtml(selP3)+'</div>'
-    + '<div class="marquee" style="left:10px;top:12px;width:262px;height:116px"></div>'
-    + '<span class="badge" style="left:16px;top:18px">marquee</span>'
-    + cur(272,124)
+    + '<div class="marquee" style="left:10px;top:84px;width:262px;height:114px"></div>'
+    + '<span class="badge" style="left:16px;top:90px">marquee</span>'
+    + cur(274,190)
     + '</div>'),
     "<b>Marquee</b> (FR-003): press on <b>empty list space</b> and drag. The translucent rectangle selects every row it intersects — here <span class='dim'>report.pdf · notes.md · screenshot</span> added to the existing set. On mouse-up the rectangle is removed.");
   // P4 toggle
@@ -395,7 +395,7 @@ function us3(){
     + '</div>'),
     "<b>Drop-target highlight</b> (FR-008): dragging the 3-item selection (README · report · notes, shown dimmed/in transit), the <b>Documents</b> folder row — a <i>different, non-selected</i> folder — lights up as the valid target with a “drop to move” badge. The ghost carries a <b>“3 items” count badge</b> (FR-009); dropping here <b>moves</b> the items.");
   // P11 same-folder copy outcome
-  var list11 = '<div class="list" style="--h:150px">'
+  var list11 = '<div class="list" style="height:296px">'
     + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Documents</span></div>'
     + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">Downloads</span></div>'
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">README.md</span></div>'
@@ -406,16 +406,20 @@ function us3(){
     + '<div class="more">… 9 more in this folder</div>'
     + '</div>';
   out += panel("US3", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("2 selected"), "") +
-    '<div class="listwrap" style="position:relative"><div class="list" style="height:150px">'+list11+'</div>'
+    '<div class="listwrap" style="position:relative;padding-bottom:42px">' + list11
     + '<div class="toast ok" style="bottom:14px">'+ic("checkc")+' <span><b>Copied 2 items</b> — name suffix avoids overwriting (FR-010)</span></div>'
     + '</div>'),
     "<b>Same-folder drop = copy</b> (FR-008/FR-010): dropping back into the <i>same</i> folder creates <b>report (1).pdf</b> and <b>notes (1).md</b>; the originals stay intact. Non-colliding <code style='font-family:ui-monospace,Menlo,monospace'>name (n).ext</code> naming, never an overwrite.");
   // P12 invalid / no-op
+  var list12 = '<div class="list" style="height:136px">'
+    + '<div class="row file sel"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
+    + '<div class="row file sel"><span class="ico">'+ic("filetext")+'</span><span class="name">notes.md</span></div>'
+    + '<div class="row file sel"><span class="ico">'+ic("filetext")+'</span><span class="name">screenshot-2026-08-31.png</span></div>'
+    + '<div class="more">… 11 more in this folder</div>'
+    + '</div>';
   out += panel("US3", "Files — /Home", win("Files — /Home", toolbar(["Home"], chip("3 selected"), "") +
-    '<div class="listwrap" style="position:relative"><div class="list" style="height:150px">'
-    + rowsHtml(selP12 = selOf([2,3,4]), extraP12)
-    + '<div class="emptyregion cancelled">released over empty space — no folder</div>'
-    + '</div>'
+    '<div class="listwrap" style="position:relative;padding-bottom:44px">' + list12
+    + '<div class="emptyregion cancelled" style="margin-top:6px">released over empty space — no folder</div>'
     + '<div class="toast noop">'+ic("return")+' <span><b>No valid drop target</b> — items returned to origin, still selected (FR-012)</span></div>'
     + '</div>'),
     "<b>Invalid / no-op drop</b> (FR-012): releasing over empty space (or a target that vanished) is a no-op — the items <b>return to origin</b> (still selected, no error state). The selection is preserved so the user can retry.");
@@ -451,7 +455,7 @@ function xiscene(){
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">notes.md</span></div>'
     + '</div></div>');
   var dstAfter = win("Files — /Projects (B)", toolbar(["Projects"], "", "") +
-    '<div class="listwrap" style="position:relative"><div class="list" style="--h:300px">'
+    '<div class="listwrap" style="position:relative;padding-bottom:44px"><div class="list" style="--h:300px">'
     + '<div class="row dir sel"><span class="ico">'+ic("folder")+'</span><span class="name">assets</span></div>'
     + '<div class="row dir"><span class="ico">'+ic("folder")+'</span><span class="name">src</span></div>'
     + '<div class="row file new"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span><span class="nchip">MOVED</span></div>'
@@ -488,7 +492,7 @@ function edge(){
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">data.csv</span></div>'
     + '</div></div>');
   var winB = win("Files — /Documents (B)", toolbar(["Documents"], "", "") +
-    '<div class="listwrap" style="position:relative"><div class="list" style="--h:150px">'
+    '<div class="listwrap" style="position:relative;padding-bottom:40px"><div class="list" style="--h:150px">'
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
     + '<div class="row file new"><span class="ico">'+ic("filetext")+'</span><span class="name">report (1).pdf</span><span class="nchip">COPY</span></div>'
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">brief.docx</span></div>'
@@ -505,7 +509,7 @@ function edge(){
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">README.md</span></div>'
     + '</div></div>');
   var navB = win("Files — /Home/Documents (B)", toolbar(["Home","Documents"], "", '<span class="sel-crumb"></span>') +
-    '<div class="listwrap" style="position:relative"><div class="list" style="--h:150px">'
+    '<div class="listwrap" style="position:relative;padding-bottom:40px"><div class="list" style="--h:150px">'
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">report.pdf</span></div>'
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">notes.md</span></div>'
     + '<div class="row file"><span class="ico">'+ic("filetext")+'</span><span class="name">brief.docx</span></div>'
