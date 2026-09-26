@@ -100,7 +100,7 @@ The user drags one item or a group of selected items and drops them onto a desti
 - **FR-010**: Copies MUST never overwrite an existing item; on name collision the app MUST generate a non-colliding name.
 - **FR-011**: Selection MUST be scoped to the current folder and cleared on folder navigation.
 - **FR-012**: A drop onto an invalid or empty target MUST be a no-op that leaves all dragged items in their original location.
-- **FR-013**: All existing single-item behaviors (open, rename, delete, copy, move, download) MUST remain unchanged for the one-item case (no regression).
+- **FR-013**: All *existing* single-item behaviors — open, rename, delete, download, the open-with handler list, and the external-file upload drop path — MUST remain unchanged (no regression). Copy and Move are **new** capabilities introduced by this feature; they are also available in the one-item case but are not part of the pre-existing surface that FR-013 protects.
 - **FR-014**: Ctrl/Cmd+click MUST toggle a single item in or out of the current selection without changing any other selected item.
 - **FR-015**: Drag-and-drop of one item or a selection MUST work between two separately-open Files app instances (cross-window), not only within a single instance.
 - **FR-016**: After a cross-instance move or copy, BOTH the source and destination instances MUST reflect the resulting VFS change (the source view drops moved items; the destination view shows the moved/copied items).
