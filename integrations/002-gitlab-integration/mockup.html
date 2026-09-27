@@ -89,22 +89,13 @@
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <span class="text-[13px] font-medium">GitLab</span>
-                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook-only</span>
+                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook</span>
               </div>
               <p class="mt-0.5 text-[11px] text-white/50">
-                Receives GitLab issue &amp; merge-request events and routes them to BOS handlers.
-                GitLab operations (comments, labels) are performed via the MCP server.
+                Receives GitLab issue &amp; merge-request events and emits them to BOS handlers.
+                This is the webhook only — handling is a separate, toggleable step.
               </p>
             </div>
-          </div>
-
-          <!-- MCP status -->
-          <div class="flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2">
-            <span class="inline-block h-2 w-2 rounded-full bg-emerald-400"></span>
-            <span class="text-[11px] text-emerald-200/90">GitLab MCP server: <span class="font-medium">Configured</span></span>
-            <span class="ml-auto text-[10px] text-white/40">
-              <i data-lucide="external-link" class="inline size-2.5"></i> MCP Servers
-            </span>
           </div>
 
           <!-- Webhook section (disabled) -->
@@ -149,22 +140,13 @@
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <span class="text-[13px] font-medium">GitLab</span>
-                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook-only</span>
+                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook</span>
               </div>
               <p class="mt-0.5 text-[11px] text-white/50">
-                Receives GitLab issue &amp; merge-request events and routes them to BOS handlers.
-                GitLab operations (comments, labels) are performed via the MCP server.
+                Receives GitLab issue &amp; merge-request events and emits them to BOS handlers.
+                This is the webhook only — handling is a separate, toggleable step.
               </p>
             </div>
-          </div>
-
-          <!-- MCP status -->
-          <div class="flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2">
-            <span class="inline-block h-2 w-2 rounded-full bg-emerald-400"></span>
-            <span class="text-[11px] text-emerald-200/90">GitLab MCP server: <span class="font-medium">Configured</span></span>
-            <span class="ml-auto text-[10px] text-white/40">
-              <i data-lucide="external-link" class="inline size-2.5"></i> MCP Servers
-            </span>
           </div>
 
           <!-- Webhook section (enabled, no token) -->
@@ -234,22 +216,13 @@
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <span class="text-[13px] font-medium">GitLab</span>
-                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook-only</span>
+                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook</span>
               </div>
               <p class="mt-0.5 text-[11px] text-white/50">
-                Receives GitLab issue &amp; merge-request events and routes them to BOS handlers.
-                GitLab operations (comments, labels) are performed via the MCP server.
+                Receives GitLab issue &amp; merge-request events and emits them to BOS handlers.
+                This is the webhook only — handling is a separate, toggleable step.
               </p>
             </div>
-          </div>
-
-          <!-- MCP status -->
-          <div class="flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2">
-            <span class="inline-block h-2 w-2 rounded-full bg-emerald-400"></span>
-            <span class="text-[11px] text-emerald-200/90">GitLab MCP server: <span class="font-medium">Configured</span></span>
-            <span class="ml-auto text-[10px] text-white/40">
-              <i data-lucide="external-link" class="inline size-2.5"></i> MCP Servers
-            </span>
           </div>
 
           <!-- Webhook section (enabled + token) -->
@@ -359,7 +332,8 @@
             handler listens to <code class="mx-1 rounded bg-black/30 px-1 font-mono text-white/70">gitlab.issue.opened</code> and is
             <span class="text-emerald-300/90">enabled by default</span> — it classifies new issues
             (<code class="font-mono text-[10px]">Bug</code> / <code class="font-mono text-[10px]">Feature</code> / <code class="font-mono text-[10px]">Improvement</code>)
-            and runs the matching workflow, updating the issue via the GitLab MCP server.
+            and runs the matching workflow, updating the issue via the <span class="text-white/80">GitLab MCP server</span> that is
+            configured and assigned to its agent.
             Managed separately:
             <button class="ml-1 inline-flex items-center gap-1 text-white/80 underline decoration-white/20 underline-offset-2 hover:text-white">
               Settings → Events → Handlers
@@ -375,7 +349,7 @@
 
   <!-- Mockup caption -->
   <div class="mt-3 px-1 text-[11px] text-white/30">
-    UI mockup · Settings → Integrations → GitLab (webhook-only, no OAuth) — not the shipped UI. The state switcher above is a mockup-only control.
+    UI mockup · Settings → Integrations → GitLab (webhook-only, no OAuth, no MCP status) — not the shipped UI. The state switcher above is a mockup-only control.
   </div>
 </div>
 
