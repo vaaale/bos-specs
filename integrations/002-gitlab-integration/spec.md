@@ -165,7 +165,7 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 - **Q1 (new MR handling)** → **A**: Emit a `gitlab.mr.opened` event only; no built-in MR workflow. Triage + resolution is issue-only in v1; the MR event is available for the user to route to another consumer. An MR-review workflow (Option B) is a planned follow-up.
 - **Q2 (default-handler autonomy)** → **A**: Comment + label only. The handler proposes (fix or draft spec) and never closes the item or opens a merge request; a human finalizes. The boundary is recorded so it can be widened deliberately.
 
-### Q1: How are new merge requests handled by the default triage handler?
+### Q1: How are new merge requests handled by the default triage handler? (Resolved: **A**)
 
 **Context**: The user chose issue **+ MR** coverage (Decision 2c), but the bug/feature resolution workflow is fundamentally an *issue* concept — an MR is submitted work, not a request to resolve.
 
@@ -180,7 +180,7 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 
 *Recommended: **A** for v1 (emit both, triage issues, leave MR action to the user's routing) with **B** as a planned follow-up.*
 
-### Q2: How much autonomy does the default handler have over the GitLab item?
+### Q2: How much autonomy does the default handler have over the GitLab item? (Resolved: **A**)
 
 **Context**: The user's standing philosophy is that autonomous self-modification should have an explicit safety boundary.
 
