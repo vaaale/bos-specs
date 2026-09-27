@@ -84,16 +84,16 @@ Because the inbound webhook only *emits* an event, and handlers subscribe indepe
 
 ### User Story 5 - Merge request events (Priority: P3)
 
-In addition to issues, the webhook also accepts merge-request events from GitLab. A new (opened) MR produces a `gitlab.mr.opened` event carrying the MR's project id, iid, title, labels, author, source/target branches, and URL, so the same handler-routing model applies to MRs.
+In addition to issues, the webhook also accepts merge-request events from GitLab. A new (opened) MR produces a `gitlab.mr.opened` event carrying the MR's project id, iid, title, labels, author, source/target branches, and URL. Per the confirmed scope (Q1), the default triage handler performs **no** built-in workflow for MRs — triage + resolution is issue-only in v1. The MR event is emitted so the user can route it to another consumer (e.g. the Workflow app).
 
-**Why this priority**: The user chose issue **+ MR** coverage, but the resolution workflow (bug/feature triage) is primarily an issue concept; MR handling is the extension and is least certain, so it lands after the issue path is proven.
+**Why this priority**: The user chose issue **+ MR** coverage, but the resolution workflow (bug/feature triage) is an issue concept; an MR is submitted work, not a request to resolve. MR event emission is confirmed scope; an MR-review workflow is a planned follow-up (Q1, Option B), so this story lands after the issue path is proven.
 
 **Independent Test**: With US2 in place, open a merge request in a connected project and confirm a `gitlab.mr.opened` event is emitted with the MR payload. Verify which workflow (if any) an enabled handler runs for a new MR.
 
 **Acceptance Scenarios**:
 
 1. **Given** the webhook is enabled and the account connected, **When** a merge request is opened, **Then** BOS emits a `gitlab.mr.opened` event with the MR's project id, iid, title, labels, author, branches, and URL.
-2. **Given** a new MR, **When** the default triage handler is enabled, **Then** the handler applies the behavior decided in Clarification Q1 (see below) to the MR.
+2. **Given** a new MR, **When** the default triage handler is enabled, **Then** the handler emits the event and performs no built-in workflow on the MR (issue-only triage, per Q1).
 
 ---
 
@@ -126,7 +126,7 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 - **FR-012**: The default handler MUST run the matching resolution workflow — bug: analyze the report, verify it, and propose a fix; feature: produce a specification for the requested feature — and MUST update the GitLab issue during the run with progress comments, state labels, and a final proposal.
 - **FR-013**: The default handler MUST, on a failed or errored run, record the event and post a failure comment on the issue without crashing the receiver or losing the event.
 - **FR-014**: The user MUST be able to disable the default handler and, in its place, have another consumer (e.g. the Workflow app) handle the same emitted event, by toggling handlers independently of the webhook.
-- **FR-015**: New merge requests MUST be processed by the default handler according to Clarification Q1.
+- **FR-015**: New merge requests MUST emit a `gitlab.mr.opened` event and receive no built-in workflow from the default handler (triage + resolution is issue-only in v1); the MR event exists for the user to route to another consumer (e.g. the Workflow app).
 - **FR-016**: The system MUST prevent the agent's own GitLab updates (comments, labels) from re-triggering the resolution workflow in a loop.
 
 ### Key Entities *(include if feature involves data)*
@@ -156,9 +156,14 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 - Classification relies on a small, conventional label set (`bug`, `feature`, `enhancement`) present in typical GitLab projects; absence of labels triggers the agent-based fallback rather than an error.
 - Self-hosted GitLab is supported at the instance-URL level; specific self-hosted version differences (older payload shapes) are not individually guaranteed.
 - The resolution workflows ("bug pipeline", "feature pipeline") map onto BOS's existing spec/build capabilities; the handler orchestrates them and writes results back to GitLab — it does not redefine those workflows.
-- The default triage handler's autonomy is bounded by Clarification Q2 (whether it may close the item itself vs. only propose).
+- The default triage handler's autonomy is bounded to commenting and relabeling (Q2, Option A): it proposes, and never closes the item or opens a merge request. Widening this boundary is a deliberate future change.
 
 ## Clarifications
+
+### Session 2026-09-27
+
+- **Q1 (new MR handling)** → **A**: Emit a `gitlab.mr.opened` event only; no built-in MR workflow. Triage + resolution is issue-only in v1; the MR event is available for the user to route to another consumer. An MR-review workflow (Option B) is a planned follow-up.
+- **Q2 (default-handler autonomy)** → **A**: Comment + label only. The handler proposes (fix or draft spec) and never closes the item or opens a merge request; a human finalizes. The boundary is recorded so it can be widened deliberately.
 
 ### Q1: How are new merge requests handled by the default triage handler?
 
