@@ -18,7 +18,7 @@
 
 The user opens Settings → Integrations → GitLab and enables the webhook. The GitLab integration is **webhook-only** — there is no account-connect step and no credential to store. BOS displays the public webhook URL to paste into GitLab, and offers buttons to generate (and later rotate) a shared token. The user copies the URL and token into a GitLab project's webhook configuration ("URL" and "Secret token" fields). When a new issue (or MR) is opened in that project, GitLab POSTs to BOS, BOS verifies the token, and emits an event into the BOS event system.
 
-**Why this priority**: This is the core of the feature — the inbound signal. It is independent of what *does* with the event; even with no handler enabled, the event must be produced and visible. There is no preceding "connect" step to build on.
+**Why this priority**: This is the core of the feature — the inbound signal. It is independent of what *does* with the event; even with no handler enabled, the event must be produced and visible. There is no preceding "connect" step to build on, and no MCP-server dependency: the webhook only receives and emits. Whether a GitLab MCP server is configured (and assigned to the handling agent) is the handler's concern, not the webhook's.
 
 **Independent Test**: With the webhook enabled and a generated token, register the URL + token against a GitLab project, open an issue, and confirm a `gitlab.issue.opened` event appears in the BOS event system (Event Viewer) carrying the issue's project id, iid, title, labels, author, and URL. A request with a wrong or missing token is rejected with 401; a request while the webhook is disabled is rejected with 404 (no information leak).
 
@@ -30,7 +30,7 @@ The user opens Settings → Integrations → GitLab and enables the webhook. The
 4. **Given** a registered URL, **When** a POST arrives with a missing or incorrect token, **Then** BOS returns 401 and emits no event.
 5. **Given** the webhook is disabled, **When** a POST arrives, **Then** BOS returns 404 (indistinguishable from a disabled or unknown webhook) and emits no event.
 6. **Given** GitLab retries the same delivery, **When** an identical payload arrives again within the dedup window, **Then** BOS returns success but emits no duplicate event.
-7. **Given** the panel is open, **When** the user has not yet configured a GitLab MCP server, **Then** the panel shows a hint that issue operations require a GitLab MCP server, with a link to Settings → MCP Servers.
+7. **Given** no GitLab MCP server is configured, **When** the user enables the webhook and registers the URL + token, **Then** the webhook still receives and emits events normally — the webhook has no MCP dependency; only the handler's ability to act is affected.
 
 ---
 
@@ -50,7 +50,7 @@ A default, built-in headless handler is subscribed to new-issue events and is en
 4. **Given** a new issue with no classification label, **When** it is opened, **Then** the handler infers the type from the title and description, states the inferred type in a comment, and proceeds with the matching workflow.
 5. **Given** the default handler is enabled, **When** the triage run fails partway (e.g. the agent errors), **Then** the event remains recorded in BOS, the issue receives a `Failed` status label and a failure comment; the failure does not crash the receiver or lose the event.
 6. **Given** the default handler is disabled, **When** a new issue is opened, **Then** the `gitlab.issue.opened` event is still emitted and visible, but no automatic classification, labeling, or workflow is triggered.
-7. **Given** no GitLab MCP server is configured, **When** a new issue is opened, **Then** the handler does not crash; it records the event and surfaces a "GitLab MCP not configured" failure (event + notification), and the issue is left unmodified.
+7. **Given** no GitLab MCP server is configured (or none is assigned to the handler's agent), **When** a new issue is opened, **Then** the handler does not crash; it records the event and surfaces a "GitLab MCP not configured" failure (event + notification), and the issue is left unmodified.
 
 ---
 
@@ -116,7 +116,7 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 - **FR-012**: The default handler MUST perform ALL GitLab reads and writes (reading the issue, posting comments, applying/removing labels) through the **GitLab MCP server**; it MUST NOT hold or use a BOS-owned GitLab credential.
 - **FR-013**: The default handler MUST apply a status label to the issue that reflects the current pipeline stage, keeping exactly one status label active at a time, and MUST treat the classification label (`Bug`/`Feature`/`Improvement`) as additive and persistent. The status labels are: `Triage`, `Analyzing`, `Verifying`, `Fix Proposed` (Bug path); `Spec Drafted` (Feature/Improvement path); `Needs Input` (blocked, any path); `Failed` (any path).
 - **FR-014**: The default handler MUST, on a failed or errored run, record the event, apply the `Failed` status label, and post a failure comment on the issue without crashing the receiver or losing the event.
-- **FR-015**: When no GitLab MCP server is configured, the default handler MUST NOT crash; it MUST record the event and surface a "GitLab MCP not configured" failure (as an event/notification), leaving the issue unmodified. The GitLab integration panel MUST indicate whether a GitLab MCP server is configured and link to Settings → MCP Servers.
+- **FR-015**: The GitLab MCP server is a dependency of the **handler**, not of the webhook — the integration panel MUST NOT require or display MCP-server configuration. When no GitLab MCP server is configured (or none is assigned to the handler's agent), the default handler MUST NOT crash; it MUST record the event and surface a "GitLab MCP not configured" failure (as an event/notification), leaving the issue unmodified.
 - **FR-016**: The user MUST be able to disable the default handler and, in its place, have another consumer (e.g. the Workflow app) handle the same emitted event, by toggling handlers independently of the webhook.
 - **FR-017**: New merge requests MUST emit a `gitlab.mr.opened` event and receive no built-in workflow from the default handler (triage + resolution is issue-only in v1); the MR event exists for the user to route to another consumer (e.g. the Workflow app).
 - **FR-018**: The system MUST prevent the handler's own GitLab updates (comments, labels) from re-triggering the resolution workflow in a loop.
@@ -153,7 +153,7 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 - Classification relies on exactly three conventional labels (`Bug`, `Feature`, `Improvement`); any other label is ignored for classification and the agent-based fallback is used.
 - The resolution workflows ("bug pipeline", "feature/improvement spec pipeline") map onto BOS's existing agent/spec capabilities; the handler orchestrates them and writes results back to GitLab via the MCP server — it does not redefine those workflows.
 - The default triage handler's autonomy is bounded to commenting and relabeling (Q2, Option A): it proposes, and never closes the item or opens a merge request. Widening this boundary is a deliberate future change.
-- A user who wants the handler to act must have configured at least one GitLab MCP server with access to the target project; that is a precondition, not something this feature installs.
+- A user who wants the handler to act must have configured a GitLab MCP server with access to the target project and assigned it to the handler's agent; that is a precondition of the handler, not something this feature installs, and not a concern of the webhook panel.
 
 ## Clarifications
 
@@ -167,3 +167,4 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 - **R1 (no OAuth)**: Remove the "Connect a GitLab account" story and all OAuth/scope requirements. The GitLab integration is webhook-only; it stores no GitLab credential. **All** GitLab read/write (read issue, comment, relabel) is done via the **GitLab MCP server** (Settings → MCP Servers). The handler must fail gracefully when no GitLab MCP server is configured (SC-007).
 - **R2 (classification labels)**: Fixed to exactly three — `Bug`, `Feature`, `Improvement` (renamed from the earlier `bug` / `feature`/`enhancement`). `Improvement` = improve an existing feature; `Feature` = a new feature. Both draft a spec.
 - **R3 (status labels)**: The handler applies these transient, single-active status labels as it advances — `Triage`, `Analyzing` (bug), `Verifying` (bug), `Fix Proposed` (bug), `Spec Drafted` (feature/improvement), `Needs Input` (blocked, any), `Failed` (any). The classification label is additive and persists. (Set proposed by Build Studio, accepted as the design default.)
+- **R4 (MCP is a handler dependency, not a webhook one)**: The GitLab MCP server is required by the **handler/agent** that acts on the event — it must be configured and assigned to that agent. The webhook and the integration panel have **no** MCP dependency and MUST NOT display or require MCP-server configuration. The panel's only concern is the webhook (URL + token); the handler pointer notes that the default handler acts via the GitLab MCP server assigned to its agent. (FR-015, US1.7, US2.7, Assumptions updated accordingly; mockup's MCP status banner removed.)
