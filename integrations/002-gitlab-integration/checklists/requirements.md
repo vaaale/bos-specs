@@ -6,7 +6,7 @@
 
 ## Content Quality
 
-- [x] No implementation details (languages, frameworks, APIs)
+- [x] No implementation details (languages, frameworks, APIs) — references to "GitLab MCP server", "event kernel", "X-Gitlab-Token" are named platform mechanisms / the external contract, not implementation choices
 - [x] Focused on user value and business needs
 - [x] Written for non-technical stakeholders
 - [x] All mandatory sections completed
@@ -32,4 +32,6 @@
 ## Notes
 
 - Both clarifications resolved in Session 2026-09-27: **Q1 → A** (new MRs emit `gitlab.mr.opened`, no built-in workflow — triage/resolution is issue-only in v1; MR-review is a planned follow-up) and **Q2 → A** (default handler comments + relabels only; it proposes, never closes the item or opens an MR).
-- All items pass. Ready for `design` → `plan` → `tasks`.
+- **Revision (2026-09-27, user review)**: R1 no-OAuth (GitLab integration is webhook-only; all GitLab read/write via the GitLab MCP server; handler fails gracefully when MCP absent — SC-007), R2 classification labels fixed to `Bug`/`Feature`/`Improvement`, R3 handler-applied status labels defined. Spec + mockup fully rewritten.
+- **One open design decision to confirm at `design`**: the generic webhook receiver's existing `state.connected` gate assumes a connected integration; for a webhook-only gitlab integration the design must treat it as available-by-default (only the webhook-enable flag + valid token gate inbound). Flagged in Assumptions.
+- All content items pass. **Awaiting user approval of spec + mockup before `design`.**
