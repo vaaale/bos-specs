@@ -14,7 +14,7 @@
 ## Requirement Completeness
 
 - [x] No [NEEDS CLARIFICATION] markers remain
-- [ ] Requirements are testable and unambiguous — FR-015 and US5 are parameterized on Q1 (MR handling) until that clarification resolves
+- [x] Requirements are testable and unambiguous — Q1 and Q2 resolved; FR-015 and US5 now concrete (MR = event only, no built-in workflow)
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
 - [x] All acceptance scenarios are defined
@@ -31,5 +31,5 @@
 
 ## Notes
 
-- Two clarifications are open and block full readiness (see spec.md → Clarifications): **Q1** (how new MRs are handled) and **Q2** (default-handler autonomy boundary over the GitLab item). Both carry recommended defaults (A).
-- Item incomplete: FR-015 / US2 (MR path) resolve once Q1 is answered. Everything else is ready for `clarify` → `design` → `plan`.
+- Both clarifications resolved in Session 2026-09-27: **Q1 → A** (new MRs emit `gitlab.mr.opened`, no built-in workflow — triage/resolution is issue-only in v1; MR-review is a planned follow-up) and **Q2 → A** (default handler comments + relabels only; it proposes, never closes the item or opens an MR).
+- All items pass. Ready for `design` → `plan` → `tasks`.
