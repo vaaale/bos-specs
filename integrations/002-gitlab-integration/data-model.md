@@ -42,13 +42,13 @@ Two-stage: the handler's `IntegrationEvent` (inbound) → the BOS event (after `
 **IntegrationEvent** (returned by `GitLabWebhookHandler.receive`):
 
 ```
-{ type: "issue-opened" | "mr-opened",
+{ type: "issue-opened" | "mr-opened" | "issue-noted",
   service: "gitlab/webhooks",
   timestamp: number,
   data: <projection> }
 ```
 
-**`data` projection** (bounded — FR: description truncated to ~2 000 chars):
+**`data` projection — items** (bounded — FR: description truncated to ~2 000 chars):
 
 | Field | Type | Issue | MR | Notes |
 |---|---|---|---|---|
@@ -62,23 +62,38 @@ Two-stage: the handler's `IntegrationEvent` (inbound) → the BOS event (after `
 | `sourceBranch` | `string` | — | ✓ | `object_attributes.source_branch`. |
 | `targetBranch` | `string` | — | ✓ | `object_attributes.target_branch`. |
 
+**`data` projection — `issue-noted`** (R7 / FR-022; bounded — note truncated to ~2 000 chars):
+
+| Field | Type | Source field | Notes |
+|---|---|---|---|
+| `projectId` | `number` | `project.id` | |
+| `projectPath` | `string` | `project.path_with_namespace` | |
+| `iid` | `number` | **`issue.iid`** (top level) | The issue's PROJECT-SCOPED number. See the warning below. |
+| `note` | `string` | `object_attributes.note` | Truncated. |
+| `author` | `{ name, username }` | top-level `user` | The **comment's** author, not the issue's. |
+| `url` | `string` | `object_attributes.url` | Issue URL + `#note_<id>` anchor. |
+
+> **The note-hook field layout, verified.** A note hook's `object_attributes` describes the **comment**: `note`, `noteable_type` (`"Issue"` / `"MergeRequest"` / `"Snippet"` / `"Commit"`), `noteable_id`, `url`, `action`. `noteable_id` is the issue's **global/database** id, and GitLab emits **no `noteable_iid`** — confirmed against `lib/gitlab/hook_data/note_builder.rb`'s `SAFE_HOOK_ATTRIBUTES` and the documented "Comment on an issue" payload. The project-scoped iid, which is what every GitLab MCP call takes, is on the **top-level `issue`** object. The implementation reads `noteable_iid` first and falls back to `issue.iid` for self-hosted tolerance, but `issue.iid` is the field that answers; `webhook.receive.test.ts` pins this with a payload whose two ids deliberately differ (900 vs 17).
+>
+> The projection carries **no** "is this the agent?" flag and cannot: BOS holds no GitLab credential and does not know which user the MCP token acts as (R1/R4). That determination is the agent's (design ADR-9/ADR-13).
+
 **BOS event** (after mapping — ADR-2):
 
 | Field | Value |
 |---|---|
-| `type` | `gitlab.issue.opened` (from `issue-opened`) or `gitlab.mr.opened` (from `mr-opened`) |
+| `type` | `gitlab.issue.opened` (from `issue-opened`), `gitlab.mr.opened` (from `mr-opened`), or `gitlab.issue.noted` (from `issue-noted`) |
 | `source` | `{ appId: "gitlab", name: "GitLab" }` (from `KNOWN_NAMES.gitlab`) |
 | `payload` | `{ ...data, _integrationType, _integrationService, summary }` |
-| `summary` | `"issue #<iid> <title>"` / `"MR !<iid> <title>"` (the `legacyFriendlySummary` branch) |
+| `summary` | `"issue #<iid> <title>"` / `"MR !<iid> <title>"` / `"comment on issue #<iid>"` (the `legacyFriendlySummary` branches) |
 
-Both types pass `isValidEventType` (dot-separated lowercase).
+All three types pass `isValidEventType` (dot-separated lowercase). The two `gitlab.issue.*` names are a pinned pair — the handler subscribes to that prefix (§4).
 
 ## 4. Triage Handler (event kernel `HandlerRegistration`)
 
 | Field | Value |
 |---|---|
 | `handlerId` | `"gitlab-issue-triage"` |
-| `eventType` | `"gitlab.issue.opened"` (exact — issue-only per Q1; **not** a prefix) |
+| `eventType` | `"gitlab.issue.*"` — a **prefix pattern** (R7), so one handler covers `gitlab.issue.opened` and `gitlab.issue.noted`. `isValidRegistrationType` accepts `prefix.*`; `typeMatches` resolves it per event. The prefix stops at `issue`: `gitlab.*` would sweep in `gitlab.mr.opened`, which is out of scope per Q1. |
 | `mode` | `"headless"` |
 | `ownerId` | `"core"` |
 | `declaredBy` | `"core"` (⇒ `isHandlerActive` is a plain `enabled` boolean; Event Viewer toggle is authoritative — ADR-7) |
@@ -101,7 +116,9 @@ Seeded from `seed/agents/gitlab-issue-agent/AGENT.md` → `data/agents/gitlab-is
 
 ## 6. Triage Skill (`SKILL.md`)
 
-`seed/skills/gitlab-issue-triage/SKILL.md` → `data/skills/gitlab-issue-triage/` at boot. The **pipeline driver** (model-followed guidance — design §3.8): read the issue via MCP → classify (labels first, inference fallback) → idempotency/resume (existing status label ⇒ resume) → run the matching pipeline applying the transient status label → terminal `Needs Review`. Owns the single-active-status swap and the Q2 "never close/commit" boundary.
+`seed/skills/gitlab-issue-triage/` (a `SKILL.md` **router** plus `references/*.md`, read on demand with `skill_read_file`) → `data/skills/gitlab-issue-triage/` at boot. The **pipeline driver** (model-followed guidance — design §3.8): read the issue via MCP → classify (labels first, inference fallback) → idempotency/resume (existing status label ⇒ resume) → run the matching pipeline applying the transient status label → terminal `Needs Review`. Owns the single-active-status swap and the Q2 "never close/commit" boundary.
+
+`references/notes.md` (R7) owns the **re-entry decision**: establish the agent's own GitLab identity from the MCP token, read the thread, then either resume from the current status label (addressing the newest human note, one reply per dispatch) or — when the newest note is the agent's own — post nothing, change no label, and stop. That last branch is what makes the comment chain self-terminating (ADR-9/ADR-13).
 
 ## 7. Labels (`labels.ts` — shared constants)
 
@@ -136,7 +153,19 @@ Seeded from `seed/agents/gitlab-issue-agent/AGENT.md` → `data/agents/gitlab-is
 
 Feature/Improvement path: `Triage ──▶ (work) ──▶ Spec Drafted ──▶ Needs Review`.
 
-**Loop prevention** (structural, ADR-9): the skill's MCP writes produce GitLab `note` (comment) and `issue`/`merge_request` `action:"update"` (label) webhooks — both excluded by the receiver's `object_kind ∈ {issue, merge_request}` **and** `action === "open"` filter, so they never re-trigger the handler.
+**Re-entry** (R7): `Needs Review` is terminal for the agent's own initiative but **resumable** on a new human comment — the agent revises its deliverable, re-posts it, and keeps the label. `Needs Input` resumes the same way. A human still closes the issue.
+
+```
+Needs Input  ──human comment──▶ continue from the stage that asked
+Needs Review ──human comment──┬ approval → stop (leave Needs Review; they close it)
+                              └ feedback → revise, re-post, KEEP Needs Review
+any note authored by the AGENT ──▶ no comment, no label, stop   (self-terminating)
+```
+
+**Loop prevention** (two-part, ADR-9 as revised by R7):
+
+- **Structural, for label edits.** The skill's relabels come back as `issue`/`merge_request` hooks with `action:"update"`, excluded by the receiver's `action === "open"` requirement. The agent may relabel freely.
+- **Agent-side identity, for comments.** The skill's comments come back as `note` hooks and ARE re-dispatched — that is the R7 trigger. The agent's note and a human's are the same shape on the wire, and BOS has no credential with which to tell them apart, so the **agent** determines its own GitLab identity from the MCP token and no-ops when the newest note is its own. Cost: one cheap no-op dispatch per comment the agent posts, terminating there because a no-op writes nothing.
 
 ## Relationships
 
@@ -145,9 +174,10 @@ GitLab integration (authless)
 └─ service "webhooks"
    ├─ config.webhook (WebhookConfig) ── verified against ── WebhookSecrets (SecretsStore)
    ├─ config.triageAgentId ── selects ── Agent (data/agents/<id>)
-   └─ inbound webhook ── emits ── BOS event (gitlab.issue.opened / gitlab.mr.opened)
+   └─ inbound webhook ── emits ── BOS event (gitlab.issue.opened / gitlab.issue.noted / gitlab.mr.opened)
                                         │
-Triage Handler (core, gitlab-issue-triage) ── consumes gitlab.issue.opened ──▶ runSubAgent(triageAgentId)
+Triage Handler (core, gitlab-issue-triage) ── consumes gitlab.issue.* ──▶ runSubAgent(triageAgentId)
+                                               (opened → fresh task, noted → resume task)
                                                                                    │
                                                                               Agent + skill
                                                                                    │  (via the agent's MCP allowlist)

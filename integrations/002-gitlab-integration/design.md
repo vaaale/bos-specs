@@ -1,7 +1,7 @@
 # Design: GitLab Integration (Webhook → Triage)
 
 **Spec**: [`spec.md`](./spec.md) · **UI contract**: [`mockup.html`](./mockup.html) · **Checklist**: [`checklists/requirements.md`](./checklists/requirements.md)
-**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v5 — R6 handling-model revision + re-review fixes: failure detected post-run, outcome-based; deterministic MCP pre-flight removed)
+**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v7 — R7 comment-driven re-entry: the receiver also emits `gitlab.issue.noted`, the handler subscribes to the `gitlab.issue.*` prefix, and the dispatcher has two task shapes)
 **App Target**: `bos-core` (confirmed; agrees with `spec.md`)
 
 ---
@@ -129,14 +129,25 @@ src/components/apps/settings/integrations/
 `GitLabWebhookHandler` (`adapters/webhook.ts`) implements `WebhookHandler`:
 
 - **`verify`** — *plain string match*, not HMAC. Read the `X-Gitlab-Token` header; timing-safe-compare against `[secrets.previous, secrets.primary]`. Reuse the `timingSafeEqual` shape from `TelegramBotWebhookHandler.verify`. **No candidates present ⇒ reject** (a manual GitLab webhook with no token yet must 401, never "accept all").
-- **`receive`** — `JSON.parse` the body. `object_kind === "issue"` **and** `action === "open"` → one `IntegrationEvent` `{ type: "issue-opened", service: "gitlab/webhooks", data: <issue projection> }`; `object_kind === "merge_request"` **and** `action === "open"` → `{ type: "mr-opened", … }`; **anything else** → `{ events: [] }` (2xx `emitted: 0`). Lifecycle hooks are **routing-only** (ADR-1c): `onEnable` / `onSecretsRotated` / `onDisable` register and revoke `sha256(token)` in the Bastion credentials index. Nothing is ever *registered with GitLab* — that stays manual.
-- **Projection** (bounded): `project.id`, `object_attributes.iid`, `.title`, `.labels[].title` → `labels[]`, top-level `user {name, username}`, `object_attributes.url`, `.description` truncated (e.g. 2 000 chars). MRs also `source_branch`/`target_branch`.
+- **`receive`** — `JSON.parse` the body, then three branches:
+  - `object_kind === "note"` **and** `object_attributes.noteable_type === "Issue"` → one `IntegrationEvent` `{ type: "issue-noted", service: "gitlab/webhooks", data: <note projection> }` (R7 / FR-022). A note on a `MergeRequest`, a `Snippet` or a `Commit` → `{ events: [] }`: only issues have a pipeline to re-enter (Q1).
+  - `object_kind === "issue"` **and** `action === "open"` → `{ type: "issue-opened", … }`.
+  - `object_kind === "merge_request"` **and** `action === "open"` → `{ type: "mr-opened", … }`.
+  - **anything else** → `{ events: [] }` (2xx `emitted: 0`).
 
-The IntegrationEvent types (`issue-opened`/`mr-opened`) are mapped to kernel types separately (ADR-2).
+  Lifecycle hooks are **routing-only** (ADR-1c): `onEnable` / `onSecretsRotated` / `onDisable` register and revoke `sha256(token)` in the Bastion credentials index. Nothing is ever *registered with GitLab* — that stays manual.
+- **Item projection** (bounded): `project.id`, `object_attributes.iid`, `.title`, `.labels[].title` → `labels[]`, top-level `user {name, username}`, `object_attributes.url`, `.description` truncated (e.g. 2 000 chars). MRs also `source_branch`/`target_branch`.
+- **Note projection** (bounded): `project.id`, `project.path_with_namespace`, **`issue.iid`**, `object_attributes.note` truncated (2 000 chars), top-level `user {name, username}`, `object_attributes.url`.
 
-### 3.5 Event-type mapping — see ADR-2 *(unchanged)*
+  > **The iid is on the top-level `issue`, not on `object_attributes`.** A note hook's `object_attributes` describes the COMMENT; it carries `noteable_id`, which is the issue's **global/database** id, and GitLab emits **no `noteable_iid`** at all (verified against `lib/gitlab/hook_data/note_builder.rb`'s `SAFE_HOOK_ATTRIBUTES` and the documented "Comment on an issue" payload). Reading `noteable_id` as the iid points the agent at a different issue in every project whose first issue is not also the instance's first. The implementation reads `object_attributes.noteable_iid` first and falls back to `issue.iid`, in the same defensive spirit as the rest of the projection, but `issue.iid` is the field that actually answers.
 
-Add to `KNOWN_TYPES`: `"gitlab/webhooks:issue-opened" → "gitlab.issue.opened"`, `"gitlab/webhooks:mr-opened" → "gitlab.mr.opened"`; add `KNOWN_NAMES.gitlab = "GitLab"`; add a `legacyFriendlySummary` branch (`"issue #<iid> <title>"` / `"MR !<iid> <title>"`). Both final types pass `isValidEventType`.
+The IntegrationEvent types (`issue-opened`/`mr-opened`/`issue-noted`) are mapped to kernel types separately (ADR-2).
+
+### 3.5 Event-type mapping — see ADR-2
+
+Add to `KNOWN_TYPES`: `"gitlab/webhooks:issue-opened" → "gitlab.issue.opened"`, `"gitlab/webhooks:mr-opened" → "gitlab.mr.opened"`, `"gitlab/webhooks:issue-noted" → "gitlab.issue.noted"`; add `KNOWN_NAMES.gitlab = "GitLab"`; add `legacyFriendlySummary` branches (`"issue #<iid> <title>"` / `"MR !<iid> <title>"` / `"comment on issue #<iid>"`). All three final types pass `isValidEventType`.
+
+The two `gitlab.issue.*` names are load-bearing **as a pair**: the handler subscribes to that prefix (§3.6), and the systematic derivation would have produced `com.bos.gitlab.webhooks.issue-noted` — outside the prefix, and so never dispatched. The note's summary deliberately omits the comment text: summaries are capped at 140 characters and read in a list, where the useful fact is which issue woke the agent.
 
 ### 3.6 Triage handler = thin dispatcher — see ADR-3, ADR-12
 
@@ -144,13 +155,14 @@ Add to `KNOWN_TYPES`: `"gitlab/webhooks:issue-opened" → "gitlab.issue.opened"`
 
 ```
 registerCoreExecutor("gitlab-issue-triage", async (record) => {
-  // Resolve the selected agent (panel picker, default "gitlab-issue-agent").
-  // Then FIRE-AND-FORGET the dispatch:  void dispatchToAgent(record)
+  // A `gitlab.issue.*` type the dispatcher has no task shape for → ack, no run.
+  if (!isTriageEventType(record.type)) return { result: { dispatched: false, … } };
+  // Otherwise FIRE-AND-FORGET the dispatch:  void dispatchToAgent(record)
   // Return immediately → prompt ack, never block the 30 s ack window.
 });
 api.register({
   handlerId: "gitlab-issue-triage",
-  eventType: "gitlab.issue.opened",   // exact; issue-only per Q1 — NOT a prefix
+  eventType: "gitlab.issue.*",        // PREFIX — opened AND noted (R7); still not MRs
   mode: "headless",
   ownerId: "core",
   declaredBy: "core",
@@ -159,8 +171,10 @@ api.register({
 });
 ```
 
-- **Registered for `gitlab.issue.opened` only.** `gitlab.mr.opened` is deliberately not a target (Q1=A). The per-handler FIFO queue serializes runs (concurrency 1) — prevents concurrent double-processing of the same issue.
-- **The handler holds no triage logic** (R6): it resolves which agent to run and hands over the issue context. Classification, the workflow, and all GitLab updates are the **agent + skill's** job.
+- **Registered for the `gitlab.issue.*` prefix** (R7, ADR-13). `isValidRegistrationType` accepts a `prefix.*` pattern and `typeMatches` resolves it per event, so **one** handler covers `gitlab.issue.opened` and `gitlab.issue.noted`. One handler is the point: the Event Viewer toggle stays meaningful (disabling "GitLab issue triage" disables all of it, not the half that starts it), and the per-handler FIFO queue serializes a fresh run and a resume run for the same issue instead of racing them.
+- **The prefix stops at `issue`.** `gitlab.*` would sweep in `gitlab.mr.opened`, which gets no built-in workflow (Q1=A) — the constraint the old exact-type registration expressed.
+- **A prefix means unknown types will arrive.** The executor asks the dispatcher whether it has a task shape (`isTriageEventType`, one source of truth, §3.7) and acks without running when it does not. Guessing the fresh task for a future `gitlab.issue.closed` would restart finished work and re-comment on it.
+- **The handler holds no triage logic** (R6): it resolves which agent to run and hands over the context. Classification, the workflow, all GitLab updates — and, under R7, the agent's own GitLab **identity** — are the **agent + skill's** job (R4 boundary intact; ADR-13).
 - **Prompt-ack + fire-and-forget** (ADR-3, unchanged in mechanism): the executor returns immediately; `dispatchToAgent` is the detached async work.
 
 ### 3.7 Dispatch + graceful failure — see ADR-12, ADR-4 (revised)
@@ -168,7 +182,11 @@ api.register({
 `triage/dispatch.ts`:
 
 1. **Resolve the agent.** Read the panel's "agent that handles new issues" from the persisted integration config — `state.services["webhooks"].config.triageAgentId` (the exact analog of Telegram's `state.services["bot"].config.agentConfig.agentId`), default `gitlab-issue-agent` → `getAgent(id)`. If it resolves to nothing, emit `com.bos.gitlab.triage.failed` (`agent_not_found`) and stop — no run.
-2. **Build the task.** A short, context-bearing instruction: *"A new GitLab issue was opened: project #<id> (proj/app), issue #<iid>, title …, labels …, url …. Use the `gitlab-issue-triage` skill. Read the issue via the GitLab MCP server, classify it, work it through the pipeline, and update it with comments and status labels as you go."* The skill (loaded by the agent) supplies the actual state-machine logic — the task only supplies the entry context.
+2. **Build the task — one of TWO shapes, chosen by `record.type`** (R7, ADR-13). A single `TASK_BUILDERS` table keyed by event type is the only place that knows which is which; `taskForRecord(record)` returns `undefined` for a `gitlab.issue.*` type with no shape, which is also the handler's guard (§3.6). In both shapes the skill (loaded by the agent) supplies the actual state-machine logic — the task supplies only the entry context.
+   - **`gitlab.issue.opened` → the FRESH task**: *"A new GitLab issue was opened: project #<id> (proj/app), issue #<iid>, title …, labels …, url …. Use the `gitlab-issue-triage` skill. Read the issue via the GitLab MCP server, classify it, work it through the pipeline, and update it with comments and status labels as you go."*
+   - **`gitlab.issue.noted` → the RESUME task**: *"A human commented on GitLab issue #<iid> in project #<projectId> (<url>). The note (by @<username>): <note>. Resume the `gitlab-issue-triage` pipeline for this issue. Read the issue and its notes via the GitLab MCP server. **Determine your OWN GitLab identity from the MCP server (the token's user).** If the newest note is from a HUMAN: resume from the issue's CURRENT status label and address it — at `Needs Input` they answered your question; at `Needs Review` revise your deliverable and re-post it, keeping `Needs Review`. Post exactly one reply. If the newest note is YOUR OWN, or there is no new human input: do NOTHING — post no comment, change no label, and stop. Never close the issue or open a merge request."*
+
+   The identity instruction is the load-bearing half of loop prevention for notes (ADR-9, ADR-13) and it **cannot** move into this file: BOS holds no GitLab credential (R1), so the only party that can answer "who does this token act as" is the agent holding the MCP server. The "do NOTHING" branch is what makes the chain self-terminate; "exactly one reply" is what keeps a single dispatch from spawning several.
 3. **Run.** `const run = await runSubAgent(agent, task, { contentOnly: true, onEvent })` — the headless mechanism (Telegram router precedent). `contentOnly` is **inert for a `local` agent** (it is consumed only by the Claude harness); it is passed for consistency with the precedent and does nothing here — the local run is gated by the agent's own `tools`/gate. No `conversationId` (genuinely headless; the deliverable is a GitLab comment, not a branch-gated spec write). `onEvent` collects the run's `tool_result` events (`{ name, result, ok }`, runner ADR-13) so step 4 can inspect outcomes.
 4. **Graceful failure — post-run, outcome-based** (FR-015/FR-016/SC-007). The contract here is subtle (the v4 re-review blocker): the MCP gateway is resilient (a missing/unreachable server yields an in-band `Error: …` *tool-result string*, not a throw), and the agent loop's contract is "runs never die of tools" — so `runSubAgent` **returns** a clean `{ endedReason: "completed", error: undefined }` even when the agent had no MCP access. A `try/catch` around the run therefore **never fires** for the no-MCP case, and `run.error` stays `undefined`. The dispatcher detects failure **post-run and outcome-based**:
    - **agent missing** (`getAgent` → undefined, step 1) → emit `com.bos.gitlab.triage.failed` (`agent_not_found`), no run.
@@ -176,7 +194,9 @@ api.register({
    - **the run finished but NO `mcp_tool_call` succeeded** (every collected `tool_result` for `mcp_tool_call` has `ok: false`) → the agent had no usable GitLab MCP access → emit `com.bos.gitlab.triage.failed` (`no_gitlab_mcp`). This is the deterministic surface for the SC-007 case.
    - **at least one `mcp_tool_call` succeeded** → the agent reached GitLab and acted; any mid-pipeline problem is the *skill's* responsibility to reflect with a `Failed` status label. The dispatcher does not second-guess a run that demonstrably touched GitLab.
 
-   In every failure case **the receiver never crashes and the original event is never lost** (the `gitlab.issue.opened` record is already durably stored before dispatch). This guard is post-hoc and outcome-based — it is **not** a pre-flight reachability check, so R6's "no deterministic MCP pre-flight" principle stands.
+   In every failure case **the receiver never crashes and the original event is never lost** (the `gitlab.issue.*` record is already durably stored before dispatch). This guard is post-hoc and outcome-based — it is **not** a pre-flight reachability check, so R6's "no deterministic MCP pre-flight" principle stands.
+
+   **A no-op resume is a SUCCESS, and nothing had to change for that to hold** (R7). The commonest resume run writes nothing: the agent sees that the newest note is its own and stops. Reporting that as a failure would raise one spurious `com.bos.gitlab.triage.failed` per comment the agent has ever posted. It falls out for free because the analysis asks *how far the run got*, never *whether it wrote*: a real no-op still READS GitLab (the issue, its notes, the token's identity), so it produces successful `mcp_tool_call`s and lands on the success branch. Zero successful MCP calls still means exactly what it meant before — the agent could not reach GitLab at all, and did not even manage the reads. The corollary is that the dispatcher cannot distinguish a deliberate no-op from a run that read the issue and gave up, and must not try: once a run has touched GitLab, what it did there is the skill's story to tell. Pinned by `dispatch.test.ts` ("a no-op resume … is a SUCCESS").
 
 > **R6 — the deterministic MCP pre-flight is removed.** v3's §3.8 pre-checked "is a GitLab-named MCP server reachable by the agent" before running. That check encoded *the agent's capability inside the handler* — the wrong layer, and it duplicated the gateway's own enforcement. R6 deletes it: the dispatcher runs unconditionally, and failure is detected **post-run, outcome-based** (§3.7.4) rather than pre-checked. (The gateway's in-band `Error:` is model *data*, not a thrown error, so the only reliable no-MCP signal is "the run finished with no successful `mcp_tool_call`." The design's own cited precedent — the Telegram router, `agent-router.ts` — observes `if (run.error)`, not a try/catch, for exactly this reason.) The unit of capability is the agent, configured in Settings → Agents. FR-013 states this explicitly.
 
@@ -191,7 +211,8 @@ The skill is **multi-file**: a lean `SKILL.md` **router** (the state machine) pl
 | `references/classify.md` | Classify → `Triage` |
 | `references/bug-analyzing.md` · `bug-verifying.md` · `bug-fix-proposed.md` | The Bug path, one file per stage |
 | `references/spec-drafted.md` | The Feature / Improvement path |
-| `references/finalize.md` | `Needs Review`, the hand-off comment, the final message |
+| `references/finalize.md` | `Needs Review`, the hand-off comment, the final message — **resumable** on a new human comment (R7) |
+| `references/notes.md` | **R7** — re-entry: establish your own GitLab identity, read the thread, and either resume from the current status label or self-terminate on your own note |
 
 The router instructs the agent to read a stage's reference **before acting on that stage** — progressive disclosure, so the stage the run is actually in gets depth without every run paying for all of it up front. This depends on the agent being able to open bundled skill files at run time: `skill_read_file` (`src/lib/assistant/tools/server/skills.ts`) is in the seed agent's `tools` allowlist, is a **server** tool, and therefore survives `headlessGate` — which matters because the dispatcher runs this agent headless. Guarded by `tests/agent/gitlab-triage-skill-references.test.ts`.
 
@@ -199,12 +220,12 @@ The skill as a whole is still the **behavior contract the model follows**. The `
 
 1. **Read** the issue via the GitLab MCP server (title, description, current labels).
 2. **Classify** — labels first: exactly one of `Bug` / `Feature` / `Improvement` (case-insensitive; other labels ignored). Fallback: infer from title+description and state the inferred type in a comment. Apply the classification label (additive).
-3. **Idempotency / resume**: if the issue already carries one of the handler's status labels, resume from that stage rather than restarting (covers a dedup-ring loss re-emitting the same open, or a manual re-dispatch).
+3. **Idempotency / resume**: if the issue already carries one of the handler's status labels, resume from that stage rather than restarting (covers a dedup-ring loss re-emitting the same open, a manual re-dispatch, and — since R7 — the normal case: a human comment). When the dispatch was caused by a note, the router sends the agent to `references/notes.md` **first**, because that file decides whether to resume at all: the agent is re-dispatched for its own comments too, and answering one of those is what would turn this into a loop.
 4. **Run the matching pipeline**, applying the transient **status label** (exactly one active, swapped per step) via MCP:
    - `Bug`: `Triage` → `Analyzing` → `Verifying` → `Fix Proposed` → **`Needs Review`** (post the proposed fix as a comment).
    - `Feature` / `Improvement`: `Triage` → (work) → `Spec Drafted` → **`Needs Review`** (post the draft spec — including a UI mockup where relevant — as a comment).
    - Side states: `Needs Input` (blocked, needs info from the reporter — stop and wait), `Failed` (run errored; failure comment posted).
-5. **Autonomy boundary (Q2=A)**: comment + label only. **Never** close the issue or open an MR. `Needs Review` is the terminal state — a human verifies and finalizes.
+5. **Autonomy boundary (Q2=A)**: comment + label only. **Never** close the issue or open an MR. `Needs Review` is terminal *for the pipeline* — the agent never advances past it on its own initiative — but since R7 it is **resumable**: a human comment re-dispatches the agent, which revises its deliverable and re-posts, keeping the label. The human still closes the issue or opens the MR. Re-entry changes *when* the agent acts, never *what it may do*, and a human asking in a comment for the issue to be closed does not widen the boundary.
 6. **Label mechanics**: to keep the single-active-status invariant, the skill reads current labels, removes any existing handler status label, and adds the new one (GitLab add/remove-label semantics). It never removes the additive classification label.
 7. **`"verify"` scope (tightened from the scenario walkthrough)**: for a Bug, "verify" = assess plausibility and identify the likely root cause from the description **and any accessible code context** (e.g. a registered repo / the agent's file tools); if no code context is reachable, the skill notes that in the comment and proceeds to propose a fix from the description alone. It is *not* "reproduce in a running environment."
 
@@ -236,7 +257,7 @@ A dedicated **`GitLabDetailView`** is routed for `gitlab` in `IntegrationsTab`. 
 - `src/lib/integrations/services/gitlab/triage/handler.ts`
 - `src/lib/integrations/services/gitlab/triage/dispatch.ts`
 - `seed/agents/gitlab-issue-agent/AGENT.md`
-- `seed/skills/gitlab-issue-triage/SKILL.md`
+- `seed/skills/gitlab-issue-triage/SKILL.md` + `references/*.md` (the router + per-stage references, §3.8 — including `references/notes.md`, the R7 re-entry decision)
 - `src/components/apps/settings/integrations/GitLabDetailView.tsx`
 - `src/components/apps/settings/integrations/GitLabWorkflowSection.tsx`
 - `src/components/apps/settings/integrations/GitLabLabelsReference.tsx`
@@ -293,8 +314,9 @@ A dedicated **`GitLabDetailView`** is routed for `gitlab` in `IntegrationsTab`. 
 - **Options rejected.** (a) Have the framework index every webhook secret automatically — wrong for a provider that *signs* rather than echoes (Gmail's Pub/Sub JWT has no raw secret on the wire), so the decision must stay per-handler. (b) Index only the `primary` — drops in-flight deliveries carrying the grace token at the gateway even though `verify()` would accept them. (c) Special-case `/api/integrations/webhooks/*` in Bastion by path — reintroduces the per-protocol path check `credential-routing.ts` exists to avoid.
 - **Consequences.** R1/R4 are untouched — BOS still stores no GitLab credential and still never calls GitLab; the hooks only make the container reachable. The no-GitLab-credential, webhook-only model is preserved. Adding another echoed-secret provider is now a documented two-edit checklist. Pinned by `webhook.routing-index.test.ts` and `tests/bastion/webhook-secret-header.test.ts`.
 
-### ADR-2 — Event-type mapping via `KNOWN_TYPES` *(unchanged)*
-- **Decision.** Data-table entries for the two event types + `KNOWN_NAMES.gitlab` + a `legacyFriendlySummary` branch. No code-logic branch in `deriveLegacyType`.
+### ADR-2 — Event-type mapping via `KNOWN_TYPES` *(extended by R7)*
+- **Decision.** Data-table entries for the **three** event types — `issue-opened → gitlab.issue.opened`, `mr-opened → gitlab.mr.opened`, `issue-noted → gitlab.issue.noted` — plus `KNOWN_NAMES.gitlab` and the `legacyFriendlySummary` branches. No code-logic branch in `deriveLegacyType`.
+- **Why `gitlab.issue.noted` and not the systematic name.** The default derivation would give `com.bos.gitlab.webhooks.issue-noted`, which does not match the `gitlab.issue.*` prefix the handler subscribes to (ADR-13) and so would never be dispatched. The two `gitlab.issue.*` names are a pinned pair, not two independent choices.
 
 ### ADR-3 — Triage is a core headless handler: prompt-ack + fire-and-forget *(mechanism unchanged; the async work is now the agent dispatch)*
 - **Context.** The triage is multi-minute (agent reasoning + many MCP calls). The kernel's `invoke()` for a `declaredBy:"core"` handler awaits the executor raced against `timeoutMs` (default 30 s); a non-returning executor is marked failed and retried up to 3× (doubling side-effectful MCP writes).
@@ -321,8 +343,13 @@ A dedicated **`GitLabDetailView`** is routed for `gitlab` in `IntegrationsTab`. 
 ### ADR-8 — Two registries, two registrations *(unchanged)*
 - **Decision.** Register `gitlab/webhooks` in both the webhooks handler registry and the actions adapter registry (zero-method, `capabilities:{webhook:true}`).
 
-### ADR-9 — Loop prevention: the agent's own updates never re-trigger it *(unchanged; "handler" → "agent")*
-- **Decision.** Structural: the agent's updates produce GitLab `note` (comment, `object_kind:"note"`) and `issue`/`merge_request` **`action:"update"`** (label) webhooks, which the receiver's `object_kind ∈ {issue, merge_request}` **and** `action === "open"` filter categorically excludes. Verified against GitLab's webhook-events docs. No sender-id / timestamp guard needed. (Secondary optional `X-Gitlab-Event` gate noted.)
+### ADR-9 — Loop prevention is now TWO-PART: structural for edits, agent-side identity for notes *(revised by R7)*
+- **Context.** v1 was purely structural: the agent's comments AND its label edits both came back as webhooks the receiver dropped — comments because `object_kind: "note"` was not in the accepted set, label edits because they arrive as `issue` hooks with `action: "update"`. R7 needs comments to be a *trigger*, so exactly half of that structural guarantee had to go.
+- **Decision — two mechanisms, one per traffic class.**
+  - **Label / state edits → structural, unchanged.** The agent's relabels arrive as `issue`/`merge_request` hooks with `action:"update"`; the `action === "open"` filter excludes them categorically. No sender-id or timestamp guard is needed, and the agent may relabel freely.
+  - **Comments → agent-side identity.** A note is re-dispatched (FR-022). The agent's own comment and a human's are the **same webhook shape** — same `object_kind`, same fields, differing only in `user`, which BOS cannot evaluate because it holds no GitLab credential and does not know who the token is. So the receiver does not try. The agent determines its own GitLab identity from the MCP server (the token's user; the skill's `references/notes.md` also documents the stage-prefix fallback for servers with no whoami tool) and, when the newest note is its own or there is no new human input, posts nothing and changes no label. That is the whole of the self-termination.
+- **Options rejected.** (a) Filter notes by author in the receiver — requires BOS to know the agent's GitLab username, which is R1/R4's line: the token belongs to the user's MCP server, not BOS, and the username would have to be configured by hand and kept in sync. (b) Suppress notes within N seconds of a run — a timestamp heuristic that drops the human comment typed while the agent was still writing. (c) A "BOS wrote this" marker in the comment body — a per-comment convention the agent must never forget, visible to users, and unenforceable.
+- **Consequences.** The remaining risk moves from "a filter is wrong" to "the model ignores an instruction", which is the same class of soft guarantee the rest of the skill already carries (§3.8) and is bounded the same way: the worst case is an extra comment, then another no-op dispatch, not an unbounded loop — each dispatch is one run and each run is told to post at most one reply. Cost in the normal case is one cheap no-op run per agent comment (ADR-13).
 
 ### ADR-10 — Reuse, not special-case *(retained; now includes the agent/skill reuse)*
 - **Added under R6:** the handling side reuses the **agent + skill** model (Settings → Agents, `runSubAgent`, the skill index) rather than hardcoding a bespoke step pipeline in the integration. The integration contributes a *dispatcher* and a *seed agent + seed skill* — all standard BOS extension points. The two platform additions (`authless`, `mintSecret`) remain the only framework deltas.
@@ -339,6 +366,19 @@ A dedicated **`GitLabDetailView`** is routed for `gitlab` in `IntegrationsTab`. 
 - **Options rejected.** (a) v3's handler-internal `workflow.ts` step pipeline — hardcodes the pipeline, duplicates what a skill expresses better, and isn't user-tunable. (b) Per-step agent assignment (the intermediate model before R6) — more moving parts than needed; one agent + one skill is the natural BOS shape and keeps the panel to a single picker. (c) Reusing self-heal's pipeline — wrong problem shape (BOS self-mod vs user codebase); kept fully separate (see §1 note).
 - **Consequences.** The integration stays small (a dispatcher, not an engine); the user gains real flexibility (swap the agent, edit the skill's workflow, change its MCP server/tools) with no integration change; FR-009/FR-010/FR-017 are satisfied; the panel's "Workflow" card is an honest, single-control surface. Risk: pipeline quality now depends on the seed skill being well-written — mitigated by treating SKILL.md as a spec'd contract (§3.8) and documenting it in `docs/`.
 
+### ADR-13 — Comment-driven re-entry (R7)
+
+- **Context.** v1 had exactly one trigger: a new issue. Everything after it was one long agent run ending at `Needs Review`, and a human had no way to say anything back — a comment answering the agent's `Needs Input` question changed nothing, because note hooks were filtered out at the receiver. The skill already carried a resume branch (§3.8.3, "if the issue already carries a status label, resume from that stage"); it was **dead code**, because nothing in BOS could re-dispatch an issue that was already open. The user's direction (R7) is that the whole process be drivable from GitLab by commenting.
+- **Decision — four coordinated pieces, and one deliberate non-piece.**
+  1. **Receiver** emits `issue-noted` for `object_kind: "note"` with `noteable_type: "Issue"` (§3.4, FR-022). MR notes and other noteable types still emit nothing.
+  2. **Mapping** pins `issue-noted → gitlab.issue.noted` (ADR-2) — inside the prefix, which the systematic derivation would not have been.
+  3. **Handler** subscribes to `gitlab.issue.*` instead of the exact opened type (§3.6, FR-009). One handler, one toggle, one FIFO queue.
+  4. **Dispatcher** gains a second task shape, chosen by `record.type` (§3.7.2).
+  5. **Not a piece: identity.** The handler and dispatcher learn nothing about GitLab users. The resume task *instructs* the agent to determine its own identity from the MCP token; it does not supply one. This is the R4 boundary, and it is also the only option — BOS has no GitLab credential to ask with (R1).
+- **How it self-terminates, and what that costs.** Every comment the agent posts comes back as another `gitlab.issue.noted`, because the receiver cannot tell it from a human's. The agent recognizes its own and stops: no comment, no label, end of run. So a typical pipeline pays **one cheap no-op dispatch per comment the agent posted** — a read-only run of a few MCP calls. A Bug run that comments three times (classification, verification, proposed fix + hand-off) costs three no-ops, each one terminal. The chain cannot grow: a no-op writes nothing, so it generates no further note, and the skill's "one reply per dispatch" rule keeps even a *responding* run from fanning out.
+- **Options rejected.** (a) **Author-filter notes in the receiver** — ADR-9's (a): BOS would have to be told the agent's GitLab username and keep it in sync, which is exactly the credential knowledge R1/R4 keep out. (b) **A second handler for notes** — two registrations means two Event Viewer toggles for one feature, a user who disables "triage" and still gets re-dispatched, and two FIFO queues that can run a fresh pipeline and a resume on the same issue concurrently. (c) **Leave `Needs Review` terminal and add a separate "revise" trigger** — a second mechanism for what is the same act (a human replying), and it still needs a note hook to notice.
+- **Consequences.** `Needs Review` becomes **resumable** (FR-021 revised): the agent revises and re-posts, keeping the label, and a human still owns closing the issue — the Q2 boundary is untouched, and the resume task restates it. The skill's resume branch is now reachable, so the idempotency story that already justified it (a duplicate delivery, a restart) is real rather than notional. The soft-guarantee surface grows by one instruction (§3.8): a model that ignores "do nothing on your own note" posts an extra comment and buys one more dispatch — bounded, self-limiting, and visible in the issue.
+
 ---
 
 ## 7. Risks / open questions
@@ -351,7 +391,8 @@ A dedicated **`GitLabDetailView`** is routed for `gitlab` in `IntegrationsTab`. 
 6. **`gitlab` string overlap** with the git-remote OAuth provider (ADR-6) — flagged so the implementer doesn't reach for git-providers code.
 7. **Mockup parity** (cosmetic) — reusing `WebhookSection` verbatim surfaces chrome the mockup omits (event-type filter + save button; "Rotate secret" vs "Generate token"). Accept stock or add a small label prop; functionally identical.
 8. **Autonomy boundary (Q2=A)** is enforced by the **skill** (never close/commit) — a *soft* guard; widening is a deliberate skill change.
-9. **Single-run pipeline (FR-021)** — v1 does the whole pipeline in one agent run; a human intervening mid-pipeline (removing a status label, replying) is handled by the skill's resume logic, but a *guaranteed* per-transition re-entry loop is a future extension, not v1.
+9. **Re-entry depends on an instruction, not a filter (R7)** — a *fresh* issue is still one agent run doing the whole pipeline (FR-021); a human comment re-dispatches it (ADR-13). The thing that stops the chain is the agent recognizing its own note, which is model-followed guidance like the rest of the skill (§3.8) rather than a mechanism. A run that ignores it posts one extra comment and buys one more dispatch — bounded and visible, not an unbounded loop, because each dispatch is one run and each run is told to reply at most once. If a deployment sees chatter, the lever is `references/notes.md`, not the receiver.
+10. **A note hook with no resolvable iid** — the projection falls back to `0` if neither `object_attributes.noteable_iid` nor the top-level `issue.iid` is present (a payload shape GitLab does not currently produce). The event is still emitted, so the delivery is visible rather than silently dropped, and the run then fails through the normal outcome analysis (§3.7.4) rather than acting on the wrong issue.
 
 **Open questions (need a human decision):**
 - (b) `WebhookSection` parity (Risk 7): accept the stock labels/chrome, or add a small label prop to match the mockup exactly? (Low stakes.)
@@ -379,4 +420,5 @@ Receiver URL `…/api/integrations/webhooks/gitlab/webhooks` matches `webhookUrl
 - **One-round review (v3, architect-reviewer): Approve-with-notes, no blockers.** Re-derived every load-bearing claim against live source. Fixes applied (F1 drop `enabled:true`; F2 `IntegrationsTab` fallback excludes gitlab; F3 placeholder `oauthConfig` inert in list view; F4 `legacyFriendlySummary`; F5 `WebhookSection` chrome noted).
 - **v4** — driven by R6 (user handling-model direction): handler → thin dispatcher; agent + skill = unit of capability; deterministic MCP pre-flight **removed** (ADR-4 revised); seed agent + seed skill added; panel gains a Workflow/agent-picker card; self-heal confirmed **fully separate** (ADR-12 + §1 note). Webhook side, event mapping (ADR-2), and panel ADRs (1/1b/6/7/8) unchanged.
 - **v5 (this revision) — R6 re-review (architect-reviewer): one [BLOCKER] + 3 [NOTE]s, all resolved.** The reviewer re-derived the R6 layer against live source. **[BLOCKER]** the no-pre-flight graceful-failure story did not hold: the MCP gateway is in-band (resilient) and the agent loop "never dies of tools," so `runSubAgent` returns a clean `completed` even with no MCP access — v4's `try/catch` never fires and the promised `com.bos.gitlab.triage.failed` was never emitted (FR-016/SC-007). **Fixed**: failure detection is now **post-run, outcome-based** (§3.7.4 + ADR-4 revised) — agent-missing / `run.error` / "no successful `mcp_tool_call`" — keeping R6's no-pre-flight model. **[NOTE]**s applied: (i) the skill is model-followed *guidance*, not a mechanism state machine — the single-active-status invariant (FR-014) is a soft guarantee (§3.8, ADR-12 reworded); (ii) `contentOnly:true` is inert for a `local` agent — rationale corrected (§3.7.3); (iii) the seed `AGENT.md` pins `skills: ["gitlab-issue-triage"]` and the picker key is named (`state.services.webhooks.config.triageAgentId`). Verified clean: seeding is real (`seed-sync.ts`), the picker persistence home is real, `runSubAgent` resolution, F1 (omit `enabled`), self-heal separation, `authless` is a genuine new field, and no webhook-side regressions. **Verdict: Ready for plan.**
+- **v7 — R7 (user direction): the pipeline must be drivable from GitLab by commenting.** Four coordinated changes (ADR-13): the receiver emits `issue-noted` for note hooks targeting Issues (§3.4, FR-022); the mapping pins `gitlab.issue.noted` (ADR-2); the handler moves from the exact `gitlab.issue.opened` to the **prefix** `gitlab.issue.*`, with an unknown-type guard (§3.6); the dispatcher gains a second task shape (§3.7.2). Loop prevention becomes **two-part** (ADR-9 revised): still structural for the agent's label edits, now **agent-side identity** for its comments — the receiver cannot tell the agent's note from a human's and does not try. `Needs Review` is **resumable** (FR-021 revised) and the skill grows `references/notes.md`. Cost: one cheap no-op dispatch per comment the agent posts, self-terminating. **A correction to the task's stated payload shape:** GitLab's note hook has **no `noteable_iid`** (verified against `note_builder.rb`'s `SAFE_HOOK_ATTRIBUTES` and the documented payload) — `object_attributes.noteable_id` is the issue's *global* id and the project-scoped iid is on the top-level `issue` object. §3.4 records the field layout; `webhook.receive.test.ts` pins it with a payload where the two ids deliberately differ.
 - **v6 — production defect, not a review finding: HTTP 401 on every delivery in a Bastion-fronted deployment** (reported against both a preview of `bos/002-gitlab-integration` and the base after promotion — the "both" is what identified the gateway rather than the branch). Root cause in **two coupled halves**, neither in `verify()`, which was correct throughout: the handler registered no credentials-index entry (it had no lifecycle hooks at all, by the reasoning ADR-1c now retracts), and Bastion did not recognise `x-gitlab-token` as a secret-bearing header. Resolved by **ADR-1c**; §3.4 amended. No change to the event model, the dispatcher, the skill, or the panel.
