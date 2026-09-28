@@ -324,24 +324,54 @@
           </section>
         </section>
 
-        <!-- ================= HANDLER POINTER (persistent) ================= -->
-        <div class="mt-1 flex items-start gap-2 rounded-lg border border-white/10 bg-black/10 p-2.5 text-[11px] text-white/60">
-          <i data-lucide="bell-ring" class="mt-0.5 size-3.5 shrink-0 text-white/40"></i>
-          <span class="leading-relaxed">
-            A built-in
-            <code class="mx-1 rounded bg-black/30 px-1 font-mono text-white/70">gitlab-issue-triage</code>
-            handler listens to <code class="mx-1 rounded bg-black/30 px-1 font-mono text-white/70">gitlab.issue.opened</code> and is
-            <span class="text-emerald-300/90">enabled by default</span> — it classifies new issues
-            (<code class="font-mono text-[10px]">Bug</code> / <code class="font-mono text-[10px]">Feature</code> / <code class="font-mono text-[10px]">Improvement</code>)
-            and runs the matching workflow, updating the issue via the <span class="text-white/80">GitLab MCP server</span> that is
-            configured and assigned to its agent.
-            Managed separately:
-            <button class="ml-1 inline-flex items-center gap-1 text-white/80 underline decoration-white/20 underline-offset-2 hover:text-white">
-              Settings → Events → Handlers
-              <i data-lucide="arrow-up-right" class="size-2.5"></i>
-            </button>.
-            Disable it there to route events to another consumer, e.g. the Workflow app.
-          </span>
+        <!-- ================= WORKFLOW CONFIGURATION (persistent) ================= -->
+        <div class="mt-1 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+          <h4 class="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+            <i data-lucide="bot" class="size-3"></i> Workflow
+            <span class="text-[10px] font-normal normal-case text-white/30">who acts on a new issue</span>
+          </h4>
+          <div class="space-y-3">
+            <!-- Agent picker -->
+            <div class="space-y-1">
+              <span class="block text-[11px] text-white/60">Agent that handles new issues</span>
+              <div class="flex items-center gap-2">
+                <div class="flex-1">
+                  <select class="w-full rounded border border-white/15 bg-black/20 px-2 py-1.5 text-[11px] text-white/80">
+                    <option>Gitlab Issue Agent</option>
+                    <option>Research Agent</option>
+                    <option>Build Studio</option>
+                  </select>
+                </div>
+                <button class="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1.5 text-[11px] text-white/70 transition-colors hover:bg-white/10">
+                  <i data-lucide="settings-2" class="size-3"></i> Manage
+                </button>
+              </div>
+              <p class="text-[10px] leading-relaxed text-white/40">
+                A normal agent (Settings → Agents). Its <span class="text-white/60">skill</span> defines the pipeline —
+                classify (<code class="font-mono text-[10px]">Bug</code> / <code class="font-mono text-[10px]">Feature</code> / <code class="font-mono text-[10px]">Improvement</code>) → run the
+                matching workflow → apply status labels → end at <code class="font-mono text-[10px]">Needs Review</code>. The agent
+                performs all GitLab operations via its configured
+                <span class="text-white/60">GitLab MCP server</span> (no credential is stored in BOS).
+              </p>
+            </div>
+
+            <!-- Handler toggle pointer -->
+            <div class="flex items-start gap-2 rounded border border-white/10 bg-black/10 p-2.5 text-[11px] text-white/60">
+              <i data-lucide="bell-ring" class="mt-0.5 size-3.5 shrink-0 text-white/40"></i>
+              <span class="leading-relaxed">
+                A built-in
+                <code class="mx-1 rounded bg-black/30 px-1 font-mono text-white/70">gitlab-issue-triage</code>
+                handler is
+                <span class="text-emerald-300/90">enabled by default</span> — it forwards each new issue to the agent above.
+                Toggle it in the Events handler configuration to stop auto-processing, or point another consumer
+                (e.g. the Workflow app) at the <code class="mx-1 rounded bg-black/30 px-1 font-mono text-white/70">gitlab.issue.opened</code> event instead.
+                <button class="ml-1 inline-flex items-center gap-1 text-white/80 underline decoration-white/20 underline-offset-2 hover:text-white">
+                  Open Events
+                  <i data-lucide="arrow-up-right" class="size-2.5"></i>
+                </button>
+              </span>
+            </div>
+          </div>
         </div>
 
       </div><!-- /main -->
