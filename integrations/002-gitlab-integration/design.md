@@ -1,7 +1,7 @@
 # Design: GitLab Integration (Webhook → Triage)
 
 **Spec**: [`spec.md`](./spec.md) · **UI contract**: [`mockup.html`](./mockup.html) · **Checklist**: [`checklists/requirements.md`](./checklists/requirements.md)
-**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v3 — verified against current source; ADR-9/10/11 added; one-round review fixes applied)
+**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v4 — R6 handling-model revision: thin dispatcher + configurable agent/skill; deterministic MCP pre-flight removed)
 **App Target**: `bos-core` (confirmed; agrees with `spec.md`)
 
 ---
@@ -11,13 +11,16 @@
 **`bos-core`.** This is a first-class part of BOS itself, not a self-contained app or an installable marketplace item:
 
 - It adds an **integration** to the generic integration framework — a manifest, a webhook handler, and an actions-adapter registration — all under `src/lib/integrations/`. Integrations are compiled into BOS (`src/lib/integrations/index.ts` barrel), not user-installable; `registerIntegration`/`registerAdapter` are module-load side effects. (Precedent: the `telegram` and `gsuite` integrations, `src/lib/integrations/services/{telegram,gsuite}/`.)
-- It adds a **core headless event handler** (`gitlab-issue-triage`) to the event kernel. The only in-process mechanism for a core-owned headless handler is `dispatch.registerCoreExecutor` + `api.register({ declaredBy: "core" })` — exactly what the self-healing spine does (`src/lib/self-heal/spine-handler.ts`). Worker-IPC `handler_declare` is for worker-thread services, which this is not.
-- It adds **Settings → Integrations** panel components under `src/components/apps/settings/integrations/` (Settings is bos-core, not a `src/apps/<id>/` folder).
-- It adds **two platform-level capabilities** that future authless integrations will also need (the `authless` manifest flag + the `mintSecret` opt-out on webhook enable). The user's standing principle is to fix the mechanism at the platform level, not per-feature.
+- It adds a **core headless event handler** (`gitlab-issue-triage`) to the event kernel. The only in-process mechanism for a core-owned headless handler is `dispatch.registerCoreExecutor` + `api.register({ declaredBy: "core" })` — exactly what the self-healing spine does (`src/lib/self-heal/spine-handler.ts`). Worker-IPC `handler_declare` is for worker-thread services, which this is not. **R6:** this handler is a **thin dispatcher** — it forwards the issue to a configured agent; it contains no triage logic.
+- It **seeds an agent + a skill** (the `Gitlab Issue Agent` and the `gitlab-issue-triage` skill) — the unit of capability (classification, workflow, GitLab updates via MCP) lives there, configured like any normal agent.
+- It adds **Settings → Integrations** panel components under `src/components/apps/settings/integrations/`.
+- It adds **two platform-level capabilities** that future authless integrations will also need (the `authless` manifest flag + the `mintSecret` opt-out on webhook enable).
 
-Nothing here is a `builtin-app` (no `src/apps/<id>/` window) and nothing is a `marketplace-item` (no `data/user-apps/items/<id>/` installable). The spec's `App Target: bos-core` is correct and this design is consistent with it.
+Nothing here is a `builtin-app` (no `src/apps/<id>/` window) and nothing is a `marketplace-item` (no `data/user-apps/items/<id>/` installable). The spec's `App Target: bos-core` is correct.
 
-> **Note on a string overlap (not a collision).** `gitlab` already appears in the codebase as a *git-remote OAuth credential provider* id: `src/app/api/integrations/git-providers/route.ts` and `src/components/apps/settings/integrations/GitProvidersTab.tsx` store GitLab client-credentials under the `git_remote_oauth` namespace, and `IntegrationDetailView.tsx`'s `FIELD_CREDENTIAL_PROVIDERS` set contains `"gitlab"`. That is a **separate subsystem** (git push/pull credentials) from the integration registry this feature adds to. The two do not share a store: the integration lives in the `registerIntegration` registry + `state/gitlab/state.json` + the SecretsStore under the `gitlab` integration id; the git-remote provider lives in `git_remote_oauth`. They coexist cleanly, but implementers must not "reuse" the git-providers code for the integration, and the git integration's detail view must **not** be the generic `IntegrationDetailView` (which would render the git-provider OAuth panels). See ADR-6.
+> **Relationship to self-healing (R6 — fully separate).** The bug-fix *intelligence* is **not** reused from self-heal, and the gitlab feature does not forward issues to it. Self-heal is a BOS self-modification mechanism (its Diagnostician reads BOS source, routes by BOS scope class, delivers via the Supervisor preview). A GitLab bug issue is about the *user's* codebase — a different problem shape. Only the **orchestration plumbing** is shared by pattern (core headless handler → prompt-ack → fire-and-forget `runSubAgent`), which is the self-heal spine's R4 pattern reused as a platform idiom, not a shared code path. The two features have no import-level coupling.
+
+> **Note on a string overlap (not a collision).** `gitlab` already appears in the codebase as a *git-remote OAuth credential provider* id: `src/app/api/integrations/git-providers/route.ts` and `src/components/apps/settings/integrations/GitProvidersTab.tsx` store GitLab client-credentials under the `git_remote_oauth` namespace, and `IntegrationDetailView.tsx`'s `FIELD_CREDENTIAL_PROVIDERS` set contains `"gitlab"`. That is a **separate subsystem** (git push/pull credentials) from the integration registry this feature adds to. They do not share a store; implementers must not "reuse" the git-providers code, and the gitlab detail view must **not** be the generic `IntegrationDetailView` (which would render the git-provider OAuth panels). See ADR-6.
 
 ---
 
@@ -26,14 +29,14 @@ Nothing here is a `builtin-app` (no `src/apps/<id>/` window) and nothing is a `m
 | Principle | Status |
 |---|---|
 | **I. Spec-Driven** | ✅ Grounded in `spec.md`; this design is the `design` step of the pipeline. |
-| **II. Server Authority & SSR Boundary** | ✅ All webhook parsing, secret verification, state, and event emission are server-only (`import "server-only"` / `src/app/api/**/route.ts`). The shared token (`WebhookSecrets.primary`) lives in the SecretsStore and is returned to the client **exactly once** (the reveal), mirroring the stock `rotate` path (`webhooks/route.ts` returns `primary` only on rotate). No GitLab credential is stored in BOS at all (R1). |
-| **III. Always Delegate; Claude Codes** | ✅ Implementation is delegated to the Developer. At runtime the triage handler runs a `local` sub-agent (`runSubAgent`) — a headless local agent is the correct default for a non-coding orchestration task (the agent *reads/classifies/drafts text and calls MCP tools*; it does not edit BOS source). |
-| **IV. Minimize Blast Radius** | ✅ All `src/` changes land on the `002-gitlab-integration` feature branch via `dev_delegate`. The two platform-level additions (`authless` flag, `mintSecret` opt-out) are additive and back-compatible (default preserves existing GSuite/Telegram behavior). |
-| **V. The VFS Is Not the Source** | ✅ No VFS writes for source; runtime state (webhook config/secrets, event records) persists under `data/` as before. The triage **does not** write BOS spec stores — its deliverable is a comment posted to GitLab via MCP (see §3.4). |
-| **VI. Specs & Docs Stay in Sync** | ✅ File plan includes `docs/` additions (a `gitlab` integration page + an add-a-webhook-only-integration recipe note). No doc/code drift found while grounding this design. |
-| **VII. Respect Boundaries** | ✅ No `package.json`/lockfile/build changes. `npx tsc --noEmit` + `npm run lint` are the gates. No new external dependency is introduced (the GitLab MCP server is user-configured external tooling, not a BOS `npm` dependency). |
+| **II. Server Authority & SSR Boundary** | ✅ All webhook parsing, secret verification, state, and event emission are server-only. The shared token (`WebhookSecrets.primary`) lives in the SecretsStore and is returned to the client **exactly once** (the reveal). No GitLab credential is stored in BOS at all (R1/R4). |
+| **III. Always Delegate; Claude Codes** | ✅ Implementation is delegated to the Developer. At runtime the dispatcher hands the issue to a `local` agent (`runSubAgent`) — a headless local agent is the correct default (it reads/classifies/drafts text and calls MCP tools; it does not edit BOS source). |
+| **IV. Minimize Blast Radius** | ✅ All `src/` changes land on the `002-gitlab-integration` feature branch via `dev_delegate`. The two platform-level additions (`authless` flag, `mintSecret` opt-out) are additive and back-compatible. |
+| **V. The VFS Is Not the Source** | ✅ No VFS writes for source. The triage agent's deliverable is a comment posted to GitLab via MCP (not a BOS spec-store write). |
+| **VI. Specs & Docs Stay in Sync** | ✅ File plan includes `docs/` additions (a `gitlab` integration page + an agent/skill setup note). |
+| **VII. Respect Boundaries** | ✅ No `package.json`/lockfile/build changes. `npx tsc --noEmit` + `npm run lint` are the gates. No new external dependency (the GitLab MCP server is user-configured external tooling). |
 
-**Conflict flagged (minor):** none. The design deliberately does **not** reuse the git-providers `gitlab` OAuth path (which would contradict R1 "no OAuth / no stored GitLab credential") — it is the git-*remote* provider, a different feature.
+**Conflict flagged:** none.
 
 ---
 
@@ -41,7 +44,12 @@ Nothing here is a `builtin-app` (no `src/apps/<id>/` window) and nothing is a `m
 
 ### 3.1 Context (how the user/agent sees it)
 
-From the user's view: **Settings → Integrations → GitLab** is a card in the integrations list that drills into a detail view (the mockup). Enabling the webhook reveals a URL + a one-time token to paste into GitLab. When a new issue/MR is opened in a hooked GitLab project, a `gitlab.issue.opened` / `gitlab.mr.opened` event appears in the **Event Viewer**; the default **`gitlab-issue-triage`** handler (toggleable from the Event Viewer's handler config) classifies the issue and works it, updating the issue on GitLab (comments + labels) through the user's **GitLab MCP server**. The webhook and the handler are **two independent switches**: disable the handler and the event still lands; disable the webhook and nothing is received.
+From the user's view: **Settings → Integrations → GitLab** is a card that drills into a detail view (the mockup) with two concerns, cleanly separated:
+
+1. **The webhook** (enable, URL, token) — the inbound signal. No MCP, no credential.
+2. **The workflow** (which agent handles a new issue) — a picker defaulting to the **Gitlab Issue Agent**, plus a pointer to the Events handler toggle.
+
+When a new issue is opened in a hooked GitLab project: the receiver emits `gitlab.issue.opened`; the default **`gitlab-issue-triage`** core headless handler (a **thin dispatcher**, enabled by default) forwards the issue context to the **configured agent** (the **Gitlab Issue Agent**); the agent — driven by its **`gitlab-issue-triage` skill** (the state machine) — classifies the issue, runs the matching workflow, and updates the issue (comments + status labels) **through its configured GitLab MCP server**, ending at the terminal `Needs Review` state. The webhook and the handler are **two independent switches**; the handler and the agent's behavior are **user-configurable** (agent in Settings → Agents; the pipeline in the skill).
 
 ```mermaid
 flowchart LR
@@ -51,161 +59,150 @@ flowchart LR
   subgraph BOS["BrowserOS"]
     R["Webhook receiver<br/>/api/integrations/webhooks/gitlab/webhooks"]
     K["Event kernel<br/>gitlab.issue.opened / gitlab.mr.opened"]
-    H["gitlab-issue-triage<br/>(core headless handler)"]
-    A["gitlab-triage agent<br/>(runSubAgent, local)"]
-    S["Settings → Integrations → GitLab"]
+    H["gitlab-issue-triage<br/>(core headless HANDLER = thin dispatcher)"]
+    S["Settings → Integrations → GitLab<br/>(webhook + agent picker)"]
     V["Event Viewer (handler toggle)"]
   end
-  subgraph MCP["User-configured"]
-    M["GitLab MCP server<br/>(Settings → MCP Servers)"]
+  subgraph AGT["User-configured (Settings → Agents)"]
+    A["Gitlab Issue Agent<br/>(local) + gitlab-issue-triage skill<br/>mcp: [GitLab server]"]
+  end
+  subgraph MCP["User-configured (Settings → MCP Servers)"]
+    M["GitLab MCP server<br/>(its own auth)"]
   end
   P -- "POST (X-Gitlab-Token)" --> R
   R -- "emit" --> K
   K -- "dispatch" --> H
-  H -- "run" --> A
-  A -- "read issue / comment / label" --> M
-  M -- "GitLab REST (its own auth)" --> GL
+  H -- "runSubAgent(issue context)" --> A
+  A -- "read issue / comment / label (via MCP tool)" --> M
+  M -- "GitLab REST" --> GL
   S -. enable / token .-> R
+  S -. select agent .-> A
   V -. toggle .-> H
 ```
 
-The **webhook side** (GL → R → K) has **no** MCP or GitLab-credential dependency. The **handling side** (K → H → A → M) is where the GitLab MCP server is required, and it is a handler dependency, not a webhook one (FR-015, R4).
+**Dependency split (R4, enforced by structure):**
+- **Webhook side** (GL → R → K): depends only on the shared token. No MCP, no GitLab credential, no agent.
+- **Handling side** (K → H → A → M): the handler is dependency-free apart from the event; the *agent* is where the GitLab MCP server is required. The handler does **not** pre-check MCP — the agent is the unit of capability.
 
 ### 3.2 Container (BOS's real containers)
 
-Everything lives in the **Next.js app process**. There is no new worker-thread service, no new item git repo, no Bastion change:
+Everything lives in the **Next.js app process**. No new worker-thread service, no new item git repo, no Bastion change:
 
-- **Webhook receiver route** — `src/app/api/integrations/webhooks/[integrationId]/[serviceId]/route.ts` (existing, unchanged). It is a thin delegate: handler lookup → enable gate → connected gate → verify → dedup ring → `receive()` → `emitIntegrationEvent`.
-- **Integration framework** — `src/lib/integrations/**` (registry, state store, webhook manager/store/verify, actions adapter-registry). The gitlab manifest + handlers register into these at module load.
-- **Event kernel** — `src/lib/events/**` (the `globalThis` daemon started from `instrumentation.ts`). Emission is `api.emit`; the `gitlab-issue-triage` handler is a **core** headless handler (`registerCoreExecutor`), dispatched in-process.
-- **Sub-agent runtime** — `src/lib/agent/subagents/runner.ts` (`runSubAgent` → `runLocalHeadless`) composes the triage agent's instructions (including its MCP index block) and runs the agent loop with its gated tools.
+- **Webhook receiver route** — `src/app/api/integrations/webhooks/[integrationId]/[serviceId]/route.ts` (existing, unchanged). Thin delegate: handler lookup → enable gate → connected gate → verify → dedup ring → `receive()` → `emitIntegrationEvent`.
+- **Integration framework** — `src/lib/integrations/**`. The gitlab manifest + handlers register into these at module load.
+- **Event kernel** — `src/lib/events/**`. Emission is `api.emit`; the `gitlab-issue-triage` handler is a **core** headless handler (`registerCoreExecutor`), dispatched in-process.
+- **Sub-agent runtime** — `src/lib/agent/subagents/runner.ts` (`runSubAgent` → `runLocalHeadless`) composes the configured agent's instructions (including its skills index + MCP index block) and runs the agent loop with its gated tools.
 - **MCP gateway** — `src/lib/mcp/gateway.ts` enforces the **agent's MCP allowlist** (`agent.mcp`) at every `mcp_tool_*` call via `ctx.agentId`.
+- **Agent store / seed** — `data/agents/<id>/AGENT.md` (seeded from `seed/agents/`); the skill under `seed/skills/<id>/`.
 - **Secrets** — webhook token in the integration SecretsStore (`webhook:webhooks`); **no** GitLab credential anywhere.
 
-### 3.3 Component (modules this feature creates/ modifies)
+### 3.3 Component (modules this feature creates/modifies)
 
-Two registries both need a `gitlab/webhooks` entry — this is the single most important "gotcha" and the reason there are *two* adapter-ish files:
+Two registries both need a `gitlab/webhooks` entry (the "two adapter-ish files" gotcha is unchanged from v3 — see ADR-8):
 
-1. **Webhooks *handler* registry** (`src/lib/integrations/webhooks/registry.ts`) — read by the **receiver route** (`getWebhookHandler`). The handler does `verify` + `receive`.
-2. **Actions *adapter* registry** (`src/lib/integrations/actions/adapter-registry.ts`) — read by `GET /api/integrations` (`listAdapterServices`) which feeds `WebhookSection`'s `supported` flag (`adapterSupports(adapters, "gitlab", "webhooks", "webhook")`). Telegram lights up its webhook section by registering an adapter with `capabilities: { webhook: true }` (`services/telegram/adapters/bot.ts`). GitLab needs the same, even though it has no callable API methods → a **zero-method adapter** that only declares the capability.
+1. **Webhooks *handler* registry** (`src/lib/integrations/webhooks/registry.ts`) — read by the receiver route. The handler does `verify` + `receive`.
+2. **Actions *adapter* registry** (`src/lib/integrations/actions/adapter-registry.ts`) — a zero-method adapter with `capabilities: { webhook: true }` for the panel's `supported` flag.
 
 ```
 src/lib/integrations/services/gitlab/
-  manifest.ts              GITLAB_MANIFEST  (authless: true, service "webhooks", placeholder oauthConfig)
-  index.ts                 registerIntegration + import the two adapters below
-  labels.ts                classification + status label constants (shared: handler + panel)
+  manifest.ts              GITLAB_MANIFEST (authless: true, service "webhooks", placeholder oauthConfig)
+  index.ts                 registerIntegration + import the two adapters
+  labels.ts                classification + status label constants (shared: skill + panel + handler)
   adapters/
     webhook.ts             GitLabWebhookHandler (verify X-Gitlab-Token; receive parse+filter)
     webhooks-adapter.ts    zero-method ServiceAdapter, capabilities { webhook: true }
   triage/
-    handler.ts             gitlab-issue-triage core handler (register + fire-and-forget + ack)
-    workflow.ts            classification → bug/feature/improvement pipeline → MCP updates
-    agent-prompt.ts        system prompt + task builder for the gitlab-triage agent run
+    handler.ts             gitlab-issue-triage core handler (register + prompt-ack + fire-and-forget dispatch to the selected agent)
+    dispatch.ts            build the issue-context task, resolve the selected agent, runSubAgent, graceful-failure wrapper
 
-seed/agents/gitlab-triage/AGENT.md      dedicated named agent (type: local, mcp allowlist)
+seed/agents/gitlab-issue-agent/AGENT.md      the Gitlab Issue Agent (type local, mcp allowlist, loads the skill)
+seed/skills/gitlab-issue-triage/SKILL.md     the triage skill = the state machine (R6)
 
 src/components/apps/settings/integrations/
-  GitLabDetailView.tsx           header + WebhookSection + labels ref + handler pointer
-  GitLabLabelsReference.tsx      classification + status chips
-  GitLabHandlerPointer.tsx       bottom pointer → opens Event Viewer
+  GitLabDetailView.tsx            header + WebhookSection + WorkflowSection + labels ref
+  GitLabWorkflowSection.tsx       the "Workflow" card: agent picker + skill note + Events toggle pointer
+  GitLabLabelsReference.tsx       classification + status chips
 ```
 
-### 3.4 Webhook handler (receive/verify)
+### 3.4 Webhook handler (receive/verify) — *unchanged from v3*
 
 `GitLabWebhookHandler` (`adapters/webhook.ts`) implements `WebhookHandler`:
 
-- **`verify`** — *plain string match*, not HMAC. Read the `X-Gitlab-Token` header; timing-safe-compare against the candidates `[secrets.previous, secrets.primary]` (order: previous first so a rotation in-flight still verifies). Reuse the same `timingSafeEqual`-based helper shape as `TelegramBotWebhookHandler.verify` (`adapters/bot-webhook.ts`), which is the in-repo precedent for a custom (non-`verifySignature`) scheme. **No candidates present ⇒ reject** (unlike Telegram's "accept all when no secret" — for a manual GitLab webhook, "no token yet" must be a safe 401, see FR-003/FR-004 and the "enabled, no token" state in the mockup).
-- **`receive`** — `JSON.parse` the body. Read `object_kind` and `object_attributes.action`:
-  - `object_kind === "issue"` **and** `action === "open"` → one `IntegrationEvent` `{ type: "issue-opened", service: "gitlab/webhooks", data: <issue projection> }`.
-  - `object_kind === "merge_request"` **and** `action === "open"` → one `IntegrationEvent` `{ type: "mr-opened", service: "gitlab/webhooks", data: <MR projection> }`.
-  - **anything else** (push, pipeline, note, tag, other actions: close/reopen/update/approval/…) → `{ events: [] }` → the route returns 2xx `emitted: 0`. This is FR-006 and the first half of loop prevention.
-  - **No `onEnable` / `onDisable`** — registration is manual (the user pastes URL+token into GitLab), so there is no provider call to make. This is the explicit contrast with Telegram's `setWebhook` (locked scope).
-- **Projection** (bounded, per spec "truncated description"): `project.id`, `object_attributes.iid`, `object_attributes.title`, `object_attributes.labels[].title` → `labels[]`, top-level `user {name, username}` (note: GitLab puts the actor at **top-level `user`**, not under `object_attributes`), `object_attributes.url`, and `object_attributes.description` truncated to a fixed cap (e.g. 2 000 chars) to stay under the 1 MB event payload limit. For MRs also `object_attributes.source_branch` / `target_branch`.
+- **`verify`** — *plain string match*, not HMAC. Read the `X-Gitlab-Token` header; timing-safe-compare against `[secrets.previous, secrets.primary]`. Reuse the `timingSafeEqual` shape from `TelegramBotWebhookHandler.verify`. **No candidates present ⇒ reject** (a manual GitLab webhook with no token yet must 401, never "accept all").
+- **`receive`** — `JSON.parse` the body. `object_kind === "issue"` **and** `action === "open"` → one `IntegrationEvent` `{ type: "issue-opened", service: "gitlab/webhooks", data: <issue projection> }`; `object_kind === "merge_request"` **and** `action === "open"` → `{ type: "mr-opened", … }`; **anything else** → `{ events: [] }` (2xx `emitted: 0`). No `onEnable`/`onDisable` (manual registration).
+- **Projection** (bounded): `project.id`, `object_attributes.iid`, `.title`, `.labels[].title` → `labels[]`, top-level `user {name, username}`, `object_attributes.url`, `.description` truncated (e.g. 2 000 chars). MRs also `source_branch`/`target_branch`.
 
-The event *type names* emitted here (`issue-opened` / `mr-opened`) are the **IntegrationEvent** type; the **final** kernel event type is derived separately (ADR-2).
+The IntegrationEvent types (`issue-opened`/`mr-opened`) are mapped to kernel types separately (ADR-2).
 
-### 3.5 Event-type mapping (decision 2) — see ADR-2
+### 3.5 Event-type mapping — see ADR-2 *(unchanged)*
 
-`emitIntegrationEvent` (`src/lib/events/from-integration-event.ts`) derives the final type via `deriveLegacyType(event.service, event.type)` (`src/lib/events/legacy-mapping.ts`). The generic fallback would produce `com.bos.gitlab.webhooks.issue-opened` — **not** the committed `gitlab.issue.opened`. The clean fix is a data-table addition to `KNOWN_TYPES` (no code-logic change):
+Add to `KNOWN_TYPES`: `"gitlab/webhooks:issue-opened" → "gitlab.issue.opened"`, `"gitlab/webhooks:mr-opened" → "gitlab.mr.opened"`; add `KNOWN_NAMES.gitlab = "GitLab"`; add a `legacyFriendlySummary` branch (`"issue #<iid> <title>"` / `"MR !<iid> <title>"`). Both final types pass `isValidEventType`.
 
-```
-"gitlab/webhooks:issue-opened" → "gitlab.issue.opened"
-"gitlab/webhooks:mr-opened"    → "gitlab.mr.opened"
-```
+### 3.6 Triage handler = thin dispatcher — see ADR-3, ADR-12
 
-Both final types pass `isValidEventType` (`/^[a-z0-9]+(\.[a-z0-9_-]+)+$/`). `legacySourceFor` yields `{ appId: "gitlab", name: "GitLab" }` once `KNOWN_NAMES.gitlab = "GitLab"` is added. Also add a `legacyFriendlySummary` branch so the Event Viewer reads `"issue #<iid> <title>"` / `"MR !<iid> <title>"` instead of the truncated-JSON `deriveSummary` fallback (the same one-line pattern Gmail/Telegram already use — see §9 F4).
-
-### 3.6 Triage handler (decision 3) — see ADR-3
-
-`triage/handler.ts` registers **one** core headless handler, exactly as `src/lib/self-heal/spine-handler.ts` does:
+`triage/handler.ts` registers **one** core headless handler, exactly as `spine-handler.ts` does:
 
 ```
 registerCoreExecutor("gitlab-issue-triage", async (record) => {
-  // pre-flight MCP check (ADR-4); on absence: emit failure, ack, return.
-  // classify; then FIRE-AND-FORGET the workflow (void runTriage(...));
-  // return immediately  → prompt ack, never block the 30 s ack window.
+  // Resolve the selected agent (panel picker, default "gitlab-issue-agent").
+  // Then FIRE-AND-FORGET the dispatch:  void dispatchToAgent(record)
+  // Return immediately → prompt ack, never block the 30 s ack window.
 });
 api.register({
   handlerId: "gitlab-issue-triage",
   eventType: "gitlab.issue.opened",   // exact; issue-only per Q1 — NOT a prefix
   mode: "headless",
   ownerId: "core",
-  declaredBy: "core",                 // core-internal: no owner-liveness IPC needed
+  declaredBy: "core",
   displayName: "GitLab issue triage",
-  /* no `enabled` field — an explicit `true` would re-enable the handler on every restart and break FR-016/SC-004 (see §9 F1) */
+  /* no `enabled` field — omit so disable persists across restarts (§9 F1) */
 });
 ```
 
-- **Registered for `gitlab.issue.opened` only.** `gitlab.mr.opened` is deliberately *not* a handler target (Q1=A: MRs are event-only). The per-handler FIFO queue (`dispatch.ts`) therefore serializes triage runs (concurrency 1 per handler) — desirable: it prevents concurrent double-processing of the same issue and matches the kernel's existing ordering guarantee.
-- **Ack model = prompt-ack + background run.** `invoke()` for a `declaredBy:"core"` handler does `const out = await fn(record); settleAck(...)`, raced against `reg.timeoutMs` (default `DEFAULT_HANDLER_TIMEOUT_MS = 30_000`). A multi-minute agent run would blow that window, get marked failed, and be **retried up to `MAX_HANDLER_ATTEMPTS` (3)** with backoff — re-running side-effectful MCP writes. So the executor **returns immediately** (the self-heal spine's R4 pattern: "the executor's ack window is never at risk because the long work is launched fire-and-forget"). The triage run then owns its own failure path (ADR-3/4). The kernel's `processed` for this event means "the handler acknowledged," **not** "the workflow finished."
-- **Toggle** — `api.setEnabled("gitlab-issue-triage", "core", enabled)` is reached by the Event Viewer's config panel (`POST /api/events/handlers`), which is the real handler-management surface (the mockup's "Settings → Events → Handlers" label maps to the **Event Viewer app**'s configuration tab — there is no Settings *namespace* named `events`; see ADR-7). Because `declaredBy:"core"`, `isHandlerActive` returns true whenever `enabled` (no owner-running IPC gate), so the toggle is a plain boolean flip.
-- **Idempotency guard** (at-least-once safety): before running, the workflow reads the issue via MCP; if it already carries one of the handler's status labels (`Triage`…`Needs Review`/`Failed`) it is treated as already (in)progress and the run no-ops/resumes rather than re-posting. This covers a dedup-ring loss across restart re-emitting the same open, or a manual re-dispatch. (See Risks.)
+- **Registered for `gitlab.issue.opened` only.** `gitlab.mr.opened` is deliberately not a target (Q1=A). The per-handler FIFO queue serializes runs (concurrency 1) — prevents concurrent double-processing of the same issue.
+- **The handler holds no triage logic** (R6): it resolves which agent to run and hands over the issue context. Classification, the workflow, and all GitLab updates are the **agent + skill's** job.
+- **Prompt-ack + fire-and-forget** (ADR-3, unchanged in mechanism): the executor returns immediately; `dispatchToAgent` is the detached async work.
 
-### 3.7 Triage workflow (decision 3, continued)
+### 3.7 Dispatch + graceful failure — see ADR-12, ADR-4 (revised)
 
-`triage/workflow.ts` runs the agent **once** via `runSubAgent(getAgent("gitlab-triage"), task, { contentOnly: true })` — the exact headless mechanism the Telegram router uses (`integrations/services/telegram/agent-router.ts` → `runSubAgent`). The run is `type: "local"`, so `runLocalHeadless` composes `composeInstructions("gitlab-triage")` (which builds the **"## MCP servers"** index block from the agent's `mcp` allowlist) and runs `runAgentLoop` with `gateFor("gitlab-triage")` + `headlessGate`. No `conversationId` is passed (genuinely headless, like the scheduler/Telegram router) — and **correctly so**, because the deliverable is a GitLab issue comment, not a branch-gated BOS spec-store write (V. The VFS Is Not the Source).
+`triage/dispatch.ts`:
 
-**All GitLab reads/writes go through the GitLab MCP server** (FR-012), reached by the agent via the `mcp_tool_search` / `mcp_tool_schema` / `mcp_tool_call` tools, which enforce the agent's allowlist at call time (`gateway.callServerTool(server, tool, args, ctx.agentId)` → `allowedServers(agentId)`). The "MCP server assigned to the agent" requirement maps **directly** onto the agent's `mcp` frontmatter allowlist (see ADR-5).
+1. **Resolve the agent.** Read the panel's "agent that handles new issues" (persisted integration config, default `gitlab-issue-agent`) → `getAgent(id)`.
+2. **Build the task.** A short, context-bearing instruction: *"A new GitLab issue was opened: project #<id> (proj/app), issue #<iid>, title …, labels …, url …. Use the `gitlab-issue-triage` skill. Read the issue via the GitLab MCP server, classify it, work it through the pipeline, and update it with comments and status labels as you go."* The skill (loaded by the agent) supplies the actual state-machine logic — the task only supplies the entry context.
+3. **Run.** `await runSubAgent(agent, task, { contentOnly: true })` — the headless mechanism (Telegram router precedent). No `conversationId` (genuinely headless; the deliverable is a GitLab comment, not a branch-gated spec write).
+4. **Graceful failure** (FR-015/FR-016/SC-007): wrap the run in try/catch. On error (agent missing, agent run failed, MCP unreachable → surfaced in-band by the resilient gateway as a tool `Error`): emit a `com.bos.gitlab.triage.failed` event/notification with the cause. **The receiver never crashes and the event is never lost** (the original `gitlab.issue.opened` is already durably recorded). If the agent reached GitLab before failing, the *skill* is responsible for leaving a `Failed` status label; the dispatcher only guarantees the BOS-side failure is recorded.
 
-**Pipeline stages** (prompt-orchestrated by `agent-prompt.ts`; the "workflow" is the agent's reasoning steps, not the retired BOS workflow engine, and "draft a spec" = draft spec *text posted as a comment*, not a Build Studio spec-store run):
+> **R6 — the deterministic MCP pre-flight is removed.** v3's §3.8 pre-checked "is a GitLab-named MCP server reachable by the agent" before running. That check encoded *the agent's capability inside the handler* — the wrong layer, and it duplicated the gateway's own enforcement. R6 deletes it: the handler dispatches unconditionally; if the agent lacks MCP access, the run fails at the first `mcp_tool_call` (the gateway returns an in-band `Error`), and step 4 surfaces it. The unit of capability is the agent, configured in Settings → Agents; the handler trusts that boundary. FR-013 states this explicitly.
 
-1. **Read** the issue via MCP (full title/description/labels).
-2. **Classify** — labels first: exactly one of `Bug` / `Feature` / `Improvement` (case-insensitive title match; any other labels ignored). Fallback: agent infers from title+description and states the inferred type.
-3. **Run the matching pipeline**:
-   - `Bug`: analyze → verify → propose fix.
-   - `Feature`: draft a specification for the new feature.
-   - `Improvement`: draft a specification to improve the existing feature.
-4. **Update the issue via MCP** as it advances — this is where the **status labels** are applied, exactly one active at a time, swapped as it moves:
-   `Triage → Analyzing → Verifying → Fix Proposed` (Bug) **or** `Triage → … → Spec Drafted` (Feature/Improvement) `→ Needs Review` (terminal, human finalizes — Q2=A). Side states: `Needs Input` (blocked, needs info from reporter), `Failed` (run errored; failure comment posted; event still recorded). The **classification label** (`Bug`/`Feature`/`Improvement`) is additive and persists; it is separate from the status label (FR-013).
-5. **Never close the issue or open an MR** (Q2=A) — comment + label only.
+### 3.8 The triage skill = the state machine — see ADR-12
 
-Label application via MCP: read the issue's current labels, remove any existing handler status label, add the new one (GitLab's `add_label`/`remove_label` semantics), so the single-active invariant holds. See Risks (label conflicts with user-managed labels).
+`seed/skills/gitlab-issue-triage/SKILL.md` is the **behavior contract**. The `Gitlab Issue Agent` loads it. Its content drives:
 
-### 3.8 MCP-not-configured detection (decision 4) — see ADR-4
-
-In `triage/handler.ts`, **before** launching the agent, a deterministic pre-flight:
-
-1. `const agent = await getAgent("gitlab-triage")` (the run would fail regardless if absent).
-2. `const all = await listMcpServers()` (`@/lib/mcp/store`).
-3. Reachable set = `all.filter(s => isAllowed(agent.mcp, s.name, s.endpoint ?? ""))` (`@/lib/agent/capabilities`) — the *exact* predicate the MCP gateway uses, so "reachable by the agent" is authoritative, not a guess.
-4. GitLab set = reachable servers whose `name` matches `/gitlab/i` (a small named helper, `isGitLabServer`).
-5. If the GitLab set is empty → **graceful failure** (FR-015, SC-007): emit a `com.bos.gitlab.triage.not-configured` event/notification ("GitLab MCP not configured / not assigned to the triage agent"), leave the issue **unmodified**, and return (prompt ack). The original `gitlab.issue.opened` event is already durably recorded, so nothing is lost.
-
-The in-agent path is the safety net: if the pre-flight passes but the server is down mid-run, `mcp_tool_call` returns an in-band `Error: …` (the gateway is resilient — `toolsForServer`/`callServerTool` return `{error}` rather than throwing), the agent's failure handling posts `Failed` + a failure comment, and the run ends without crashing the receiver.
+1. **Read** the issue via the GitLab MCP server (title, description, current labels).
+2. **Classify** — labels first: exactly one of `Bug` / `Feature` / `Improvement` (case-insensitive; other labels ignored). Fallback: infer from title+description and state the inferred type in a comment. Apply the classification label (additive).
+3. **Idempotency / resume**: if the issue already carries one of the handler's status labels, resume from that stage rather than restarting (covers a dedup-ring loss re-emitting the same open, or a manual re-dispatch).
+4. **Run the matching pipeline**, applying the transient **status label** (exactly one active, swapped per step) via MCP:
+   - `Bug`: `Triage` → `Analyzing` → `Verifying` → `Fix Proposed` → **`Needs Review`** (post the proposed fix as a comment).
+   - `Feature` / `Improvement`: `Triage` → (work) → `Spec Drafted` → **`Needs Review`** (post the draft spec — including a UI mockup where relevant — as a comment).
+   - Side states: `Needs Input` (blocked, needs info from the reporter — stop and wait), `Failed` (run errored; failure comment posted).
+5. **Autonomy boundary (Q2=A)**: comment + label only. **Never** close the issue or open an MR. `Needs Review` is the terminal state — a human verifies and finalizes.
+6. **Label mechanics**: to keep the single-active-status invariant, the skill reads current labels, removes any existing handler status label, and adds the new one (GitLab add/remove-label semantics). It never removes the additive classification label.
+7. **`"verify"` scope (tightened from the scenario walkthrough)**: for a Bug, "verify" = assess plausibility and identify the likely root cause from the description **and any accessible code context** (e.g. a registered repo / the agent's file tools); if no code context is reachable, the skill notes that in the comment and proceeds to propose a fix from the description alone. It is *not* "reproduce in a running environment."
 
 ### 3.9 Settings panel (mockup = binding UI contract)
 
-A new **`GitLabDetailView`** (analogous to `TelegramDetailView`) is routed for `gitlab` in `IntegrationsTab`. The generic `IntegrationDetailView` is **not** used for gitlab — it would render the git-provider OAuth credential panel (because `FIELD_CREDENTIAL_PROVIDERS` includes `"gitlab"`) and a Connect/Disconnect card, both of which contradict the webhook-only, no-OAuth contract (ADR-6).
+A dedicated **`GitLabDetailView`** is routed for `gitlab` in `IntegrationsTab`. The generic `IntegrationDetailView` is **not** used (it would render the git-provider OAuth panel — ADR-6). It composes, top to bottom, matching the mockup:
 
-`GitLabDetailView` composes, top to bottom, matching the mockup:
+- **Header card** — GitLab icon, name, a `Webhook` badge, one-line "webhook only — handling is a separate, configurable step" copy.
+- **`WebhookSection`** (reused, `serviceId="webhooks"`). Stock: enable/disable, URL + copy, one-time amber token reveal, rotate, delete, "Secret set" badge, `X-Gitlab-Token` hint. "Generate token" = the stock rotate (first use = generation); enable does **not** auto-mint for gitlab (ADR-1b), so the "enabled, no token" state (B) is real and safe.
+- **`GitLabWorkflowSection`** (new, R6) — the **Workflow** card:
+  - **Agent picker** — "Agent that handles new issues", a `<select>` over available agents, default **Gitlab Issue Agent**, a "Manage" affordance → Settings → Agents. Persisted in the integration config (the dispatcher reads it, §3.7.1).
+  - **Skill note** — one line: "Its *skill* defines the pipeline (classify → workflow → status labels → `Needs Review`); the agent performs GitLab operations via its configured GitLab MCP server (no credential is stored in BOS)."
+  - **Handler toggle pointer** — "A built-in `gitlab-issue-triage` handler is enabled by default and forwards each new issue to the agent above. Toggle it in the Events handler configuration, or point another consumer (e.g. the Workflow app) at the `gitlab.issue.opened` event instead." + an "Open Events" link that opens the **Event Viewer** app (the real toggle surface — ADR-7).
+- **`GitLabLabelsReference`** — the two chip groups (Classification + the eight Status labels) from the mockup, sourced from `labels.ts`.
+- **No MCP status anywhere** (R4).
 
-- **Header card** — GitLab icon, name, a `Webhook` badge, and the one-line description that this is the *webhook only* and that handling is a separate, toggleable step (mockup §header, all three states).
-- **`WebhookSection`** (reused, `src/components/apps/settings/integrations/WebhookSection.tsx`) — `serviceId="webhooks"`, `supported=adapterSupports(adapters,"gitlab","webhooks","webhook")` (true, per §3.3). This gives, stock: enable/disable, receiver URL + copy, the one-time amber token reveal, rotate, delete, "Secret set" badge, and the `X-Gitlab-Token` copy hint. The Enable button's `!connected` gate is satisfied because the integration is connected-by-default (ADR-1).
-  - **Token reveal mapping** (mockup State B→C): the mockup's **"Generate token"** is the stock **rotate** action (`rotateSecret` → `ensureWebhookSecret({force:true})` → returns `primary` once → `WebhookSection` shows the amber one-time reveal). "Rotate token" (State C) is the same action. Enabling does **not** auto-mint for gitlab (ADR-1/`mintSecret:false`), so the "enabled, no token" intermediate state (State B) is real and safe (401 until a token is generated and pasted).
-- **`GitLabLabelsReference`** — the two chip groups from the mockup: Classification (`Bug`/`Feature`/`Improvement`) and Status (the seven transient labels), sourced from `labels.ts`.
-- **`GitLabHandlerPointer`** — the persistent bottom note: a built-in `gitlab-issue-triage` handler listens to `gitlab.issue.opened`, enabled by default, acts via the GitLab MCP server assigned to its agent; a link that opens the **Event Viewer** app (the real handler-toggle surface, ADR-7). No MCP status is shown (R4).
-
-`IntegrationsTab` change: add a `currentItem.manifest.id === "gitlab"` branch that renders `GitLabDetailView` (passing `adapters`), and **update the existing generic-view fallback** from `id !== "telegram"` to `id !== "telegram" && id !== "gitlab"`. (The fallback currently renders `IntegrationDetailView` for every non-telegram integration; leaving it as-is would render *both* the GitLab detail view and the generic view — the latter surfacing the git-provider OAuth panel ADR-6 is trying to avoid. See §9 F2.)
+`IntegrationsTab` change: add a `currentItem.manifest.id === "gitlab"` branch → `GitLabDetailView`, and update the generic-view fallback from `id !== "telegram"` to `id !== "telegram" && id !== "gitlab"` (§9 F2).
 
 ---
 
@@ -218,144 +215,118 @@ A new **`GitLabDetailView`** (analogous to `TelegramDetailView`) is routed for `
 - `src/lib/integrations/services/gitlab/adapters/webhook.ts`
 - `src/lib/integrations/services/gitlab/adapters/webhooks-adapter.ts`
 - `src/lib/integrations/services/gitlab/triage/handler.ts`
-- `src/lib/integrations/services/gitlab/triage/workflow.ts`
-- `src/lib/integrations/services/gitlab/triage/agent-prompt.ts`
-- `seed/agents/gitlab-triage/AGENT.md`
+- `src/lib/integrations/services/gitlab/triage/dispatch.ts`
+- `seed/agents/gitlab-issue-agent/AGENT.md`
+- `seed/skills/gitlab-issue-triage/SKILL.md`
 - `src/components/apps/settings/integrations/GitLabDetailView.tsx`
+- `src/components/apps/settings/integrations/GitLabWorkflowSection.tsx`
 - `src/components/apps/settings/integrations/GitLabLabelsReference.tsx`
-- `src/components/apps/settings/integrations/GitLabHandlerPointer.tsx`
-- `docs/usage/integrations/gitlab.md` (end-user) and a `docs/dev/integrations/` note (dev) — see §4 docs.
+- `docs/usage/integrations/gitlab.md` (end-user) + a `docs/dev/integrations/` note (dev) — webhook-only/authless pattern + agent/skill setup.
 
 **Modified:**
 - `src/lib/integrations/types.ts` — add `authless?: boolean` to `IntegrationManifest`.
 - `src/lib/integrations/state/store.ts` — `readState`: coerce `connected = true` when the manifest is `authless`.
-- `src/lib/integrations/index.ts` — `import "./services/gitlab";` (barrel registration).
-- `src/lib/integrations/webhooks/registry.ts` — add `gitlab: { webhooks: new GitLabWebhookHandler() }` to the static `HANDLERS` map.
-- `src/lib/integrations/webhooks/manager.ts` — `enableWebhook` gains `mintSecret?: boolean` (default `true`); skip `ensureWebhookSecret` when `false`.
-- `src/app/api/integrations/[id]/services/[serviceId]/webhook/route.ts` — POST `enable` forwards `body.mintSecret` to `enableWebhook`.
-- `src/lib/events/legacy-mapping.ts` — `KNOWN_TYPES` + `KNOWN_NAMES` entries for gitlab (§3.5).
-- `src/instrumentation.ts` — call `registerGitLabTriageHandler()` in `register()`, ordered after `startEventKernel()`/`registerAllUiHandlers()` (the self-heal spine is registered after the kernel for the same reason).
-- `src/components/apps/settings/IntegrationsTab.tsx` — route `gitlab` → `GitLabDetailView` (pass `adapters`).
-- `docs/` — add `docs/usage/integrations/gitlab.md`; extend the integration recipe in `docs/dev/extending-bos.md`/`docs/dev/integrations.md` with the "webhook-only / authless integration" pattern (manifest `authless` flag + `mintSecret:false` + zero-method webhook-capable adapter).
+- `src/lib/integrations/index.ts` — `import "./services/gitlab";`.
+- `src/lib/integrations/webhooks/registry.ts` — add `gitlab: { webhooks: new GitLabWebhookHandler() }`.
+- `src/lib/integrations/webhooks/manager.ts` — `enableWebhook` gains `mintSecret?: boolean` (default `true`).
+- `src/app/api/integrations/[id]/services/[serviceId]/webhook/route.ts` — POST `enable` forwards `body.mintSecret`.
+- `src/lib/events/legacy-mapping.ts` — `KNOWN_TYPES` + `KNOWN_NAMES` + `legacyFriendlySummary` for gitlab (§3.5).
+- `src/instrumentation.ts` — call `registerGitLabTriageHandler()` after `startEventKernel()`.
+- `src/components/apps/settings/IntegrationsTab.tsx` — route `gitlab` → `GitLabDetailView`; update the generic fallback (F2).
 
-> The webhook **receiver route** `src/app/api/integrations/webhooks/[integrationId]/[serviceId]/route.ts` is **not** modified — it is a generic integration point (below).
+> The webhook **receiver route** is **not** modified. The self-heal module is **not** modified (R6 — fully separate).
 
 ---
 
 ## 5. Integration points (existing mechanisms called into, not created/modified)
 
-- **Webhook receiver route** — `src/app/api/integrations/webhooks/[integrationId]/[serviceId]/route.ts` (enable gate → connected gate → verify → `hashPayload`/`markDelivery` dedup ring → `receive` → `emitIntegrationEvent`). GitLab plugs in by registering a handler; the route is unchanged.
-- **Webhook store/manager/verify** — `src/lib/integrations/webhooks/{store,manager,verify}.ts`: `WebhookSecrets {primary, previous}` in the SecretsStore under `webhook:webhooks`; `enableWebhook`/`rotateSecret`/`deleteWebhook`; the in-memory dedup ring. (The `mintSecret` opt-out is the one platform addition to `manager.ts`.)
-- **Event kernel** — `src/lib/events/{api,kernel,dispatch}.ts`: `api.emit`, `registerCoreExecutor`, `api.register({declaredBy:"core"})`, `api.setEnabled`, in-process core-handler dispatch. Toggle surface: `POST /api/events/handlers` via the Event Viewer's `ConfigPanel`.
-- **Legacy mapping** — `src/lib/events/legacy-mapping.ts` (`deriveLegacyType`/`legacySourceFor`/`legacyFriendlySummary`) via `from-integration-event.ts`.
-- **Sub-agent runtime** — `src/lib/agent/subagents/{store,runner}.ts`: `getAgent`, `runSubAgent` (`type:"local"` → `runLocalHeadless` → `runAgentLoop`), `composeInstructions` (MCP index block), `gateFor`/`headlessGate`.
-- **MCP gateway + store + capability scoping** — `src/lib/mcp/{gateway,store}.ts`, `src/lib/agent/capabilities.ts` (`isAllowed`); agent tools `mcp_tool_search`/`mcp_tool_schema`/`mcp_tool_call` (`src/lib/assistant/tools/server/mcp.ts`) scope every call to `ctx.agentId`.
-- **Settings integration panel primitives** — `src/components/apps/settings/integrations/{WebhookSection,IntegrationListView,IntegrationsBreadcrumb}.tsx`, `useIntegrations.ts` (`adapterSupports`), `GET /api/integrations` (feeds `items` + `adapters`).
-- **Event Viewer app** — `src/apps/event-viewer/` (id `event-viewer`, name "Events"; `ConfigPanel.tsx` lists/toggles headless handlers). The handler pointer opens this app.
+- **Webhook receiver route** — `src/app/api/integrations/webhooks/[integrationId]/[serviceId]/route.ts` (enable gate → connected gate → verify → dedup → receive → emit).
+- **Webhook store/manager/verify** — `webhooks/{store,manager,verify}.ts` (`WebhookSecrets`, `enableWebhook`/`rotateSecret`, dedup ring). The `mintSecret` opt-out is the one platform addition to `manager.ts`.
+- **Event kernel** — `events/{api,kernel,dispatch}.ts` (`api.emit`, `registerCoreExecutor`, `api.register({declaredBy:"core"})`, `api.setEnabled`). Toggle surface: the Event Viewer's `ConfigPanel`.
+- **Legacy mapping** — `events/legacy-mapping.ts` via `from-integration-event.ts`.
+- **Sub-agent runtime** — `agent/subagents/{store,runner}.ts` (`getAgent`, `runSubAgent` → `runLocalHeadless` → `runAgentLoop`, `composeInstructions`, `gateFor`/`headlessGate`). The trajectory the user asked about is the headless run's `TranscriptionWriter` output (run transcript / Workflow Manager surface) — **not** an Assistant conversation (R6 decision: no Assistant attachment).
+- **Agent + skill stores** — `data/agents/<id>/AGENT.md` (seeded from `seed/agents/`), skills seeded from `seed/skills/`; the panel's agent picker resolves via `getAgent`.
+- **MCP gateway + store + capability scoping** — `mcp/{gateway,store}.ts`, `agent/capabilities.ts` (`isAllowed`); agent tools `mcp_tool_*` scope every call to `ctx.agentId`. The gateway is resilient (returns `{error}` in-band on a down server) — this is what makes the removed pre-flight unnecessary (ADR-4 revised).
+- **Settings integration panel primitives** — `integrations/{WebhookSection,IntegrationListView,IntegrationsBreadcrumb}.tsx`, `useIntegrations.ts`, `GET /api/integrations`.
+- **Event Viewer app** — `src/apps/event-viewer/` (the real handler-toggle surface; ADR-7).
 
 ---
 
 ## 6. ADRs
 
-### ADR-1 — Authless integration: connected-by-default at the platform level
-- **Context.** The generic receiver 404s on `!state.connected` (`route.ts`), and `WebhookSection`'s Enable button is disabled while `!connected`. `readState` (`state/store.ts`) merges `defaultState()` (`connected:false`) with `state.json`. A webhook-only integration has **no** OAuth connect to set `connected=true` (the spec's open design decision / Assumption).
-- **Options.** (a) Per-feature hack: have gitlab's registration/first-enable write `connected:true` to `state.json`. (b) Platform flag: an optional `IntegrationManifest.authless` that the state store interprets as "connected-by-default." (c) Special-case `gitlab` in the receiver route.
-- **Decision.** **(b).** Add `authless?: boolean` to `IntegrationManifest`; in `readState(id)`, look up `getIntegration(id)` and, when `authless`, coerce `connected = true` (derived on every read, **not** persisted). GitLab's manifest sets `authless: true`.
-- **Consequences.** The receiver gate passes for gitlab with no connect step; `WebhookSection`'s Enable is enabled; no per-feature branching. Any future webhook-only/authless integration sets one flag and inherits the behavior (the user's "fix the mechanism at the platform level" principle). The only inbound gates for gitlab are the webhook `enabled` flag (checked first) + valid `X-Gitlab-Token` — exactly the spec's assumption. Back-compatible: GSuite/Telegram don't set `authless` and keep their OAuth-driven `connected`.
+### ADR-1 — Authless integration: connected-by-default at the platform level *(unchanged)*
+- **Context.** The receiver 404s on `!state.connected`; `WebhookSection`'s Enable is disabled while `!connected`. A webhook-only integration has no OAuth connect to set `connected=true`.
+- **Decision.** Add `authless?: boolean` to `IntegrationManifest`; in `readState(id)`, when `authless`, coerce `connected = true` (derived on every read, not persisted). GitLab sets `authless: true`.
+- **Consequences.** Receiver gate passes with no connect step; Enable is enabled; no per-feature branching; any future authless integration sets one flag. Back-compatible (G Suite/Telegram keep OAuth-driven `connected`).
 
-### ADR-1b — Webhook enable does not auto-mint the secret for manual webhooks
-- **Context.** `enableWebhook` unconditionally calls `ensureWebhookSecret` (mints a token) — correct for Gmail/Telegram (the secret is needed to register the provider push in `onEnable`), but wrong for a **manual** webhook: it would mint a token the user can never see (the stock section reveals only on rotate), leaving "enabled with a hidden secret." The mockup instead shows *Enable* (State B, no token) then an explicit *Generate token* (State C, one-time reveal).
-- **Decision.** `enableWebhook` gains `mintSecret?: boolean` (default `true`); the gitlab enable path passes `mintSecret: false` (forwarded through the webhook `route.ts`). GitLab's **Generate token** is the stock **rotate** action (first use = generation; each use mints a fresh primary, demotes the old to `previous` for the rotation grace window, and reveals once).
-- **Consequences.** "Enabled, no token" becomes a real, safe state (401 until a token is generated and pasted — no token ⇒ no candidate matches ⇒ reject, never accept). Matches the mockup precisely. Back-compatible (default preserves Gmail/Telegram).
+### ADR-1b — Webhook enable does not auto-mint the secret for manual webhooks *(unchanged)*
+- **Context.** `enableWebhook` unconditionally mints a token — correct for Gmail/Telegram (needed to register the provider push) but wrong for a manual webhook (it would mint an invisible secret). The mockup shows *Enable* (no token) then an explicit *Generate token*.
+- **Decision.** `enableWebhook` gains `mintSecret?: boolean` (default `true`); gitlab enable passes `mintSecret: false`. "Generate token" = stock rotate (first use = generation; each use mints a fresh primary, demotes the old to `previous`, reveals once).
+- **Consequences.** "Enabled, no token" is a real, safe state (401 until a token is generated + pasted). Matches the mockup. Back-compatible.
 
-### ADR-2 — Event-type mapping via `KNOWN_TYPES`, not a code-logic branch
-- **Context.** `emitIntegrationEvent` → `deriveLegacyType(service, type)`. Without a mapping, gitlab's events would land as `com.bos.gitlab.webhooks.issue-opened` — not the user- and spec-committed `gitlab.issue.opened` / `gitlab.mr.opened`.
-- **Options.** (a) Add the two pairs to the `KNOWN_TYPES` data table. (b) Add a `service === "gitlab"` special case in `deriveLegacyType`.
-- **Decision.** **(a)** — the table is the intended extension point ("known legacy `service:type` pairs"); a data entry is smaller, more testable, and keeps the function logic untouched. Emit the IntegrationEvent types `issue-opened`/`mr-opened` with `service: "gitlab/webhooks"`; map to `gitlab.issue.opened`/`gitlab.mr.opened`. Also add `KNOWN_NAMES.gitlab = "GitLab"` for a clean source name.
-- **Consequences.** The handler registers for the exact final type `gitlab.issue.opened`. Both final types pass `isValidEventType`. The IntegrationEvent type (`issue-opened`) and the kernel event type (`gitlab.issue.opened`) are intentionally distinct layers (the same split as `gsuite/gmail:new_email` → `com.bos.gsuite.email.received`).
+### ADR-2 — Event-type mapping via `KNOWN_TYPES` *(unchanged)*
+- **Decision.** Data-table entries for the two event types + `KNOWN_NAMES.gitlab` + a `legacyFriendlySummary` branch. No code-logic branch in `deriveLegacyType`.
 
-### ADR-3 — Triage is a core headless handler: prompt-ack + fire-and-forget agent run
-- **Context.** FR-009 needs a default, toggleable headless consumer of `gitlab.issue.opened`. The triage run is multi-minute (agent reasoning + many MCP calls). The kernel's `invoke()` for a `declaredBy:"core"` handler **awaits** the executor and settles the ack, raced against `reg.timeoutMs` (default 30 s); a non-returning executor is marked failed and **retried up to 3× with backoff**, then permanently-failed.
-- **Options.** (a) Await the full workflow in the executor (needs `timeoutMs` raised to ~10 min). (b) Fire-and-forget the workflow and return immediately (prompt ack). (c) Hold the ack with a long timeout.
-- **Decision.** **(b)** — a **core** headless handler (`registerCoreExecutor` + `api.register({declaredBy:"core", enabled:true, eventType:"gitlab.issue.opened"})`), mirroring the self-heal spine's R4 pattern ("the long work is launched fire-and-forget; the ack window is never at risk"). The executor does the MCP pre-flight, then `void runTriage(record)` and returns; the workflow owns its completion and its failure path.
-- **Consequences.** The HTTP webhook response is never blocked (FR-007); the 30 s window is safe; no accidental re-runs from kernel retry (side-effectful MCP writes are not doubled by a timeout-retry). Trade-off accepted: if the process dies *between* the ack and the workflow finishing, that one triage is not re-dispatched (the event is already acked) — mitigated by the idempotency guard (§3.6) and by the fact the event record is durable and visible in the Event Viewer. Holding the ack (a/c) would serialize the single FIFO queue for ~10 min per issue and re-dispatch a still-pending long event after restart (double-processing) — worse. Because `declaredBy:"core"`, `isHandlerActive` is a plain `enabled` boolean (no owner-running IPC gate), so the Event Viewer toggle is authoritative.
+### ADR-3 — Triage is a core headless handler: prompt-ack + fire-and-forget *(mechanism unchanged; the async work is now the agent dispatch)*
+- **Context.** The triage is multi-minute (agent reasoning + many MCP calls). The kernel's `invoke()` for a `declaredBy:"core"` handler awaits the executor raced against `timeoutMs` (default 30 s); a non-returning executor is marked failed and retried up to 3× (doubling side-effectful MCP writes).
+- **Decision.** Core headless handler; the executor returns immediately and launches the dispatch fire-and-forget (`void dispatchToAgent(record)`), mirroring the spine's R4 pattern. The dispatcher owns completion + failure.
+- **Consequences.** HTTP response never blocked (FR-007); 30 s window safe; no timeout-retry double-runs. Trade-off accepted: a process death between ack and run-finish loses that one triage (event stays acked, visible) — mitigated by the skill's resume/idempotency (§3.8.3). `declaredBy:"core"` ⇒ `isHandlerActive` is a plain `enabled` boolean, so the Event Viewer toggle is authoritative.
 
-### ADR-4 — MCP-not-configured: deterministic pre-flight, in-band agent fallback
-- **Context.** FR-015/SC-007: with no GitLab MCP server configured (or none reachable by the triage agent), the handler must not crash, must record the event, must surface a "GitLab MCP not configured" failure, and must leave the issue unmodified.
-- **Decision.** Pre-flight in the executor (before `runSubAgent`): resolve the triage agent, list MCP servers, filter by the agent's allowlist using the **exact** gateway predicate (`isAllowed(agent.mcp, name, endpoint)`), and require ≥1 server whose name matches `/gitlab/i`. Absent → emit a `com.bos.gitlab.triage.not-configured` event/notification, return (ack), issue untouched. The in-agent path is the net: the MCP gateway is resilient (returns `{error}` in-band rather than throwing on a down server), so a mid-run failure surfaces to the agent, which posts `Failed` + a failure comment.
-- **Consequences.** The common "nothing configured" case is caught cheaply and deterministically (no wasted agent turn). Name-based GitLab matching is a heuristic (Risk: a non-obviously-named server is reported "not configured"); setup docs recommend a recognizable name, and the in-agent error path still degrades gracefully. Detection reuses real, existing functions (`listMcpServers`, `isAllowed`) — no reimplementation.
+### ADR-4 — No deterministic MCP pre-flight; the agent is the unit of capability *(R6 — supersedes v3's pre-flight ADR-4)*
+- **Context.** v3 pre-checked "is a GitLab-named MCP server reachable by the agent" in the handler before running. R6 (user direction) identifies this as the wrong paradigm: it encodes the *agent's* capability inside the *handler*, duplicates the gateway's own per-call enforcement, and is brittle to server naming.
+- **Decision.** The handler dispatches unconditionally. If the agent lacks GitLab MCP access (or the run fails for any reason), the failure surfaces at the run: the MCP gateway is resilient (returns `{error}` in-band rather than throwing on a down/unreachable server), so the agent's first `mcp_tool_call` fails cleanly, and `dispatch.ts`'s try/catch (§3.7.4) emits a `com.bos.gitlab.triage.failed` event/notification. The receiver never crashes; the event is never lost.
+- **Consequences.** FR-015/FR-016/SC-007 are still met (graceful, recorded, issue unmodified) but at the **run** layer, not a handler pre-check. The capability boundary lives where the user configures it (Settings → Agents → MCP). No name-matching heuristic (v3's `/gitlab/i` risk is gone). The handler and the agent's configuration cannot drift apart, because the handler no longer models the agent's configuration at all.
 
-### ADR-5 — "MCP server assigned to the agent" = the agent's `mcp` allowlist; a dedicated named agent
-- **Context.** The user's explicit model: the GitLab MCP server **must be assigned to the agent that runs the triage**, and the webhook/panel has **no** MCP dependency. This must map onto a real BOS mechanism.
-- **Mechanism found.** An agent is `data/agents/<id>/AGENT.md` (markdown, seeded from `seed/agents/`). Its frontmatter `mcp` is an allowlist; **unset/empty = all** servers, a non-empty list permits only the named ones (`capabilities.isAllowed`). The MCP **gateway enforces this at call time** for every `mcp_tool_*` invocation scoped by `ctx.agentId`, and `composeInstructions` builds the agent's "## MCP servers" index from the same allowlist. So "assigned to the agent" is precisely `agent.mcp` + gateway enforcement — no new mechanism.
-- **Decision.** Seed a **dedicated named agent `gitlab-triage`** (`type: local`) run via `runSubAgent`. Its `mcp` allowlist is **empty (all)** by default so that whatever GitLab server the user configures in Settings → MCP Servers is automatically reachable (robust to the user's chosen server name); the system prompt scopes it to the GitLab server. The user may narrow it (`mcp: [<their-server>]`) from Settings → Agents. The agent's `tools` are restricted to the MCP tools + the text/skill capabilities it needs (no source-editing, no VFS-write spec tools) — a locked-down run.
-- **Why a fixed named agent (not user-pickable à la Telegram's `agentConfig.agentId`).** The handler is a *default*, and the whole UX hinges on the user knowing **which** agent to assign the GitLab MCP server to. A fixed, discoverable agent makes that assignment unambiguous (the panel pointer names it) and keeps the Event Viewer toggle and the MCP assignment decoupled. Telegram's pickable-agent model is for a chat router where the user *wants* to choose the persona; here predictability wins. (Alternative considered and rejected: reusing `assistant`/`build-studio` — those have broad tool sets and aren't scoped for GitLab triage, so "restricted tools" and clean MCP assignment would be weaker.)
-- **Consequences.** All GitLab access is through the user's MCP server with its own auth (FR-012); BOS stores no GitLab credential. The webhook/integration panel shows no MCP status (R4). The pre-flight (ADR-4) reads this same allowlist, so detection and enforcement can't drift apart.
+### ADR-5 — "MCP server assigned to the agent" = the agent's `mcp` allowlist *(retained; the agent is now the configurable one)*
+- **Mechanism.** An agent is `data/agents/<id>/AGENT.md`; frontmatter `mcp` is an allowlist (empty = all). The gateway enforces it at call time via `ctx.agentId`; `composeInstructions` builds the "## MCP servers" index from the same allowlist. So "assigned to the agent" is precisely `agent.mcp` + gateway enforcement — no new mechanism.
+- **Decision.** Seed a **`Gitlab Issue Agent`** (`type: local`) that loads the `gitlab-issue-triage` skill. Its `mcp` allowlist defaults to **empty (all)** so whatever GitLab server the user configures is reachable (robust to naming); the user may narrow it. Its `tools` are scoped to what the triage needs (MCP tools + text/skill capability; no source-edit / VFS-write-spec tools).
+- **Consequences.** All GitLab access is via the user's MCP server with its own auth (FR-012/R4). The webhook/panel shows no MCP status. (v3's "fixed named agent, not user-pickable" rationale is now relaxed: the panel *does* let the user pick any agent (FR-017), but **defaults** to the seeded `Gitlab Issue Agent`, which remains the discoverable, well-scoped recommendation.)
 
-### ADR-6 — GitLab gets a dedicated `GitLabDetailView`, not the generic one
-- **Context.** The mockup is a flat webhook-only detail view (header + WebhookSection + labels + pointer) with **no** OAuth connect card. The generic `IntegrationDetailView` would, for id `gitlab`, render the git-provider `OAuthCredentialsPanel` (because `FIELD_CREDENTIAL_PROVIDERS` already contains `"gitlab"` — that string is the *git-remote* provider, a different feature) **and** a Connect/Disconnect card — both contradict R1.
-- **Decision.** New `GitLabDetailView` (pattern: `TelegramDetailView`), routed in `IntegrationsTab` for `gitlab`; it composes the header card, the reused `WebhookSection`, `GitLabLabelsReference`, and `GitLabHandlerPointer`. The generic view and the git-providers subsystem are untouched.
-- **Consequences.** The two `gitlab` concepts (integration id vs. git-remote provider id) stay in their separate stores with no cross-wiring. The mockup is met. **Placeholder `oauthConfig`:** `IntegrationManifest.oauthConfig` is required by the type, so the webhook-only manifest ships an inert placeholder (empty/dummy URLs, no scopes). The implementer must confirm it stays inert in `IntegrationListView` and any OAuth-driven affordance so the *shared* list row never shows a misleading "Connect" control for gitlab (the detail view is dedicated per this ADR; the list row is shared — see §9 F3).
+### ADR-6 — GitLab gets a dedicated `GitLabDetailView`, not the generic one *(unchanged)*
+- **Decision.** New `GitLabDetailView` (pattern: `TelegramDetailView`) routed in `IntegrationsTab`; composes header + `WebhookSection` + `GitLabWorkflowSection` + `GitLabLabelsReference`. Placeholder `oauthConfig` must stay inert in `IntegrationListView` (F3). The generic view and git-providers are untouched.
 
-### ADR-7 — The handler pointer opens the Event Viewer (the real toggle surface)
-- **Context.** The mockup labels the link "Settings → Events → Handlers," but there is **no** Settings *namespace*/tab named `events` (verified: `src/apps/settings/index.tsx` `CUSTOM_TABS` and the config-namespace list). The real handler-management surface is the **Event Viewer app** (`src/apps/event-viewer/`, id `event-viewer`, name "Events"), whose `ConfigPanel` lists headless handlers grouped by type and toggles them via `POST /api/events/handlers`.
-- **Decision.** The `GitLabHandlerPointer` link **opens the Event Viewer app** (the singleton OS app) and the copy stays close to the mockup ("managed in the Events handler configuration"). This is the honest mapping to an existing surface; inventing a new Settings→Events tab would be a platform change out of scope for this feature.
-- **Consequences.** FR-016 (independently toggleable handler) is served by the existing kernel `setEnabled` + Event Viewer panel. The label mismatch with the mockup is cosmetic and noted for the UI pass.
+### ADR-7 — The handler toggle lives in the Event Viewer *(unchanged)*
+- **Decision.** The pointer's "Open Events" link opens the **Event Viewer** app (id `event-viewer`), whose `ConfigPanel` toggles headless handlers via `POST /api/events/handlers`. No Settings→Events tab is invented.
 
-### ADR-8 — Two registries, two registrations (handler + zero-method adapter)
-- **Context.** The receiver reads the **webhooks handler** registry (`webhooks/registry.ts`); `WebhookSection`'s `supported` flag reads the **actions adapter** registry (`actions/adapter-registry.ts` → `listAdapterServices` → `adapterSupports(…, "webhook")`). These are distinct (Telegram registers *both*: a `TelegramBotWebhookHandler` in `HANDLERS` and a `TelegramBotAdapter` with `capabilities:{webhook:true}`).
-- **Decision.** Register `gitlab/webhooks` in **both**: a `GitLabWebhookHandler` in `webhooks/registry.ts`'s `HANDLERS`, and a **zero-method** `ServiceAdapter` subclass registered via `registerAdapter("gitlab","webhooks",{ createAdapter, methods: [], capabilities:{ webhook:true } })` whose only job is to declare the capability.
-- **Consequences.** The receiver finds a handler; the panel's WebhookSection is `supported` and not the "not available" placeholder. No assistant actions are exposed (there are none — all GitLab work is via MCP), which is correct for a webhook-only integration.
+### ADR-8 — Two registries, two registrations *(unchanged)*
+- **Decision.** Register `gitlab/webhooks` in both the webhooks handler registry and the actions adapter registry (zero-method, `capabilities:{webhook:true}`).
 
-### ADR-9 — Loop prevention: the handler's own updates never re-trigger it (FR-018)
-- **Context.** FR-018: the handler's own GitLab updates (commenting, relabeling) must not re-trigger the resolution workflow in a loop. The receiver's `receive()` filter is the structural mechanism, but this ADR verifies it holds against GitLab's documented webhook behavior so implementers don't need to re-derive it.
-- **GitLab webhook types the handler's updates produce** (per GitLab's "Events" webhook documentation):
-  - **Posting a comment (note)** → `object_kind: "note"`, `object_attributes.action: "create"`. The receiver's filter (`object_kind !== "issue" && object_kind !== "merge_request"` → `{ events: [] }`) rejects this. No BOS event emitted.
-  - **Applying or removing a label** → `object_kind: "issue"`, `object_attributes.action: "update"` (GitLab sends an `issue` webhook with `action: "update"` on label changes, not a new `issue` with `action: "open"`). The receiver's filter (`action !== "open"` → `{ events: [] }`) rejects this. No BOS event emitted.
-  - **Both in one update** (e.g. the handler posts a comment AND applies a status label) → GitLab may emit a `note` webhook and an `issue` webhook separately; both are filtered.
-- **GitLab webhook types the receiver accepts:**
-  - New issue: `object_kind: "issue"`, `action: "open"` → `gitlab.issue.opened`
-  - New MR: `object_kind: "merge_request"`, `action: "open"` → `gitlab.mr.opened`
-- **Decision.** Loop prevention is structural, not heuristic: the handler's updates produce webhook types (`note`/`issue-update`) that the receiver's `object_kind` + `action` filter categorically excludes. No sender-id check, no `X-BOS-*` header, no timestamp guard is needed — the filter matches on two fields, and the handler's updates never produce a matching pair. This is verified against GitLab's canonical webhook-events documentation (Issue/"work item" events: `object_kind: "issue"`, `action` ∈ `open`/`close`/`reopen`/`update`; Comment/"note" events: `object_kind: "note"`, `action` ∈ `create`/`update`; Merge request events: `object_kind: "merge_request"`, `action` ∈ `open`/`close`/`reopen`/`update`/… — https://docs.gitlab.com/user/project/integrations/webhook_events/). A label change is an `issue` event with `action: "update"`, and a comment is a `note` event with `action: "create"` — neither is `action: "open"`, so the filter drops both.
-- **Secondary (optional) gate.** Every GitLab webhook also carries an `X-Gitlab-Event` header (`Issue Hook`, `Note Hook`, `Merge Request Hook`). The design does not depend on it (the `object_kind`+`action` filter is sufficient and matches the existing receiver's shape), but it is a cheap, second signal the implementer may check to be defensive against a self-hosted build that mislabels an update as `open` (see Risk 4) — the two gates are independent, so a false positive on one is caught by the other.
-- **Consequences.** SC-006 (no self-trigger loop) is satisfied structurally. The only remaining re-vector is the dedup ring's restart-loss (Risk 1), mitigated by the idempotency guard (§3.6). If GitLab introduces a new `object_kind` for label-only changes in a future version, the filter would need a one-line update — flagged as low-probability (Risk 4 covers self-hosted version drift generally).
+### ADR-9 — Loop prevention: the agent's own updates never re-trigger it *(unchanged; "handler" → "agent")*
+- **Decision.** Structural: the agent's updates produce GitLab `note` (comment, `object_kind:"note"`) and `issue`/`merge_request` **`action:"update"`** (label) webhooks, which the receiver's `object_kind ∈ {issue, merge_request}` **and** `action === "open"` filter categorically excludes. Verified against GitLab's webhook-events docs. No sender-id / timestamp guard needed. (Secondary optional `X-Gitlab-Event` gate noted.)
 
-### ADR-10 — Reuse, not special-case: the central design philosophy
-- **Context.** The user's standing principle: build on BOS's existing mechanisms, don't special-case. This design applies it to every major decision. Documenting it as an ADR makes the "why" auditable for each choice.
-- **Webhook receiver.** GitLab plugs into the generic receiver route (`src/app/api/integrations/webhooks/[integrationId]/[serviceId]/route.ts`) by registering a `WebhookHandler` in the existing `HANDLERS` map. The route is unchanged. The verify → dedup → receive → emit pipeline is shared with GSuite and Telegram.
-- **Event emission.** `emitIntegrationEvent` → `deriveLegacyType` → `api.emit` is the existing path. GitLab's two event types are added as data entries to the existing `KNOWN_TYPES` table (ADR-2), not as a code-logic branch.
-- **Headless handler.** `registerCoreExecutor` + `api.register({ declaredBy: "core" })` is the existing pattern (the self-heal spine is the precedent). The fire-and-forget + prompt-ack model (ADR-3) is the spine's R4 pattern.
-- **Agent delegation.** `runSubAgent` is the existing mechanism (Telegram's `agent-router.ts` is the precedent). The MCP gateway + agent allowlist is the existing mechanism (no new MCP plumbing).
-- **Settings panel.** `WebhookSection` is reused verbatim — the strongest "identical to existing webhook" precedent. The only new components are thin wrappers (header, labels reference, handler pointer) around existing primitives.
-- **Platform additions.** The two additions (`authless` manifest flag, `mintSecret` opt-out) are additive and back-compatible (defaults preserve existing GSuite/Telegram behavior). They fix the mechanism at the platform level, not per-feature — the user's principle applied to the one case where the generic framework doesn't already handle the shape.
-- **Decision.** Every component reuses an existing BOS mechanism. The two platform additions are the minimal delta required to make the generic framework handle a webhook-only/authless integration.
-- **Consequences.** The feature is small and contained: ~13 new files, ~10 modified files, 2 platform additions. No new external dependencies. The pattern (webhook-only integration + core headless handler + agent-via-MCP) is reusable for future integrations.
+### ADR-10 — Reuse, not special-case *(retained; now includes the agent/skill reuse)*
+- **Added under R6:** the handling side reuses the **agent + skill** model (Settings → Agents, `runSubAgent`, the skill index) rather than hardcoding a bespoke step pipeline in the integration. The integration contributes a *dispatcher* and a *seed agent + seed skill* — all standard BOS extension points. The two platform additions (`authless`, `mintSecret`) remain the only framework deltas.
 
-### ADR-11 — MCP as handler dependency, not webhook dependency (R4)
-- **Context.** R4 (the user's explicit, twice-enforced constraint): the GitLab MCP server is a dependency of the **handler**, not the webhook. The webhook and the integration panel have **no** MCP dependency and must not display or require MCP configuration. When no GitLab MCP server is configured/assigned, the handler fails gracefully — never crashes the receiver or loses the event.
-- **Webhook side (no MCP).** The webhook receiver (`route.ts` → `verify` → `receive` → `emitIntegrationEvent`) touches no MCP code. `GitLabWebhookHandler.verify` reads only the `X-Gitlab-Token` header; `receive` reads only the raw body. The integration panel (`GitLabDetailView`) renders only the `WebhookSection` + labels reference + handler pointer — no MCP status, no MCP configuration surface.
-- **Handler side (MCP required).** The triage handler (`triage/handler.ts`) does a deterministic pre-flight (ADR-4) that checks whether a GitLab-named MCP server is reachable by the triage agent (via the agent's `mcp` allowlist, ADR-5). If not: emit `com.bos.gitlab.triage.not-configured`, return (prompt ack, issue untouched). If yes: launch the agent via `runSubAgent`, which composes the agent's instructions (including the MCP index block) and runs the agent loop with MCP tools gated by the allowlist.
-- **Decision.** The webhook and handler are architecturally separate paths with different dependency sets: the webhook is a pure receive-and-emit path whose only dependency is the shared token; the handler is a pure consume-and-act path whose only external dependency is the user's GitLab MCP server. The panel reflects this split: it configures the webhook (URL + token) and points to the handler (naming the MCP server as the handler's dependency), but never shows MCP status. R4 is enforced by structure, not by a runtime check in the webhook path.
-- **Consequences.** FR-015 and SC-007 are satisfied: the webhook works without MCP (US1.7); the handler fails gracefully without MCP (US2.7). The panel is honest about what it configures and what it points to. The two switches (webhook enable / handler enable) are independently toggleable (FR-016, US3) because they gate different paths.
+### ADR-11 — MCP as agent dependency, not webhook dependency *(R4; rephrased under R6)*
+- **Decision.** The webhook path touches no MCP code; the integration panel shows no MCP status. The **agent** is where the GitLab MCP server is required, and the handler trusts that boundary (no pre-flight, ADR-4). The two switches (webhook enable / handler enable) gate independent paths.
+
+### ADR-12 — Thin dispatcher + configurable agent/skill (the R6 handling model)
+- **Context.** The user's direction (R6): "what should happen is that some agent should be configured to handle the step and work is handed off to that agent — configured in Settings → Agents as any normal agent — so it can use various skills, which makes the whole solution more flexible." v3's model (a hardcoded `gitlab-triage` agent + a handler-internal `workflow.ts` step pipeline + a deterministic MCP pre-flight) put the *intelligence* in the integration, which is the opposite of how BOS agents work and less flexible.
+- **Decision.**
+  1. **The handler is a thin dispatcher** (`triage/handler.ts` + `triage/dispatch.ts`): on `gitlab.issue.opened`, resolve the selected agent, build an issue-context task, `runSubAgent`, and gracefully record any failure. It has **no** classification/workflow/label logic and **no** MCP pre-check.
+  2. **A configurable agent is the unit of capability**: the **Gitlab Issue Agent** (seeded, but a normal Settings → Agents agent — skills, MCP, tools, system prompt all user-editable). The panel's agent picker (FR-017) lets the user swap it for any valid agent, defaulting to the seeded one.
+  3. **A skill is the state machine**: `seed/skills/gitlab-issue-triage/SKILL.md` defines classify → workflow → status-label transitions → `Needs Review`, with resume/idempotency and the Q2 autonomy boundary. Editing the skill changes the pipeline without touching the integration.
+- **Options rejected.** (a) v3's handler-internal `workflow.ts` step pipeline — hardcodes the pipeline, duplicates what a skill expresses better, and isn't user-tunable. (b) Per-step agent assignment (the intermediate model before R6) — more moving parts than needed; one agent + one skill is the natural BOS shape and keeps the panel to a single picker. (c) Reusing self-heal's pipeline — wrong problem shape (BOS self-mod vs user codebase); kept fully separate (see §1 note).
+- **Consequences.** The integration stays small (a dispatcher, not an engine); the user gains real flexibility (swap the agent, edit the skill's workflow, change its MCP server/tools) with no integration change; FR-009/FR-010/FR-017 are satisfied; the panel's "Workflow" card is an honest, single-control surface. Risk: pipeline quality now depends on the seed skill being well-written — mitigated by treating SKILL.md as a spec'd contract (§3.8) and documenting it in `docs/`.
 
 ---
 
 ## 7. Risks / open questions
 
-1. **In-memory dedup ring is lost on restart.** `verify.ts`'s ring is process-memory only; a restart wipes it, so a GitLab retry of a *byte-identical* open arriving after a restart would re-emit a new BOS event. Mitigated by the triage **idempotency guard** (§3.6: the issue already has a status label ⇒ no-op/resume), not by making the ring persistent (out of scope; the kernel's at-least-once + idempotent handler is the established posture).
-2. **Long-run vs. kernel timeout / double-run.** Chosen prompt-ack (ADR-3) means a process death between ack and workflow finish loses that one triage (event stays acked, visible in Event Viewer). The per-handler FIFO serializes triage (concurrency 1) — a backlog of issues is processed one at a time; acceptable for v1, flagged if high-volume is desired.
-3. **MCP server unavailable mid-run.** Pre-flight (ADR-4) catches the "nothing configured" case; a *configured-but-down* server is caught in-band by the resilient gateway → agent posts `Failed` + comment. Name-based GitLab matching (`/gitlab/i`) can mis-report a non-obviously-named server as "not configured" — setup docs recommend a recognizable name.
-4. **Self-hosted GitLab payload differences.** Older/self-hosted versions differ in field names/`changes` shape and in when label-change events fire (historically some self-hosted builds fire issue `update` differently). The `object_kind`/`action`/`open` contract is stable and documented (GitLab webhook events page), but the projection reads defensively (tolerant field access, defaults) so a missing optional field degrades rather than throws.
-5. **Label conflicts with user-managed labels.** The handler swaps only its own status labels, but it must (a) not clobber the additive classification label and (b) handle the user removing a status label mid-run (the next MCP update re-adds it; acceptable, noted). If a user has their own label *named* `Triage`/`Needs Review` etc., the handler will treat/overwrite it — documented as an expected behavior of the fixed label set (R3).
-6. **`gitlab` string overlap** with the git-remote OAuth provider (ADR-6) — a source of implementer confusion; the design keeps them in separate stores and views. Flagged here so the implementer doesn't reach for the git-providers code.
-7. **Mockup parity** (cosmetic): reusing `WebhookSection` verbatim surfaces chrome the mockup omits — an "Event type filter" input + "Save config" button (both map to the real receiver `config.eventTypes` gate, so harmless/functional), and the labels "Rotated secret (visible once)"/"Rotate secret" vs the mockup's "New secret token (visible once)"/"Generate token · Rotate token." If exact mockup parity is wanted, add a small optional label prop (and optionally hide the filter for gitlab); default preserves current text. Open for the UI pass; functionally identical. (see §9 F5)
-8. **Agent autonomy boundary (Q2=A)** is enforced by the prompt (never close issue / never open MR) — a *soft* guard. A future, deliberate widening is a prompt+label change; recorded here so it isn't silently widened.
+1. **In-memory dedup ring lost on restart** — a byte-identical retry after restart re-emits one event. Mitigated by the **skill's resume/idempotency** (§3.8.3: existing status label ⇒ resume, not restart), not a persistent ring.
+2. **Long-run vs. kernel timeout / double-run** — prompt-ack (ADR-3) means a process death between ack and run-finish loses that one triage (event acked, visible). Per-handler FIFO serializes runs (concurrency 1); a backlog processes one at a time — acceptable for v1.
+3. **Agent misconfiguration (R6)** — the selected agent missing, or its skill/MCP incomplete, now surfaces as a run failure (ADR-4) rather than a handler pre-check. The failure is recorded and non-crashing, but the *diagnosis* is the user's (agent config). Mitigation: the panel names the default agent, the "Manage" link goes to Settings → Agents, and the `com.bos.gitlab.triage.failed` event carries the cause.
+4. **Self-hosted GitLab payload differences** — the projection reads defensively (tolerant field access, defaults); the `object_kind`/`action`/`open` contract is stable and documented.
+5. **Label conflicts with user-managed labels** — the skill swaps only its own status labels and never clobbers the additive classification label; if a user has their own label *named* `Triage`/`Needs Review` etc., the skill treats/overwrites it — expected behavior of the fixed label set (R3/R5).
+6. **`gitlab` string overlap** with the git-remote OAuth provider (ADR-6) — flagged so the implementer doesn't reach for git-providers code.
+7. **Mockup parity** (cosmetic) — reusing `WebhookSection` verbatim surfaces chrome the mockup omits (event-type filter + save button; "Rotate secret" vs "Generate token"). Accept stock or add a small label prop; functionally identical.
+8. **Autonomy boundary (Q2=A)** is enforced by the **skill** (never close/commit) — a *soft* guard; widening is a deliberate skill change.
+9. **Single-run pipeline (FR-021)** — v1 does the whole pipeline in one agent run; a human intervening mid-pipeline (removing a status label, replying) is handled by the skill's resume logic, but a *guaranteed* per-transition re-entry loop is a future extension, not v1.
 
 **Open questions (need a human decision):**
-- (b) `WebhookSection` parity (Risk 7): accept the stock "Rotate secret" label + the event-type-filter/Save-config chrome, or add a small label prop to match the mockup exactly? (Low stakes; functionally identical.)
-- (c) Confirm the triage deliverable ("draft spec") is **posted as a GitLab issue comment** (not written to a BOS spec store / Build Studio run) — this design assumes the former per FR-011/FR-013 (comment + label only).
-
-> Resolved by design review: **(a)** the `gitlab-triage` agent's `mcp` allowlist defaults to **empty (= all servers)** — robust to whatever name the user gives their GitLab server, matching `isAllowed`'s "empty = all" semantics. The user may narrow it (`mcp: [<their-server>]`) from Settings → Agents.
+- (b) `WebhookSection` parity (Risk 7): accept the stock labels/chrome, or add a small label prop to match the mockup exactly? (Low stakes.)
+- (c) Confirm the "draft spec" deliverable is **posted as a GitLab issue comment** (not written to a BOS spec store / Build Studio run) — this design assumes the former per FR-012/FR-014.
+- (d) **Seed agent scope**: confirm the seeded `Gitlab Issue Agent` defaults to `mcp: []` (all servers) and a tool set limited to MCP + text/skill (no source/VFS-spec tools), or tighten the default to a named `mcp: ["<gitlab>"]`? (Recommend empty=all for naming robustness.)
 
 ---
 
@@ -363,27 +334,17 @@ A new **`GitLabDetailView`** (analogous to `TelegramDetailView`) is routed for `
 
 `mockup.html` (Settings → Integrations → GitLab, webhook-only, no OAuth, no MCP status). Screen → component mapping:
 
-- **Header card** (all states A/B/C) → `GitLabDetailView` header (name + `Webhook` badge + one-line "webhook only — handling is separate/toggleable" copy).
-- **State A (disabled)** → `WebhookSection` with `enabled:false` (URL greyed, Enable primary button).
-- **State B (enabled, no token)** → `WebhookSection` `enabled:true`, no secret (URL + copy; "No token yet…" + **Generate token** button = stock rotate). Reachable because enable doesn't auto-mint (ADR-1b).
-- **State C (enabled + token, hero)** → `WebhookSection` `enabled:true` + `hasSecret` ("Secret set" badge), the **amber one-time token reveal** (stock rotate reveal), Rotate token + Delete buttons.
-- **Labels reference** (State C) → `GitLabLabelsReference` (Classification: Bug/Feature/Improvement; Status: the seven transient labels) — data from `labels.ts`.
-- **Persistent bottom handler pointer** → `GitLabHandlerPointer` (names `gitlab-issue-triage`, "enabled by default," "acts via the GitLab MCP server assigned to its agent," link → Event Viewer per ADR-7).
-- The mockup's **state switcher** is mockup-only (not shipped UI).
+- **Header card** → `GitLabDetailView` header (name + `Webhook` badge + "webhook only — handling is separate/configurable" copy).
+- **State A/B/C** → `WebhookSection` (disabled / enabled-no-token / enabled+token hero with the amber one-time reveal).
+- **Workflow card** → `GitLabWorkflowSection` (agent picker defaulting to Gitlab Issue Agent + Manage → Agents; skill note; Events toggle pointer + "Open Events" → Event Viewer).
+- **Labels reference** → `GitLabLabelsReference` (Classification: Bug/Feature/Improvement; Status: the eight labels).
+- The **state switcher** is mockup-only.
 
-The receiver URL shown in the mockup, `…/api/integrations/webhooks/gitlab/webhooks`, matches `webhookUrl("gitlab","webhooks")` (`webhooks/manager.ts`) with serviceId `webhooks` — consistent throughout.
+Receiver URL `…/api/integrations/webhooks/gitlab/webhooks` matches `webhookUrl("gitlab","webhooks")` with serviceId `webhooks`.
 
 ---
 
-## 9. Design review (one round — architect-reviewer)
+## 9. Design review history
 
-**Verdict: Approve-with-notes. No blockers.** The reviewer re-derived every load-bearing claim against the live source and found no drift: the core-headless-handler registration (`registerCoreExecutor` + `declaredBy:"core"`, with `isHandlerActive` a plain `enabled` boolean), the `mintSecret` opt-out, the `authless` coercion in `readState`, the `KNOWN_TYPES` mapping, the MCP pre-flight using the exact gateway predicate (`allowedServers`), the two-registry split, and the R4 / FR-018 structural separation all hold against `api.ts`, `dispatch.ts`, `manager.ts`, `state/store.ts`, `legacy-mapping.ts`, `gateway.ts`, and `webhooks/registry.ts`.
-
-Fixes applied to this document (this is the v2 → v3 change set):
-- **F1 (correctness)** — dropped `enabled: true` from the `api.register` call in §3.6. `register` resolves `enabled: req.enabled ?? existing?.enabled ?? true`, so an explicit `true` would re-enable the handler on every restart (it is re-registered each boot from `instrumentation.ts`) and silently break FR-016 / SC-004 (disable must persist). Now omitted, matching `spine-handler.ts` — "default true on first registration only."
-- **F2 (correctness)** — §3.9 now states the `IntegrationsTab` generic-view fallback must change from `id !== "telegram"` to `id !== "telegram" && id !== "gitlab"`, or both the GitLab detail view and the generic view (with its git-provider OAuth panel) would render.
-- **F3 (precision)** — ADR-6 now confirms the required placeholder `oauthConfig` must stay inert in `IntegrationListView` so the shared list row never shows a misleading "Connect" control.
-- **F4 (precision)** — §3.5 / ADR-2 now add a `legacyFriendlySummary` branch (`"issue #<iid> <title>"` / `"MR !<iid> <title>"`) instead of the truncated-JSON fallback.
-- **F5 (precision)** — Risk 7 extended to note the stock `WebhookSection` also surfaces an "Event type filter" input + "Save config" button (harmless — they map to the real `config.eventTypes` gate).
-
-Open question (a) (the `gitlab-triage` agent `mcp` allowlist default) was settled as **empty = all** during review — recorded in §7.
+- **One-round review (v3, architect-reviewer): Approve-with-notes, no blockers.** Re-derived every load-bearing claim against live source. Fixes applied (F1 drop `enabled:true`; F2 `IntegrationsTab` fallback excludes gitlab; F3 placeholder `oauthConfig` inert in list view; F4 `legacyFriendlySummary`; F5 `WebhookSection` chrome noted).
+- **v4 (this revision)** — driven by R6 (user handling-model direction): handler → thin dispatcher; agent + skill = unit of capability; deterministic MCP pre-flight **removed** (ADR-4 revised); seed agent + seed skill added; panel gains a Workflow/agent-picker card; self-heal confirmed **fully separate** (ADR-12 + §1 note). Webhook side, event mapping (ADR-2), and panel ADRs (1/1b/6/7/8) are unchanged. **Re-review recommended before `plan`** given the handling-model change (the reviewer should re-check ADR-3/4/12 and the file plan).
