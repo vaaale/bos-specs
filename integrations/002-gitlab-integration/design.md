@@ -182,7 +182,20 @@ api.register({
 
 ### 3.8 The triage skill drives the pipeline (model-followed guidance) — see ADR-12
 
-`seed/skills/gitlab-issue-triage/SKILL.md` is the **behavior contract the model follows**. The `Gitlab Issue Agent` loads it (its seed `AGENT.md` sets `skills: ["gitlab-issue-triage"]`). **Honesty about the guarantee:** a skill is a prompt index entry the model reads on demand (`buildSkillsIndexBlock`) — it is *guidance*, not an execution-time state machine. The classify → workflow → label transitions, the "exactly one active status label" swap (FR-014), and the resume/idempotency branch below are **expected from the model, not enforced by any mechanism**. A misbehaving run (e.g. leaving two status labels, or skipping a stage) is possible and un-backstopped; SC-003's "≥90%" absorbs that residual. This is inherent to the user-directed agent + skill model (R6) — the alternative would be re-adding the deterministic pipeline R6 deliberately removed. Its content drives:
+The skill is **multi-file**: a lean `SKILL.md` **router** (the state machine) plus per-stage **reference documents** under `seed/skills/gitlab-issue-triage/references/`:
+
+| File | Carries |
+|---|---|
+| `SKILL.md` | The router: the Q2 boundary, orient, resume-or-start, classify, route, finish. Loaded whole. |
+| `references/status-labels.md` | The cross-cutting label model, the transition procedure (both MCP shapes), the transition map, the `Needs Input` / `Failed` side states. Read once at the start. |
+| `references/classify.md` | Classify → `Triage` |
+| `references/bug-analyzing.md` · `bug-verifying.md` · `bug-fix-proposed.md` | The Bug path, one file per stage |
+| `references/spec-drafted.md` | The Feature / Improvement path |
+| `references/finalize.md` | `Needs Review`, the hand-off comment, the final message |
+
+The router instructs the agent to read a stage's reference **before acting on that stage** — progressive disclosure, so the stage the run is actually in gets depth without every run paying for all of it up front. This depends on the agent being able to open bundled skill files at run time: `skill_read_file` (`src/lib/assistant/tools/server/skills.ts`) is in the seed agent's `tools` allowlist, is a **server** tool, and therefore survives `headlessGate` — which matters because the dispatcher runs this agent headless. Guarded by `tests/agent/gitlab-triage-skill-references.test.ts`.
+
+The skill as a whole is still the **behavior contract the model follows**. The `Gitlab Issue Agent` loads it (its seed `AGENT.md` sets `skills: ["gitlab-issue-triage"]`). **Honesty about the guarantee:** a skill is a prompt index entry the model reads on demand (`buildSkillsIndexBlock`) — it is *guidance*, not an execution-time state machine. The classify → workflow → label transitions, the "exactly one active status label" swap (FR-014), and the resume/idempotency branch below are **expected from the model, not enforced by any mechanism**. A misbehaving run (e.g. leaving two status labels, or skipping a stage) is possible and un-backstopped; SC-003's "≥90%" absorbs that residual. This is inherent to the user-directed agent + skill model (R6) — the alternative would be re-adding the deterministic pipeline R6 deliberately removed. Splitting it into a router plus references changes *where* the guidance lives, not what it says — the boundary, the resume branch and the single-active-status invariant are unchanged. Its content drives:
 
 1. **Read** the issue via the GitLab MCP server (title, description, current labels).
 2. **Classify** — labels first: exactly one of `Bug` / `Feature` / `Improvement` (case-insensitive; other labels ignored). Fallback: infer from title+description and state the inferred type in a comment. Apply the classification label (additive).

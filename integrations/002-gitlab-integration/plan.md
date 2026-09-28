@@ -74,7 +74,13 @@ src/lib/integrations/services/gitlab/
     └── dispatch.ts                # resolve selected agent, build issue-context task, runSubAgent, post-run outcome-based failure detection
 
 seed/agents/gitlab-issue-agent/AGENT.md        # seeded Gitlab Issue Agent (type local; skills:[gitlab-issue-triage], mcp allowlist)
-seed/skills/gitlab-issue-triage/SKILL.md       # the triage skill = pipeline driver (classify → workflow → status labels → Needs Review)
+seed/skills/gitlab-issue-triage/SKILL.md       # the triage skill = pipeline driver, as a ROUTER (classify → workflow → status labels → Needs Review)
+seed/skills/gitlab-issue-triage/references/    # per-stage depth, read with skill_read_file as each stage is entered
+    status-labels.md                          #   label model, transition procedure, transition map, Needs Input / Failed
+    classify.md                               #   Triage
+    bug-analyzing.md, bug-verifying.md, bug-fix-proposed.md   # the Bug path
+    spec-drafted.md                           #   the Feature / Improvement path
+    finalize.md                               #   Needs Review + hand-off
 
 src/components/apps/settings/integrations/
 ├── GitLabDetailView.tsx           # dedicated detail view (header + WebhookSection + WorkflowSection + LabelsReference)
@@ -115,6 +121,7 @@ The design step produced the full source-verified analysis (classification, cont
 - **Post-run, outcome-based failure detection** (ADR-4, the v5 blocker fix): **do not** rely on a `try/catch` around `runSubAgent` — the gateway is in-band and the agent loop "never dies of tools," so the run returns clean even with no MCP. Detect failure by: (a) agent missing, (b) `run.error`/`endedReason==="error"`, or (c) **no successful `mcp_tool_call`** in the collected `onEvent` tool results → emit `com.bos.gitlab.triage.failed`. Keep it outcome-based (no pre-flight).
 - **Agent + skill = unit of capability** (ADR-5, ADR-12): seed a `local` `Gitlab Issue Agent` (frontmatter `skills:["gitlab-issue-triage"]`, `mcp` allowlist default empty=all) + the `gitlab-issue-triage` skill. The panel's agent picker (`state.services.webhooks.config.triageAgentId`) selects any agent. `contentOnly:true` is **inert for a local agent** (passed only for precedent consistency).
 - **Skill is model-followed guidance, not a mechanism** (ADR-12, §3.8): the single-active-status invariant (FR-014) and the pipeline are *expected* from the model, not code-enforced — write the skill accordingly (it owns the label swap + resume/idempotency + the Q2 "never close/commit" boundary).
+- **The skill is multi-file — a `SKILL.md` router + `references/*.md`** (§3.8): the router carries the state machine and the boundary; each stage's depth is a reference the agent opens as it enters that stage. This requires `skill_read_file` in the seed agent's tool allowlist (it is there, and is a server tool, so it survives the headless gate the dispatcher runs under). Adding a reference means adding a link to the router — `tests/agent/gitlab-triage-skill-references.test.ts` fails on a dangling or unreferenced file.
 - **Loop prevention is structural** (ADR-9): the receiver filter (`object_kind ∈ {issue,merge_request}` **and** `action === "open"`) categorically excludes the agent's own `note`/`update` webhooks. No sender-id/timestamp guard needed.
 - **`gitlab` string overlap** (ADR-6): the gitlab *integration* id is distinct from the git-remote OAuth *provider* id — do not reuse git-providers code; route to a dedicated `GitLabDetailView`.
 
