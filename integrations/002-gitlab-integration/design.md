@@ -1,7 +1,7 @@
 # Design: GitLab Integration (Webhook → Triage)
 
 **Spec**: [`spec.md`](./spec.md) · **UI contract**: [`mockup.html`](./mockup.html) · **Checklist**: [`checklists/requirements.md`](./checklists/requirements.md)
-**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v1)
+**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v2 — verified against current source; ADR-9/10/11 added)
 **App Target**: `bos-core` (confirmed; agrees with `spec.md`)
 
 ---
