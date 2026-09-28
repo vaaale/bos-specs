@@ -46,7 +46,7 @@ A default, built-in headless handler is subscribed to new-issue events and is en
 
 **Why this priority**: This is the value the user asked for — "BOS should go through the appropriate workflow to resolve the issue." It builds on US1 (the event to trigger on), which is why it is P2. The handling logic lives in a user-configurable agent + skill rather than being hardcoded, so the user can change skills, MCP servers, or tools without touching the integration — the flexibility the user explicitly wanted.
 
-**Independent Test**: With US1 in place, a GitLab MCP server configured on the Gitlab Issue Agent, create a new issue labeled `Bug` in a hooked project. Observe that a `gitlab.issue.opened` event is dispatched to the agent, that the issue receives a classification comment and status labels advancing through the bug pipeline, and that it ends at `Needs Review` with a proposed fix posted. Repeat with an issue labeled `Feature` and one labeled `Improvement`, confirming a spec is drafted in each case. Then disable the default handler and create another issue: the event is still emitted and visible, but no agent is dispatched.
+**Independent Test**: With US1 in place, a GitLab MCP server configured on the Gitlab Issue Agent, create a new issue labeled `Bug` in a hooked project. Observe that a `gitlab.issue.opened` event is dispatched to the agent, that the issue receives a classification comment and status labels advancing through the bug pipeline, and that it ends at `Fix Proposed` with a proposed fix posted (awaiting the user's approval — R8). Repeat with an issue labeled `Feature` and one labeled `Improvement`, confirming a spec is drafted in each case and the issue ends at `Spec Drafted`. Then disable the default handler and create another issue: the event is still emitted and visible, but no agent is dispatched.
 
 **Acceptance Scenarios**:
 
@@ -92,6 +92,21 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 
 ---
 
+### User Story 5 - Approved design proceeds through plan, tasks, and implementation (Priority: P2)
+
+After the agent has produced its design-phase deliverables on a feature branch (real `spec.md`; a UI mockup where the feature has a UI surface; and `design.md`) and the issue is at `Design Complete`, a human comment approving the design — or the user driving in Build Studio on that branch, the ordinary flow — makes the agent continue the spec-kit pipeline itself: write `plan.md`, write `tasks.md`, and implement via the Developer (TDD) on the same branch. Implementation ends at `Needs Review` — the preview is healthy and the user promotes (human-only, always).
+
+**Why this priority**: This is the full "drive it from GitLab" value: a comment on the issue takes the feature from an approved design to a healthy preview, with the implementation gate still a deliberate human act (approve the design first; promote last).
+
+**Acceptance Scenarios**:
+
+1. **Given** the issue is at `Spec Drafted` or `Fix Proposed` and the user comments approving the deliverable, **When** the agent re-dispatches, **Then** the agent creates a feature branch (ordinary `NNN-slug` naming, next number in the chosen project), writes `spec.md` to the spec store on the branch — plus `mockup.html` and `design.md` where the feature has a UI surface — and ends the issue at `Design Complete`.
+2. **Given** the issue is at `Design Complete` and the user comments approving the design, **When** the agent re-dispatches, **Then** the agent writes `plan.md` and `tasks.md` and delegates the implementation to the Developer on the same branch, ending the issue at `Needs Review` once the preview is healthy.
+3. **Given** the issue is at a human-waiting state and the user's comment is feedback (not approval), **When** the agent re-dispatches, **Then** the agent revises the deliverable per the feedback, re-posts it, states its interpretation, and remains in the same waiting state.
+4. **Given** implementation has completed and the issue is at `Needs Review`, **When** the user promotes from the top bar, **Then** the feature lands in base; the agent never promotes or merges.
+
+---
+
 ### Edge Cases
 
 - **Webhook disabled vs unknown**: a disabled webhook and an unregistered one both return 404 — never 401 — so a probing caller cannot distinguish "disabled" from "doesn't exist."
@@ -101,6 +116,9 @@ In addition to issues, the webhook also accepts merge-request events from GitLab
 - **Unrecognized label**: an issue labeled with something outside the three classification labels (e.g. `documentation`, `chore`) has its labels ignored for classification purposes and falls to the agent-based inference.
 - **No GitLab MCP server available to the agent**: the agent cannot read the issue or post updates; the run fails gracefully (event recorded, failure surfaced) rather than crashing the receiver or losing the event. The handler does not pre-check this — it is the agent's capability to determine.
 - **Selected agent does not exist / misconfigured**: if the panel's agent picker points at an agent that is missing or cannot run, the dispatch fails gracefully (event recorded, failure surfaced) rather than crashing.
+- **Approval vs feedback ambiguity (R8)**: a terse comment on a human-waiting issue ("looks good" vs "looks wrong") is interpreted per FR-027; the agent states its interpretation in its reply so a misread is one comment to correct.
+- **Branch number contention (R8)**: two issues approved concurrently could claim the same next `NNN`; the server-side branch creation computes the number at creation time and the returned branch/feature path is the source of truth (the agent uses what it is given, not a pre-guessed name).
+- **User drives from Build Studio instead (R8)**: the user opens Build Studio on the issue's branch and continues the pipeline there; the ordinary flow applies and the GitLab labels simply do not advance past the point of handoff (the branch artifacts are the source of truth — FR-030).
 - **Non-issue/MR/note object kinds**: GitLab can send many other event types (push, pipeline, tag, …); the receiver must ignore `object_kind` values other than `issue`, `merge_request`, and `note` for this feature (no event emitted, success response returned). Note hooks are re-dispatched only when the target is an Issue (`noteable_type === "Issue"`).
 - **Agent's own updates (loop prevention)**: the agent's own GitLab updates (relabeling, state changes via MCP) produce GitLab `issue`/`merge_request` events with `action:"update"` — excluded by the receiver's `action === "open"` filter. The agent's own **comments** produce `note` hooks, which ARE re-dispatched (R7), but the agent is self-terminating on its own notes (it recognizes its own GitLab identity from the MCP token and posts nothing when the latest note is its own).
 - **Large description payloads**: the emitted event carries a bounded projection (id, iid, title, labels, author, url, and a truncated description) rather than the full raw payload, staying within the event system's size limits.
