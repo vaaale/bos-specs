@@ -1,7 +1,7 @@
 # Design: GitLab Integration (Webhook → Triage)
 
 **Spec**: [`spec.md`](./spec.md) · **UI contract**: [`mockup.html`](./mockup.html) · **Checklist**: [`checklists/requirements.md`](./checklists/requirements.md)
-**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v2 — verified against current source; ADR-9/10/11 added)
+**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v3 — verified against current source; ADR-9/10/11 added; one-round review fixes applied)
 **App Target**: `bos-core` (confirmed; agrees with `spec.md`)
 
 ---
@@ -133,7 +133,7 @@ The event *type names* emitted here (`issue-opened` / `mr-opened`) are the **Int
 "gitlab/webhooks:mr-opened"    → "gitlab.mr.opened"
 ```
 
-Both final types pass `isValidEventType` (`/^[a-z0-9]+(\.[a-z0-9_-]+)+$/`). `legacySourceFor` yields `{ appId: "gitlab", name: "GitLab" }` once `KNOWN_NAMES.gitlab = "GitLab"` is added.
+Both final types pass `isValidEventType` (`/^[a-z0-9]+(\.[a-z0-9_-]+)+$/`). `legacySourceFor` yields `{ appId: "gitlab", name: "GitLab" }` once `KNOWN_NAMES.gitlab = "GitLab"` is added. Also add a `legacyFriendlySummary` branch so the Event Viewer reads `"issue #<iid> <title>"` / `"MR !<iid> <title>"` instead of the truncated-JSON `deriveSummary` fallback (the same one-line pattern Gmail/Telegram already use — see §9 F4).
 
 ### 3.6 Triage handler (decision 3) — see ADR-3
 
@@ -152,7 +152,7 @@ api.register({
   ownerId: "core",
   declaredBy: "core",                 // core-internal: no owner-liveness IPC needed
   displayName: "GitLab issue triage",
-  enabled: true,                      // default on (FR-009); setEnabled-persisted
+  /* no `enabled` field — an explicit `true` would re-enable the handler on every restart and break FR-016/SC-004 (see §9 F1) */
 });
 ```
 
@@ -205,7 +205,7 @@ A new **`GitLabDetailView`** (analogous to `TelegramDetailView`) is routed for `
 - **`GitLabLabelsReference`** — the two chip groups from the mockup: Classification (`Bug`/`Feature`/`Improvement`) and Status (the seven transient labels), sourced from `labels.ts`.
 - **`GitLabHandlerPointer`** — the persistent bottom note: a built-in `gitlab-issue-triage` handler listens to `gitlab.issue.opened`, enabled by default, acts via the GitLab MCP server assigned to its agent; a link that opens the **Event Viewer** app (the real handler-toggle surface, ADR-7). No MCP status is shown (R4).
 
-`IntegrationsTab` change: add a `currentItem.manifest.id === "gitlab"` branch that renders `GitLabDetailView` (passing `adapters`), exactly like the existing `telegram` branch.
+`IntegrationsTab` change: add a `currentItem.manifest.id === "gitlab"` branch that renders `GitLabDetailView` (passing `adapters`), and **update the existing generic-view fallback** from `id !== "telegram"` to `id !== "telegram" && id !== "gitlab"`. (The fallback currently renders `IntegrationDetailView` for every non-telegram integration; leaving it as-is would render *both* the GitLab detail view and the generic view — the latter surfacing the git-provider OAuth panel ADR-6 is trying to avoid. See §9 F2.)
 
 ---
 
@@ -295,7 +295,7 @@ A new **`GitLabDetailView`** (analogous to `TelegramDetailView`) is routed for `
 ### ADR-6 — GitLab gets a dedicated `GitLabDetailView`, not the generic one
 - **Context.** The mockup is a flat webhook-only detail view (header + WebhookSection + labels + pointer) with **no** OAuth connect card. The generic `IntegrationDetailView` would, for id `gitlab`, render the git-provider `OAuthCredentialsPanel` (because `FIELD_CREDENTIAL_PROVIDERS` already contains `"gitlab"` — that string is the *git-remote* provider, a different feature) **and** a Connect/Disconnect card — both contradict R1.
 - **Decision.** New `GitLabDetailView` (pattern: `TelegramDetailView`), routed in `IntegrationsTab` for `gitlab`; it composes the header card, the reused `WebhookSection`, `GitLabLabelsReference`, and `GitLabHandlerPointer`. The generic view and the git-providers subsystem are untouched.
-- **Consequences.** The two `gitlab` concepts (integration id vs. git-remote provider id) stay in their separate stores with no cross-wiring. The mockup is met exactly.
+- **Consequences.** The two `gitlab` concepts (integration id vs. git-remote provider id) stay in their separate stores with no cross-wiring. The mockup is met. **Placeholder `oauthConfig`:** `IntegrationManifest.oauthConfig` is required by the type, so the webhook-only manifest ships an inert placeholder (empty/dummy URLs, no scopes). The implementer must confirm it stays inert in `IntegrationListView` and any OAuth-driven affordance so the *shared* list row never shows a misleading "Connect" control for gitlab (the detail view is dedicated per this ADR; the list row is shared — see §9 F3).
 
 ### ADR-7 — The handler pointer opens the Event Viewer (the real toggle surface)
 - **Context.** The mockup labels the link "Settings → Events → Handlers," but there is **no** Settings *namespace*/tab named `events` (verified: `src/apps/settings/index.tsx` `CUSTOM_TABS` and the config-namespace list). The real handler-management surface is the **Event Viewer app** (`src/apps/event-viewer/`, id `event-viewer`, name "Events"), whose `ConfigPanel` lists headless handlers grouped by type and toggles them via `POST /api/events/handlers`.
@@ -348,13 +348,14 @@ A new **`GitLabDetailView`** (analogous to `TelegramDetailView`) is routed for `
 4. **Self-hosted GitLab payload differences.** Older/self-hosted versions differ in field names/`changes` shape and in when label-change events fire (historically some self-hosted builds fire issue `update` differently). The `object_kind`/`action`/`open` contract is stable and documented (GitLab webhook events page), but the projection reads defensively (tolerant field access, defaults) so a missing optional field degrades rather than throws.
 5. **Label conflicts with user-managed labels.** The handler swaps only its own status labels, but it must (a) not clobber the additive classification label and (b) handle the user removing a status label mid-run (the next MCP update re-adds it; acceptable, noted). If a user has their own label *named* `Triage`/`Needs Review` etc., the handler will treat/overwrite it — documented as an expected behavior of the fixed label set (R3).
 6. **`gitlab` string overlap** with the git-remote OAuth provider (ADR-6) — a source of implementer confusion; the design keeps them in separate stores and views. Flagged here so the implementer doesn't reach for the git-providers code.
-7. **Mockup label parity** (cosmetic): the stock `WebhookSection` says "Rotate secret"; the mockup says "Generate token"/"Rotate token." Reusing the component verbatim yields "Rotate secret." If exact parity is wanted, add a small optional label prop to `WebhookSection` (default preserves current text). Open for the UI pass; functionally identical.
+7. **Mockup parity** (cosmetic): reusing `WebhookSection` verbatim surfaces chrome the mockup omits — an "Event type filter" input + "Save config" button (both map to the real receiver `config.eventTypes` gate, so harmless/functional), and the labels "Rotated secret (visible once)"/"Rotate secret" vs the mockup's "New secret token (visible once)"/"Generate token · Rotate token." If exact mockup parity is wanted, add a small optional label prop (and optionally hide the filter for gitlab); default preserves current text. Open for the UI pass; functionally identical. (see §9 F5)
 8. **Agent autonomy boundary (Q2=A)** is enforced by the prompt (never close issue / never open MR) — a *soft* guard. A future, deliberate widening is a prompt+label change; recorded here so it isn't silently widened.
 
 **Open questions (need a human decision):**
-- (a) `gitlab-triage` agent `mcp` allowlist: keep **empty=all** (recommended, robust to server naming) vs. a fixed `["gitlab"]`-style entry (more explicit, fragile to naming). Default to empty=all; confirm.
-- (b) `WebhookSection` label parity (Risk 7): accept "Rotate secret" or add a label prop?
-- (c) Confirmation that the triage deliverable ("draft spec") is **posted as a GitLab issue comment** (not written to a BOS spec store / Build Studio run) — this design assumes the former per FR-011/FR-013 (comment + label only).
+- (b) `WebhookSection` parity (Risk 7): accept the stock "Rotate secret" label + the event-type-filter/Save-config chrome, or add a small label prop to match the mockup exactly? (Low stakes; functionally identical.)
+- (c) Confirm the triage deliverable ("draft spec") is **posted as a GitLab issue comment** (not written to a BOS spec store / Build Studio run) — this design assumes the former per FR-011/FR-013 (comment + label only).
+
+> Resolved by design review: **(a)** the `gitlab-triage` agent's `mcp` allowlist defaults to **empty (= all servers)** — robust to whatever name the user gives their GitLab server, matching `isAllowed`'s "empty = all" semantics. The user may narrow it (`mcp: [<their-server>]`) from Settings → Agents.
 
 ---
 
@@ -371,3 +372,18 @@ A new **`GitLabDetailView`** (analogous to `TelegramDetailView`) is routed for `
 - The mockup's **state switcher** is mockup-only (not shipped UI).
 
 The receiver URL shown in the mockup, `…/api/integrations/webhooks/gitlab/webhooks`, matches `webhookUrl("gitlab","webhooks")` (`webhooks/manager.ts`) with serviceId `webhooks` — consistent throughout.
+
+---
+
+## 9. Design review (one round — architect-reviewer)
+
+**Verdict: Approve-with-notes. No blockers.** The reviewer re-derived every load-bearing claim against the live source and found no drift: the core-headless-handler registration (`registerCoreExecutor` + `declaredBy:"core"`, with `isHandlerActive` a plain `enabled` boolean), the `mintSecret` opt-out, the `authless` coercion in `readState`, the `KNOWN_TYPES` mapping, the MCP pre-flight using the exact gateway predicate (`allowedServers`), the two-registry split, and the R4 / FR-018 structural separation all hold against `api.ts`, `dispatch.ts`, `manager.ts`, `state/store.ts`, `legacy-mapping.ts`, `gateway.ts`, and `webhooks/registry.ts`.
+
+Fixes applied to this document (this is the v2 → v3 change set):
+- **F1 (correctness)** — dropped `enabled: true` from the `api.register` call in §3.6. `register` resolves `enabled: req.enabled ?? existing?.enabled ?? true`, so an explicit `true` would re-enable the handler on every restart (it is re-registered each boot from `instrumentation.ts`) and silently break FR-016 / SC-004 (disable must persist). Now omitted, matching `spine-handler.ts` — "default true on first registration only."
+- **F2 (correctness)** — §3.9 now states the `IntegrationsTab` generic-view fallback must change from `id !== "telegram"` to `id !== "telegram" && id !== "gitlab"`, or both the GitLab detail view and the generic view (with its git-provider OAuth panel) would render.
+- **F3 (precision)** — ADR-6 now confirms the required placeholder `oauthConfig` must stay inert in `IntegrationListView` so the shared list row never shows a misleading "Connect" control.
+- **F4 (precision)** — §3.5 / ADR-2 now add a `legacyFriendlySummary` branch (`"issue #<iid> <title>"` / `"MR !<iid> <title>"`) instead of the truncated-JSON fallback.
+- **F5 (precision)** — Risk 7 extended to note the stock `WebhookSection` also surfaces an "Event type filter" input + "Save config" button (harmless — they map to the real `config.eventTypes` gate).
+
+Open question (a) (the `gitlab-triage` agent `mcp` allowlist default) was settled as **empty = all** during review — recorded in §7.
