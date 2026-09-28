@@ -19,6 +19,16 @@ How to set up and validate this feature end-to-end. Two audiences: the **manual 
 - **Generate token** → copy the one-time-revealed token.
 - Copy the **Receiver URL**.
 
+> **Generating the token is also what makes deliveries reachable.** A delivery
+> carries no cookie and no `Authorization` header, so on a Bastion-fronted
+> (multi-user) deployment the gateway routes it by resolving
+> `sha256(X-Gitlab-Token)` in `data/system/credentials-index.json`. The
+> handler registers the token there on **enable**, on **rotate** (both the new
+> token and the demoted grace token), and revokes on **disable/delete** — so a
+> token that was never generated through the panel is rejected by the gateway
+> before the receiver's own `verify()` runs. See
+> `docs/dev/integrations/gitlab-triage.md` §4.
+
 ### 4. Register in GitLab
 - **GitLab → Project → Settings → Webhooks** → **Add webhook**:
   - **URL** = the Receiver URL.
@@ -47,7 +57,11 @@ Create an issue in that project labeled **`Bug`** (with a clear title + repro). 
 - Temporarily remove your GitLab server from the agent's MCP allowlist (or point the panel at an agent with no GitLab MCP) → open a `Bug` issue → the `gitlab.issue.opened` event is still recorded, **no crash**, and a `com.bos.gitlab.triage.failed` (`no_gitlab_mcp`) event surfaces. The issue is left unmodified.
 
 ### 9. Validate security
-- POST to the URL with a **wrong** `X-Gitlab-Token` → `401`.
+- POST to the URL with a **wrong** `X-Gitlab-Token` → `401`. On a Bastion-fronted
+  deployment, tell the two 401s apart by their body: an **empty** body with a
+  `WWW-Authenticate: Basic` header is the gateway refusing to route (a routing
+  problem); `{"error":{"code":"unauthorized"}}` is the receiver's `verify()`
+  rejecting the token (a token mismatch).
 - **Disable** the webhook → POST (even with a valid token) → `404`.
 - POST a **push** event (or a non-`open` issue action) → `200`, `emitted: 0` (ignored, no event).
 
@@ -55,6 +69,7 @@ Create an issue in that project labeled **`Bug`** (with a clear title + repro). 
 
 ### Unit tests (Vitest) — `src/lib/integrations/services/gitlab/__tests__/`
 - **`webhook.verify`** — correct token → true; wrong/missing → false; **no candidates → false** (never accept-all); rotation grace (previous accepted).
+- **`webhook.routing-index`** — enable/rotate/disable/delete keep the Bastion credentials index in step with the tokens `verify` accepts: generating the first token makes exactly it routable, rotation keeps the grace token routable and drops the one before it, and disable/delete leave nothing behind. (Paired with `tests/bastion/webhook-secret-header.test.ts`, which pins the gateway's half.)
 - **`webhook.receive`** — issue+open → 1 `issue-opened` event with correct projection; MR+open → 1 `mr-opened`; push / issue-update / note → `[]`; malformed JSON → `[]`; description truncated; labels normalized.
 - **`dispatch` failure detection** — agent missing → `agent_not_found`; `run.error` → `run_error`; clean run with **no successful `mcp_tool_call`** → `no_gitlab_mcp`; clean run with **one successful `mcp_tool_call`** → success (no failure event). (This is the v5 blocker — the test must fail on the pre-fix `try/catch`-only implementation.)
 - **`labels`** — the three classification labels + eight status labels are the exact expected sets; `Needs Review` is terminal.
@@ -81,7 +96,8 @@ Preview via the Supervisor, then **Promote** (user action). Promote is **code-on
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Webhook 401 | Token not generated, or mismatched | Generate a token in the panel; paste the **same** one into GitLab's "Secret token." |
+| Webhook 401, body `{"error":{"code":"unauthorized"}}` | Token not generated, or mismatched | Generate a token in the panel; paste the **same** one into GitLab's "Secret token." |
+| Webhook 401, **empty** body + `WWW-Authenticate: Basic` | The Bastion gateway could not route the delivery: the token is not in this user's credentials index | **Rotate secret** once (that is what registers it) and re-paste. If it persists, check `bastion/src/webhook-secret-header.ts` lists `x-gitlab-token`. |
 | Webhook 404 | Webhook disabled (or unknown) | Enable the webhook in the panel. |
 | Event emitted but issue untouched | `gitlab-issue-triage` handler disabled | Enable it in Event Viewer → Configuration. |
 | `com.bos.gitlab.triage.failed` `no_gitlab_mcp` | No GitLab MCP reachable by the agent | Configure a GitLab MCP server + include it in the agent's `mcp` allowlist (Settings → Agents). |
