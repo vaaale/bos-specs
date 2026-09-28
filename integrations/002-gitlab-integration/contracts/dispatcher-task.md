@@ -62,15 +62,19 @@ const run = await runSubAgent(agent, task, {
 |---|---|---|
 | Agent missing | Step 1: `getAgent` → undefined | emit `com.bos.gitlab.triage.failed` `reason:"agent_not_found"`; no run |
 | Model/provider failure | `run.error` set, **or** `run.endedReason === "error"` | emit `com.bos.gitlab.triage.failed` `reason:"run_error"`, with `run.error` |
-| **No usable GitLab MCP** | the run finished (`completed`/`aborted`) but **no collected `tool_result` for `mcp_tool_call` has `ok:true`** | emit `com.bos.gitlab.triage.failed` `reason:"no_gitlab_mcp"` |
+| **Empty run** | the run finished but **zero `tool_result` events** were collected | emit `com.bos.gitlab.triage.failed` `reason:"no_output"`, `cause:"The agent run produced no tool calls — the run ended with no recorded activity"` |
+| **GitLab never attempted** | tool results exist, but **none has `name === "mcp_tool_call"`** | emit `com.bos.gitlab.triage.failed` `reason:"mcp_not_attempted"`, `cause` naming the call count and the agent's `mcp` allowlist |
+| **GitLab refused** | `mcp_tool_call` results exist and **none has `ok:true`** | emit `com.bos.gitlab.triage.failed` `reason:"mcp_rejected"`, `cause` = the **first failed call's own error text** (capped at 300 chars) |
 | Agent reached GitLab | **at least one `mcp_tool_call` `ok:true`** | success path — any mid-pipeline problem is the **skill's** responsibility (it posts a `Failed` status label). The dispatcher does not second-guess a run that demonstrably touched GitLab. |
+
+The three no-GitLab reasons are one partition of the single collected `tool_result` list (total / `mcp_tool_call` / `ok`), checked shortest-run-first. They are separate because **a reason must state what was observed, not what it implies**: a single `no_gitlab_mcp` reported "the agent has no usable GitLab MCP server" for runs that never called one (issue #31), sending the operator to debug a healthy server.
 
 `ok` is derived from the `tool_result` event's result: an `Error:`-prefixed / error payload ⇒ `ok:false`, otherwise `ok:true`. (The runner's `onEvent` already emits `{ type:"tool_result", name, result, ok }` per ADR-13 — collect `name === "mcp_tool_call"`.)
 
 **Failure event** `com.bos.gitlab.triage.failed`:
 ```
 {
-  reason: "agent_not_found" | "run_error" | "no_gitlab_mcp",
+  reason: "agent_not_found" | "run_error" | "no_output" | "mcp_not_attempted" | "mcp_rejected",
   projectId, iid, url,          // from the issue context
   cause?: string                // run.error / short detail
 }

@@ -54,7 +54,7 @@ Create an issue in that project labeled **`Bug`** (with a clear title + repro). 
 - Change the **agent picker** (Settings → Integrations → GitLab → Workflow) to another agent → subsequent issues dispatch to it (SC-008).
 
 ### 8. Validate graceful failure (SC-007)
-- Temporarily remove your GitLab server from the agent's MCP allowlist (or point the panel at an agent with no GitLab MCP) → open a `Bug` issue → the `gitlab.issue.opened` event is still recorded, **no crash**, and a `com.bos.gitlab.triage.failed` (`no_gitlab_mcp`) event surfaces. The issue is left unmodified.
+- Temporarily remove your GitLab server from the agent's MCP allowlist (or point the panel at an agent with no GitLab MCP) → open a `Bug` issue → the `gitlab.issue.opened` event is still recorded, **no crash**, and a `com.bos.gitlab.triage.failed` (`mcp_rejected`, or `mcp_not_attempted` if the agent never reached for MCP at all) event surfaces. The issue is left unmodified.
 
 ### 9. Validate security
 - POST to the URL with a **wrong** `X-Gitlab-Token` → `401`. On a Bastion-fronted
@@ -71,7 +71,7 @@ Create an issue in that project labeled **`Bug`** (with a clear title + repro). 
 - **`webhook.verify`** — correct token → true; wrong/missing → false; **no candidates → false** (never accept-all); rotation grace (previous accepted).
 - **`webhook.routing-index`** — enable/rotate/disable/delete keep the Bastion credentials index in step with the tokens `verify` accepts: generating the first token makes exactly it routable, rotation keeps the grace token routable and drops the one before it, and disable/delete leave nothing behind. (Paired with `tests/bastion/webhook-secret-header.test.ts`, which pins the gateway's half.)
 - **`webhook.receive`** — issue+open → 1 `issue-opened` event with correct projection; MR+open → 1 `mr-opened`; push / issue-update / note → `[]`; malformed JSON → `[]`; description truncated; labels normalized.
-- **`dispatch` failure detection** — agent missing → `agent_not_found`; `run.error` → `run_error`; clean run with **no successful `mcp_tool_call`** → `no_gitlab_mcp`; clean run with **one successful `mcp_tool_call`** → success (no failure event). (This is the v5 blocker — the test must fail on the pre-fix `try/catch`-only implementation.)
+- **`dispatch` failure detection** — agent missing → `agent_not_found`; `run.error` → `run_error`; clean run with **no tool results at all** → `no_output`; clean run with tool results but **no `mcp_tool_call`** → `mcp_not_attempted`; clean run where **every `mcp_tool_call` failed** → `mcp_rejected` carrying the first failure's own error text; clean run with **one successful `mcp_tool_call`** → success (no failure event). (This is the v5 blocker — the test must fail on the pre-fix `try/catch`-only implementation.)
 - **`labels`** — the three classification labels + eight status labels are the exact expected sets; `Needs Review` is terminal.
 
 ### E2E (Playwright) — `e2e/002-gitlab-integration.spec.ts`
@@ -100,6 +100,8 @@ Preview via the Supervisor, then **Promote** (user action). Promote is **code-on
 | Webhook 401, **empty** body + `WWW-Authenticate: Basic` | The Bastion gateway could not route the delivery: the token is not in this user's credentials index | **Rotate secret** once (that is what registers it) and re-paste. If it persists, check `bastion/src/webhook-secret-header.ts` lists `x-gitlab-token`. |
 | Webhook 404 | Webhook disabled (or unknown) | Enable the webhook in the panel. |
 | Event emitted but issue untouched | `gitlab-issue-triage` handler disabled | Enable it in Event Viewer → Configuration. |
-| `com.bos.gitlab.triage.failed` `no_gitlab_mcp` | No GitLab MCP reachable by the agent | Configure a GitLab MCP server + include it in the agent's `mcp` allowlist (Settings → Agents). |
+| `com.bos.gitlab.triage.failed` `no_output` | The run produced no tool calls at all | Check the agent has usable tools — an empty `mcp` allowlist leaves it nothing to call (Settings → Agents). |
+| `com.bos.gitlab.triage.failed` `mcp_not_attempted` | The agent acted but never tried GitLab MCP | Include a GitLab MCP server in the agent's `mcp` allowlist and check the `gitlab-issue-triage` skill is available to it. |
+| `com.bos.gitlab.triage.failed` `mcp_rejected` | Every GitLab MCP call failed | Read the event's `cause` — it quotes the server verbatim (e.g. `401 Unauthorized`). |
 | `agent_not_found` | Panel points at a deleted/renamed agent | Re-select a valid agent in the Workflow card. |
 | Issue not re-processed on its own updates | — | Correct by design (loop prevention, ADR-9). Only a **new** issue (`action=open`) triggers. |
