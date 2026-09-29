@@ -6,7 +6,7 @@
 
 **Tests**: Included — the feature spec + plan explicitly request tests (Vitest unit + Playwright e2e, incl. a regression guard for the v5 blocker). Story phases are **TDD**: the story's tests are written and FAIL before the story's implementation.
 
-**Organization**: Tasks grouped by user story (spec.md US1–US4) for independent implementation/testing. The two platform additions (authless, mintSecret) and the integration skeleton are **Foundational** (block all stories).
+**Organization**: Tasks grouped by user story (spec.md US1–US5) for independent implementation/testing. The two platform additions (authless, mintSecret) and the integration skeleton are **Foundational** (block all stories). US1–US4 are the promoted webhook/R6/R7 base; **US5 (R8)** is an additive increment on top (it modifies the promoted dispatcher/agent/skill/labels, does not replace them).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -122,6 +122,38 @@
 
 ---
 
+## Phase 8: User Story 5 — R8: the agent runs the spec pipeline itself (Priority: P2)
+
+**Goal**: On the user's approval (a GitLab comment at a human-waiting gate), the agent — on its **per-issue conversation** — creates an **ordinary** feature branch via a new `gitlab_start_feature` server tool, writes the **real** spec-kit artifacts to the branch headless (`spec.md`; + `mockup.html` via `file_write` + `design.md` for UI features), attaches them to the issue (FR-031), and ends at `Design Complete`. On the design's approval it continues **itself** (`plan.md` → `tasks.md` → `dev_delegate` TDD, same branch) to `Needs Review`. The agent never promotes/merges (FR-028); v1 = bos-core features only (FR-029). (design v6 ADR-14/15/16; contracts/gitlab-start-feature.md.)
+
+**Depends on the promoted US2**: the dispatcher (`triage/dispatch.ts`), the core handler (`triage/handler.ts`), the agent (`seed/agents/gitlab-issue-agent/AGENT.md`), the skill (`seed/skills/gitlab-issue-triage/`), and the labels (`labels.ts`) are all **modified** by US5, not recreated.
+
+**Independent Test**: (quickstart Part 2; SC-009/SC-008/SC-003) A `Feature` issue at `Spec Drafted` + an approval comment → the agent calls `gitlab_start_feature` → an **ordinary** `bos/<NNN>-<slug>` (next-number, never self-heal) is bound mid-run → `spec.md` (+ `mockup.html` + `design.md`) written to the branch → the issue is at `Design Complete` with an FR-031 post naming the branch + spec path → the branch's artifacts are listed in Build Studio's spec tree. A second approval at `Design Complete` → `plan.md`/`tasks.md` → `dev_delegate` → `Needs Review` with a healthy preview. A **feedback** comment → revise + re-post, stay at the gate, **no** branch allocated. A **no-op** (the agent's own note at a gate) → no comment, no label, no branch, no failure.
+
+### Tests for User Story 5 (write first, ensure they FAIL) ⚠️
+
+- [ ] T032 [P] [US5] Extend the label tests — the R8 status sets are exact: work stages `{ Triage, Analyzing, Verifying, Mockup, Design, Plan, Tasks, Implementing }`; human-waiting gates `{ Spec Drafted, Fix Proposed, Design Complete, Needs Review }`; `Needs Review` is the **promotion** gate (implementation-complete), not draft-complete; the single-active invariant holds across the extended set in `src/lib/integrations/services/gitlab/__tests__/labels.test.ts` (data-model §7)
+- [ ] T033 [P] [US5] Unit test **`gitlab_start_feature`** — computes the **ordinary** `bos/<NNN>-<slug>` (NNN = max(existing)+1 in the chosen `user-specs` project; **never** self-heal naming, SC-009); a **mid-run bind** (conversation pre-existing with an empty `activeFeatureBranch`) is visible to a subsequent `file_write` on the same conversation (**the ADR-14 linchpin**); write-time re-check-and-bump on a concurrent collision (Risk 11); **idempotent** re-approval reuses the already-bound branch (no second NNN); an invalid slug returns an error (no ref written) in `src/lib/assistant/tools/server/__tests__/gitlab-feature-branch.test.ts` (contract `contracts/gitlab-start-feature.md`)
+- [ ] T034 [P] [US5] Unit test **`pipeline.ts`** — `pipelineConversationId(projectId, iid)` = `c-gitlab-issue-<projectId>-<iid>` and is **stable across every note** on the issue; the ghost seed (`saveConversationMessages`) is idempotent (the same conversation across re-dispatch) in `src/lib/integrations/services/gitlab/__tests__/pipeline.test.ts` (design ADR-14)
+- [ ] T035 [P] [US5] Unit test the **R8 dispatcher change** — a `gitlab.issue.noted` run is **conversation-bound** (seeds the per-issue ghost conversation + passes `conversationId`) and **omits `contentOnly`**; a `gitlab.issue.opened` run is **unchanged** (headless, `contentOnly: true`, no `conversationId`); the resume task names `references/approve-spec.md`/`approve-design.md` + `gitlab_start_feature` + "never promote or merge" but carries **no branch name**; a **no-op resume at a gate** (own note) is a **success** with no branch allocated in `src/lib/integrations/services/gitlab/__tests__/dispatch.test.ts` (contract `contracts/dispatcher-task.md`; design §3.7)
+- [ ] T036 [P] [US5] Extend the **skill-references test** — the router's human-waiting states now point at `references/approve-spec.md` + `references/approve-design.md`; those references name `gitlab_start_feature`, `dev_delegate`, and the **`file_write`-of-`mockup.html`** (assert they do **not** name `ui_preview_*` — ADR-16); the approval-vs-feedback (FR-027), FR-031 attach, and "never promote/merge" clauses are present and both new references are readable through `skill_read_file` in `tests/agent/gitlab-triage-skill-references.test.ts`
+
+### Implementation for User Story 5
+
+- [ ] T037 [US5] Extend **`labels.ts`** to the R8 set (work stages + gate reclassifications + the human-waiting set + `Needs Review` = implementation-complete) in `src/lib/integrations/services/gitlab/labels.ts` (depends T032; make T032 pass) (FR-014, data-model §7)
+- [ ] T038 [US5] Implement the **`gitlab_start_feature`** server tool (`execution: "server"`, cycle-free — imports only pure/spec/conversation helpers) — resolve the chosen `user-specs` project, scan its feature dirs for next `NNN`, compose + `isValidFeatureBranch`-validate `bos/<NNN>-<slug>`, **write-time re-check-and-bump**, **reuse** the conversation's already-bound branch on re-approval, bind via `setConversationActiveFeatureBranch(ctx.conversationId, branch)` (git ref lazy on first `dev_delegate`), return `{ branch, featurePath, store, featureId }`; **register** it in `src/lib/assistant/registry.ts` (static import — present from the first build) in `src/lib/assistant/tools/server/gitlab-feature-branch.ts` (depends T033; make T033 pass) (FR-023/FR-024; contract `contracts/gitlab-start-feature.md`)
+- [ ] T039 [US5] Implement **`triage/pipeline.ts`** — `pipelineConversationId(projectId, iid)` + the idempotent **ghost seed** (`conversationStore.saveConversationMessages(conversationId, agentId, [task])`, the self-heal intake pattern keyed on the issue) + the conversation-bound run wrapper in `src/lib/integrations/services/gitlab/triage/pipeline.ts` (depends T034; make T034 pass) (design ADR-14; data-model §8)
+- [ ] T040 [US5] Extend the **note projection** to carry the issue's current `labels[]` (from the top-level `issue.labels[].title`, the `issue.iid` fallback already present) in `src/lib/integrations/services/gitlab/adapters/webhook.ts` (depends T039) (FR-022; contracts/bos-event.md)
+- [ ] T041 [US5] Extend the **dispatcher** — the `gitlab.issue.noted` run seeds the per-issue ghost conversation + runs **conversation-bound** (omit `contentOnly`); the `gitlab.issue.opened` run is **unchanged**; the resume task gains the approval-path clauses (create branch with `gitlab_start_feature` on approval; write real artifacts; `dev_delegate` after design approval; FR-031 attach; "never promote or merge"; do NOT create a branch on feedback) in `src/lib/integrations/services/gitlab/triage/dispatch.ts` (depends T038, T039, T040; make T035 pass) (FR-027; contract `contracts/dispatcher-task.md`)
+- [ ] T042 [US5] Widen the **Gitlab Issue Agent** gate — `tools` from the v5 MCP+text/skill set to the **all-server pipeline gate** (`mcp_*`, `skill_*` incl. `skill_read_file`, `web_search`/`web_fetch`, `scratchpad_*`, `memory_*`, `file_*`, `gitlab_start_feature`, `dev_delegate`); `skills` gains `spec-kit-driver` + `ui-designer-craft`; `mcp: []` (all servers) in `seed/agents/gitlab-issue-agent/AGENT.md` (depends T038) (FR-028; design §3.11/ADR-16)
+- [ ] T043 [US5] Extend the **`gitlab-issue-triage` skill** — new `references/approve-spec.md` (approval-1: judge approval → `gitlab_start_feature` → `skill_load` driver → `specify` (write `spec.md`) → if UI surface, `file_write` `mockup.html` (NOT `ui_preview_*`) + architect `design.md` → labels `Mockup`→`Design` → FR-031 attach → `Design Complete`; no `dev_delegate`) + `references/approve-design.md` (approval-2: judge approval → reuse bound branch → `plan.md` → `tasks.md` → `dev_delegate` (TDD, plan's file list = scope) → labels `Plan`→`Tasks`→`Implementing` → FR-031 attach → `Needs Review`); extend `references/notes.md` (approval-vs-feedback, FR-027) + `references/status-labels.md` (R8 work stages + gate reclass) + `references/finalize.md` (FR-031 attach; `Needs Review` = implementation complete) in `seed/skills/gitlab-issue-triage/` (depends T037, T042; make T036 pass) (design §3.12)
+- [ ] T044 [P] [US5] Extend **`GitLabLabelsReference`** — the status-label chip group grows with the R8 labels (work stages + the two gate reclassifications + `Design Complete`), still sourced from `labels.ts` in `src/components/apps/settings/integrations/GitLabLabelsReference.tsx` (depends T037; mockup Labels section is the binding shape)
+- [ ] T045 [US5] Add the **R8 e2e** (the `@@e2e` script pattern — every fixture drives the run via a script line in the issue/note, because an unscripted headless run hits the real LLM) — approval → ordinary-named branch + `spec.md`/`mockup.html`/`design.md` on the branch + FR-031 post + `Design Complete`; design approval → `plan.md`/`tasks.md` + `dev_delegate` → `Needs Review`; the branch's artifacts are listed in Build Studio's spec tree (SC-008); a feedback comment → revise + stay + no branch; a no-op at a gate → no comment/label/branch/failure in `e2e/002-gitlab-integration.spec.ts` (depends T041, T043; SC-009/SC-008/SC-003, FR-023…FR-031)
+
+**Checkpoint**: US5 complete — an approved GitLab issue runs the spec pipeline **itself** to `Needs Review` with a healthy preview, ordinary branch naming, artifacts on the branch + attached to the issue, and the agent never promotes. (R8 increment: the full "drive it from GitLab" value.)
+
+---
+
 ## Phase 7: Polish & Cross-Cutting Concerns
 
 - [ ] T027 [P] Write end-user docs — enable webhook, generate token, register in GitLab, configure the agent/MCP, the label model — in `docs/usage/integrations/gitlab.md`
@@ -144,7 +176,8 @@
 - **US2 (Phase 4)**: depends on Foundational + US1 (T013 detail view, T011 webhook). Tests T015/T016 parallel; T017 → T018 → T019 → T020 → T021; T022 ← T013,T020; T023 ← T022.
 - **US3 (Phase 5)**: depends on US2 (T021/T022).
 - **US4 (Phase 6)**: depends on US1 (T011) + US2 (T021, to confirm issue-only registration).
-- **Polish (Phase 7)**: depends on all desired stories.
+- **US5/R8 (Phase 8)**: depends on the **promoted US2** (T017 skill, T018 agent, T019 dispatcher, T020 handler) — it **modifies** them. T032/T033/T034/T035/T036 (tests) parallel; T037 → T038 → T039 → T040 → T041; T042 ← T038; T043 ← T037,T042; T044 ← T037; T045 ← T041,T043.
+- **Polish (Phase 7)**: depends on all desired stories. US5's docs (T043's docs are in Phase 8; the Phase-7 T027/T028 base docs are the v5/R7 set) are additive — R8 docs extend, not rewrite, them.
 
 ### User story independence
 
@@ -152,6 +185,7 @@
 - **US2 (P2)**: standalone after US1 — the handling (agent + skill + dispatcher). The useful MVP is US1+US2.
 - **US3 (P2)**: depends on US2 (the toggle target) but is mostly verification of the existing kernel `setEnabled`.
 - **US4 (P3)**: depends on US1's shared `receive` (MR branch) + US2's issue-only registration.
+- **US5/R8 (P2)**: depends on the promoted US2 (it extends the dispatcher/agent/skill/labels). Standalone after US2 is promoted — the useful R8 increment is US2 + US5.
 
 ### Within each story
 
@@ -192,16 +226,19 @@ Task T014  "Route in IntegrationsTab"                         ← T013
 
 4. US3 (T024–T025) — validate handler independence (FR-018).
 5. US4 (T026) — validate MR emit-only (Q1).
-6. Polish (T027–T031) — docs, edge tests, loop-prevention e2e, full quickstart + gates.
+6. Polish (T027–T031) — docs, edge tests, loop-prevention e2e, full quickstart + gates. (US1–US4 are the **promoted** base.)
+7. **US5/R8 (T032–T045)** — **STOP and validate**: the approval-driven spec pipeline (approved issue → ordinary branch → real artifacts on the branch + attached to the issue → `Design Complete` → plan/tasks/implement → `Needs Review`). This is the R8 increment.
+8. R8 docs + full validation (the R8 sections of T027/T028 docs; quickstart Part 2; the R8 e2e T045; gates).
 
-Each increment is independently testable without breaking the previous. US2's T015 is the load-bearing regression test for the v5 blocker — do not skip it.
+Each increment is independently testable without breaking the previous. US2's T015 is the load-bearing regression test for the v5 blocker — do not skip it. US5's **T033 (the mid-run bind linchpin)** is the load-bearing regression test for the R8 architecture — do not skip it.
 
 ---
 
 ## Notes
 
 - [P] = different files, no dependency on an incomplete task.
-- [Story] maps each task to a spec.md user story for traceability (FR coverage: US1→FR-001…FR-008; US2→FR-009…FR-017,FR-020,FR-021; US3→FR-018; US4→FR-019).
+- [Story] maps each task to a spec.md user story for traceability (FR coverage: US1→FR-001…FR-008; US2→FR-009…FR-017,FR-020,FR-021; US3→FR-018; US4→FR-019; US5/R8→FR-023…FR-031 + the R8 rewording of FR-014/FR-022/SC-003/SC-009).
 - The e2e (T024/T026/T030) **stubs the agent + GitLab MCP** and drives the **real** webhook receiver with recorded payloads; the real-credentials path is quickstart Part 1.
 - Commit after each task or logical group; stop at any checkpoint to validate the story independently.
-- Open low-stakes items (from plan.md) are decided during implement, not blocking: `WebhookSection` label parity (T013); "draft spec posted as a GitLab comment" confirmation (T017); seed agent `mcp: []` default (T018).
+- Open low-stakes items (from plan.md), **resolved during the R8 plan** (no longer open): (c) the pre-approval draft is a **comment**; the post-approval **real** artifacts are **attached to the issue** (FR-031) — confirmed; (d) the seed `Gitlab Issue Agent` defaults to `mcp: []` (all servers) — confirmed. `WebhookSection` stock chrome (event-type filter + save button; "Rotate secret" label) is **accepted** as-is (low stakes; functionally identical to the mockup) — revisit only if it reads as a defect in review.
+- **E2E gotcha (standing)**: any e2e that triggers a headless agent run hits the **real LLM provider** (the unit network guard does not cover e2e). Every R8 fixture (T045) must carry an `@@e2e` script line in the issue/note, matched by `e2e-provider.ts` (any line) — the same pattern R7's e2e used, extended to drive the approval gates + `gitlab_start_feature` + the branch writes + the FR-031 post.

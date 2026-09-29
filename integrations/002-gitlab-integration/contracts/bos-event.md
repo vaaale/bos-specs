@@ -53,6 +53,7 @@ Only the issue's coordinates and the comment. Everything else the agent re-reads
 | `iid` | `number` | The issue's **project-scoped** number — from the **top-level `issue.iid`**. See the warning below. |
 | `note` | `string` | `object_attributes.note`, truncated (~2 000 chars). |
 | `author` | `{ name, username }` | Top-level `user` — the **comment's** author, not the issue's. |
+| `issueLabels` | `string[]` | **R8** — the issue's **current** labels, from the note hook's top-level `issue.labels[].title`. This is the **gate signal**: it lets the dispatcher see whether the issue is at a human-waiting state (`Spec Drafted` / `Fix Proposed` / `Design Complete` / `Needs Review`) and so seed the per-issue conversation (the dispatcher knows the *gate*, not the *intent* — approval-vs-feedback is the agent's read, FR-027). Verified present: GitLab's note hook carries the issue's own `labels[]` on the top-level `issue` object (`note_builder.rb` / `data_builder/note.rb`) — `object_attributes` describes the *comment*; the labels are on `issue`. |
 | `url` | `string` | `object_attributes.url` (the issue URL with the `#note_<id>` anchor). |
 | `_integrationType` | `string` | `issue-noted`. |
 | `_integrationService` | `string` | `gitlab/webhooks`. |
