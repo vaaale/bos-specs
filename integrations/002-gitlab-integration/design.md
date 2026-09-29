@@ -113,10 +113,14 @@ src/lib/integrations/services/gitlab/
     webhooks-adapter.ts    zero-method ServiceAdapter, capabilities { webhook: true }
   triage/
     handler.ts             gitlab-issue-triage core handler (register + prompt-ack + fire-and-forget dispatch to the selected agent)
-    dispatch.ts            build the issue-context task, resolve the selected agent, runSubAgent, graceful-failure wrapper
+    dispatch.ts            build the issue-context task, resolve the selected agent, runSubAgent, graceful-failure wrapper (R8: the noted run is conversation-bound, §3.10)
+    pipeline.ts            R8 — the per-issue conversation: id derivation, the ghost seed, branch binding (the self-heal pattern), and the conversation-bound run wrapper
 
-seed/agents/gitlab-issue-agent/AGENT.md      the Gitlab Issue Agent (type local; frontmatter skills: ["gitlab-issue-triage"], mcp allowlist)
-seed/skills/gitlab-issue-triage/SKILL.md     the triage skill = the state machine (R6)
+  tools/
+    gitlab-feature-branch.ts   R8 — `gitlab_start_feature` server tool: resolves the chosen project + next NNN + slug, binds the ordinary branch to the run's conversation, returns the branch + feature path (non-interactive; the headless counterpart to dev_branch_request)
+
+seed/agents/gitlab-issue-agent/AGENT.md      the Gitlab Issue Agent (type local; frontmatter skills: ["gitlab-issue-triage"], mcp allowlist; R8: tools widened to the pipeline gate, §3.11)
+seed/skills/gitlab-issue-triage/SKILL.md     the triage skill = the state machine (R6) — R8: the router's human-waiting states become pipeline-running stages, and the references grow the pipeline stages (§3.12)
 
 src/components/apps/settings/integrations/
   GitLabDetailView.tsx            header + WebhookSection + WorkflowSection + labels ref
