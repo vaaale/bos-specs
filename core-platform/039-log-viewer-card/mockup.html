@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Log Viewer: Expandable Log Record Card (#51 · bos/039-log-viewer-card)</title>
+<style>
+  /* ---- BOS dark theme, approximated from the style guide (white/black opacity palette) ---- */
+  :root{
+    --bg:#0f1117; --panel:#15171e;
+    --w90:rgba(255,255,255,.9); --w70:rgba(255,255,255,.7); --w60:rgba(255,255,255,.6);
+    --w50:rgba(255,255,255,.5); --w40:rgba(255,255,255,.4);
+    --surf:rgba(255,255,255,.05); --surf-hover:rgba(255,255,255,.10); --surf-active:rgba(255,255,255,.15);
+    --deep:rgba(0,0,0,.30); --border:rgba(255,255,255,.10); --focus:rgba(255,255,255,.30);
+    --mono:'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,'Geist','Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--w90);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;padding:24px}
+  .wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+
+  .mock-head{display:flex;flex-direction:column;gap:2px}
+  .mock-head h1{font-size:15px;font-weight:600;margin:0}
+  .mock-head p{margin:0;color:var(--w50);font-size:12px}
+  .mock-head code{font-family:var(--mono);color:var(--w70);background:var(--surf);padding:1px 5px;border-radius:4px;font-size:11px}
+
+  .surface{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--panel);box-shadow:0 18px 50px rgba(0,0,0,.45)}
+  .surface-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surf)}
+  .surface-bar .dots{display:flex;gap:5px;margin-right:4px}
+  .surface-bar .dots i{width:9px;height:9px;border-radius:50%;display:block}
+  .surface-bar .dots i:nth-child(1){background:#ff5f57}.surface-bar .dots i:nth-child(2){background:#febc2e}.surface-bar .dots i:nth-child(3){background:#28c840}
+  .surface-bar .title{font-size:12px;color:var(--w60)}
+  .surface-bar .tag{margin-left:auto;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--w40);border:1px solid var(--border);padding:2px 7px;border-radius:999px}
+  .surface-body{padding:14px}
+
+  .note{font-size:11.5px;color:var(--w50);margin:0 0 12px;padding:8px 11px;border:1px dashed var(--border);border-radius:8px;background:rgba(255,255,255,.02)}
+  .note b{color:var(--w70);font-weight:600}
+
+  /* ---- Log list / timeline ---- */
+  .loglist{display:flex;flex-direction:column;font-family:var(--mono);font-size:12px}
+  .loglist .cap-note{font-family:var(--sans);font-size:10.5px;color:var(--w40);margin:0 2px 6px;display:flex;gap:10px;align-items:center}
+  .loglist .cap-note .pill{border:1px solid var(--border);border-radius:999px;padding:1px 7px}
+  .loglist .cap-note .pill.now{color:var(--w70);border-color:var(--focus)}
+  .loglist .cap-note .pill.old{color:var(--w40);text-decoration:line-through}
+
+  details.row{border:1px solid transparent;border-radius:7px;margin:1px 0}
+  details.row[open]{background:var(--surf);border-color:var(--border)}
+  details.row:hover{background:var(--surf-hover)}
+  details.row>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:3px 8px;border-radius:7px;outline:none}
+  details.row>summary:focus-visible{border-color:var(--focus)}
+  details.row>summary::-webkit-details-marker{display:none}
+  .chev{margin-left:auto;color:var(--w40);transition:transform .15s ease;flex:none;font-size:11px}
+  details.row[open]>summary .chev{transform:rotate(90deg);color:var(--w60)}
+
+  .t{color:var(--w40);flex:none;width:88px}
+  .lvl{flex:none;width:54px;font-weight:600;letter-spacing:.02em}
+  .lvl.error{color:#ff8a8a}.lvl.warn{color:#f5c074}.lvl.info{color:#8ad0ff}.lvl.debug{color:var(--w50)}
+  .comp{flex:none;color:var(--w60);width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stream-badge{flex:none;font-family:var(--sans);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;padding:1px 6px;border-radius:999px;border:1px solid var(--border)}
+  .stream-badge.frontend{color:#9ad0a0;background:rgba(40,200,64,.10);border-color:rgba(40,200,64,.25)}
+  .stream-badge.backend{color:#8ad0ff;background:rgba(56,132,255,.12);border-color:rgba(56,132,255,.3)}
+  .stream-badge.supervisor{color:#d3a8ff;background:rgba(147,51,234,.14);border-color:rgba(147,51,234,.35)}
+  .msg{color:var(--w70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .msg.trunc{max-width:520px} /* Settings summary keeps its truncate */
+
+  /* ---- The shared LogRecordCard ---- */
+  .card{border-top:1px solid var(--border);margin:2px 4px 4px;padding:12px 14px 13px;background:var(--deep);border-radius:0 0 8px 8px;font-family:var(--sans)}
+  .card .grid{display:grid;grid-template-columns:120px 1fr;gap:7px 14px;align-items:start}
+  .card .k{color:var(--w40);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding-top:1px}
+  .card .v{color:var(--w90);font-size:12.5px;min-width:0}
+  .card .v.mono{font-family:var(--mono);font-size:11.5px;color:var(--w70)}
+  .card .full{white-space:pre-wrap;word-break:break-word}
+  .pre{margin:0;background:rgba(0,0,0,.35);border:1px solid var(--border);border-radius:6px;padding:9px 11px;overflow:auto;max-height:150px;font-family:var(--mono);font-size:11px;line-height:1.55;color:var(--w70);white-space:pre}
+  .pre.tall{max-height:110px}
+  .card .err-msg{color:#ff9d9d;font-size:12px;margin-bottom:6px}
+  .card .meta-inline{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}
+  .card .meta-inline .sep{color:var(--w40)}
+  .card .foot{display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+  .btn{font:11.5px var(--sans);color:var(--w70);background:var(--surf);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer}
+  .btn:hover{background:var(--surf-hover)}
+  .btn.primary{color:var(--w90);background:var(--surf-active)}
+  .link{color:#8ad0ff;text-decoration:none;border-bottom:1px dotted rgba(138,208,255,.4)}
+  .pill-muted{color:var(--w40);font-style:italic}
+  .absent{color:var(--w40);font-size:11px;font-style:italic}
+
+  /* settings filter row (unchanged, shown for context) */
+  .filterbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;font-family:var(--sans)}
+  .filterbar .f{font:11px var(--sans);color:var(--w60);background:var(--deep);border:1px solid var(--border);border-radius:6px;padding:4px 9px;outline:none}
+  .filterbar .f:focus{border-color:var(--focus)}
+  .scroll{max-height:440px;overflow:auto;padding-right:4px}
+  .scroll::after{content:"";display:block;min-height:0}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--w50);margin-top:4px}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend i{width:9px;height:9px;border-radius:2px;display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mock-head">
+    <h1>Log Viewer — Expandable <code>LogRecordCard</code></h1>
+    <p>Mockup for issue <code>#51</code> · branch <code>bos/039-log-viewer-card</code> · one shared card, applied in <b>both</b> surfaces. Rows are native <code>&lt;details&gt;</code> → multi-open + accessible for free.</p>
+  </div>
+
+  <!-- ============ SURFACE A — TOOLBAR POPOVER ============ -->
+  <div class="surface">
+    <div class="surface-bar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="title">Topbar → Log&nbsp;·&nbsp;<code style="font-family:var(--mono);font-size:11px">RecentLogPopover</code></span>
+      <span class="tag">Surface A</span>
+    </div>
+    <div class="surface-body">
+      <p class="note">
+        Click a row to expand it <b>in place</b>. <b>Several can be open at once</b> (see two open below).
+        Summary line is <b>unchanged</b>. List scroll area bumped <span class="pill old" style="border:1px solid var(--border);border-radius:999px;padding:0 6px">340px</span> → <span class="pill now" style="border:1px solid var(--border);border-radius:999px;padding:0 6px;color:var(--w80)">440px</span>; width stays 900px / max 92vw.
+        Right-click → <b>Copy</b> still works; the card adds an in-place <b>Copy&nbsp;JSON</b> sharing the same clipboard helper.
+      </p>
+
+      <div class="loglist">
+        <div class="cap-note"><span class="pill now">max-h 440px</span><span>width 900px · max 92vw · poll 4s · errors-only + badge preserved</span></div>
+
+        <!-- OPEN row: error with full stack -->
+        <details class="row" open>
+          <summary>
+            <span class="t">14:32:08.412</span>
+            <span class="lvl error">ERROR</span>
+            <span class="stream-badge supervisor">supervisor</span>
+            <span class="comp">supervisor/build</span>
+            <span class="msg">preview build failed — npm run build exited 1</span>
+            <span class="chev">▶</span>
+          </summary>
+          <div class="card">
+            <div class="grid">
+              <div class="k">Message</div>
+              <div class="v full">preview build failed — npm run build exited 1</div>
+
+              <div class="k">Error</div>
+              <div class="v">
+                <div class="err-msg">Command failed: npm run build</div>
+                <pre class="pre">Error: Command failed: npm run build
+&gt; browseros@0.0.0 build
+&gt; next build
+
+✓ Compiled successfully
+   Linting and checking validity of types ...
+Failed to compile.
+
+./src/components/desktop/VersionControls.tsx:142:9
+Type error: Property 'expandedId' does not exist on type 'RecentLogPopoverState'.
+</pre>
+                <div style="font-size:10.5px;color:var(--w40);margin-top:5px">↑ full <code style="font-family:var(--mono)">err.stack</code>, scrollable, height-capped — not just the last line</div>
+              </div>
+
+              <div class="k">Stream</div>
+              <div class="v"><span class="stream-badge supervisor">supervisor</span></div>
+              <div class="k">Component</div>
+              <div class="v mono">supervisor/build</div>
+              <div class="k">Branch · Version</div>
+              <div class="v meta-inline"><span class="mono" style="font-family:var(--mono)">bos/039-log-viewer-card</span><span class="sep">·</span><span>preview</span></div>
+              <div class="k">Session · Conv</div>
+              <div class="v meta-inline"><span class="mono" style="font-family:var(--mono)">3f9c…a1d2</span><span class="sep">·</span><span class="mono" style="font-family:var(--mono)">conv_8821</span></div>
+              <div class="k">Data</div>
+              <div class="v"><pre class="pre tall">{
+  "exitCode": 1,
+  "stage": "typecheck",
+  "durationMs": 14822,
+  "touched": ["VersionControls.tsx"]
+}</pre></div>
+              <div class="k">Build log</div>
+              <div class="v"><a class="link" href="#build-log">logs/builds/bos-039-log-viewer-card-1717051928412.log</a></div>
+            </div>
+            <div class="foot">
+              <button class="btn primary" onclick="toast('Copied record JSON (shared copyToClipboard path)')">Copy JSON</button>
+              <span class="pill-muted" style="margin-left:auto;align-self:center">absent fields are omitted, never shown as null</span>
+            </div>
+          </div>
+        </details>
+
+        <!-- OPEN row #2: info — proves multi-open, and a record with NO err/data/buildLog -->
+        <details class="row" open>
+          <summary>
+            <span class="t">14:32:07.119</span>
+            <span class="lvl info">INFO</span>
+            <span class="stream-badge frontend">frontend</span>
+            <span class="comp">assistant</span>
+            <span class="msg">tool call accepted: gitlab-mcp.create_issue_note</span>
+            <span class="chev">▶</span>
+          </summary>
+          <div class="card">
+            <div class="grid">
+              <div class="k">Message</div>
+              <div class="v full">tool call accepted: gitlab-mcp.create_issue_note</div>
+              <div class="k">Stream</div>
+              <div class="v"><span class="stream-badge frontend">frontend</span></div>
+              <div class="k">Component</div>
+              <div class="v mono">assistant</div>
+              <div class="k">Branch · Version</div>
+              <div class="v meta-inline"><span class="mono" style="font-family:var(--mono)">base</span><span class="sep">·</span><span>base</span></div>
+              <div class="k">Session · Conv</div>
+              <div class="v meta-inline"><span class="mono" style="font-family:var(--mono)">3f9c…a1d2</span><span class="sep">·</span><span class="mono" style="font-family:var(--mono)">conv_8821</span></div>
+            </div>
+            <div class="foot">
+              <button class="btn primary" onclick="toast('Copied record JSON')">Copy JSON</button>
+              <span class="pill-muted" style="margin-left:auto;align-self:center">no Error / Data / Build-log sections — they simply don't exist on this record</span>
+            </div>
+          </div>
+        </details>
+
+        <!-- collapsed rows -->
+        <details class="row">
+          <summary><span class="t">14:32:06.902</span><span class="lvl warn">WARN</span><span class="stream-badge backend">backend</span><span class="comp">api/logs</span><span class="msg">poll returned 200 records (at limit)</span><span class="chev">▶</span></summary>
+        </details>
+        <details class="row">
+          <summary><span class="t">14:32:06.881</span><span class="lvl debug">DEBUG</span><span class="stream-badge frontend">frontend</span><span class="comp">log-viewer</span><span class="msg">re-render; 3 stable keys reused</span><span class="chev">▶</span></summary>
+        </details>
+        <details class="row">
+          <summary><span class="t">14:32:02.044</span><span class="lvl info">INFO</span><span class="stream-badge supervisor">supervisor</span><span class="comp">supervisor/activate</span><span class="msg">preview activated on :4173 (health ok)</span><span class="chev">▶</span></summary>
+        </details>
+      </div>
+      <div class="legend">
+        <span><i style="background:#ff8a8a"></i>ERROR</span>
+        <span><i style="background:#f5c074"></i>WARN</span>
+        <span><i style="background:#8ad0ff"></i>INFO</span>
+        <span><i style="background:rgba(255,255,255,.5)"></i>DEBUG</span>
+        <span style="color:var(--w40)">· two rows are open at once above (multi-open)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SURFACE B — SETTINGS → LOGS ============ -->
+  <div class="surface">
+    <div class="surface-bar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="title">Settings → Logs&nbsp;·&nbsp;<code style="font-family:var(--mono);font-size:11px">LogsTab</code></span>
+      <span class="tag">Surface B</span>
+    </div>
+    <div class="surface-body">
+      <p class="note">
+        Same shared <code style="font-family:var(--mono)">LogRecordCard</code> — the existing hand-rolled inline body is <b>migrated to it</b>.
+        Filters / session picker / auto-refresh are <b>unchanged</b>. Summary keeps its <code style="font-family:var(--mono)">truncate</code>;
+        the panel stays <code style="font-family:var(--mono)">flex-1</code> (already unconstrained).
+      </p>
+      <div class="filterbar">
+        <input class="f" placeholder="component…" />
+        <input class="f" placeholder="conversation…" />
+        <input class="f" value="all levels" />
+        <input class="f" value="timeline (global)" />
+        <span style="margin-left:auto;font-size:11px;color:var(--w40)">auto-refresh on · session picker unchanged</span>
+      </div>
+      <div class="loglist">
+        <!-- OPEN row in Settings -->
+        <details class="row" open>
+          <summary>
+            <span class="t">14:32:08.412</span>
+            <span class="lvl error">ERROR</span>
+            <span class="stream-badge supervisor">supervisor</span>
+            <span class="comp">supervisor/build</span>
+            <span class="msg trunc">preview build failed — npm run build exited 1</span>
+            <span class="chev">▶</span>
+          </summary>
+          <div class="card">
+            <div class="grid">
+              <div class="k">Message</div>
+              <div class="v full">preview build failed — npm run build exited 1</div>
+              <div class="k">Error</div>
+              <div class="v">
+                <div class="err-msg">Command failed: npm run build</div>
+                <pre class="pre">Error: Command failed: npm run build
+&gt; browseros@0.0.0 build
+&gt; next build
+
+✓ Compiled successfully
+   Linting and checking validity of types ...
+Failed to compile.
+
+./src/components/desktop/VersionControls.tsx:142:9
+Type error: Property 'expandedId' does not exist on type 'RecentLogPopoverState'.
+</pre>
+              </div>
+              <div class="k">Stream</div>
+              <div class="v"><span class="stream-badge supervisor">supervisor</span></div>
+              <div class="k">Component</div>
+              <div class="v mono">supervisor/build</div>
+              <div class="k">Branch · Version</div>
+              <div class="v meta-inline"><span class="mono" style="font-family:var(--mono)">bos/039-log-viewer-card</span><span class="sep">·</span><span>preview</span></div>
+              <div class="k">Session · Conv</div>
+              <div class="v meta-inline"><span class="mono" style="font-family:var(--mono)">3f9c…a1d2</span><span class="sep">·</span><span class="mono" style="font-family:var(--mono)">conv_8821</span></div>
+              <div class="k">Data</div>
+              <div class="v"><pre class="pre tall">{
+  "exitCode": 1,
+  "stage": "typecheck",
+  "durationMs": 14822,
+  "touched": ["VersionControls.tsx"]
+}</pre></div>
+              <div class="k">Build log</div>
+              <div class="v"><a class="link" href="#build-log">logs/builds/bos-039-log-viewer-card-1717051928412.log</a></div>
+            </div>
+            <div class="foot">
+              <button class="btn primary" onclick="toast('Copied record JSON')">Copy JSON</button>
+              <span class="pill-muted" style="margin-left:auto;align-self:center">identical card to Surface A — one render site, two surfaces</span>
+            </div>
+          </div>
+        </details>
+        <details class="row">
+          <summary><span class="t">14:32:07.119</span><span class="lvl info">INFO</span><span class="stream-badge frontend">frontend</span><span class="comp">assistant</span><span class="msg trunc">tool call accepted: gitlab-mcp.create_issue_note</span><span class="chev">▶</span></summary>
+        </details>
+        <details class="row">
+          <summary><span class="t">14:32:06.902</span><span class="lvl warn">WARN</span><span class="stream-badge backend">backend</span><span class="comp">api/logs</span><span class="msg trunc">poll returned 200 records (at limit)</span><span class="chev">▶</span></summary>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DESIGN DECISIONS SUMMARY ============ -->
+  <div class="surface">
+    <div class="surface-bar"><span class="dots"><i></i><i></i><i></i></span><span class="title">Decisions locked in the mockup</span><span class="tag">Design</span></div>
+    <div class="surface-body" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 22px;font-size:12px;color:var(--w70)">
+      <div><b style="color:var(--w90)">Interaction</b><br>Native <code style="font-family:var(--mono)">&lt;details&gt;</code> per row → multi-open + focusable + Enter/Space for free; no React state, no pruning.</div>
+      <div><b style="color:var(--w90)">Shared card</b><br>One <code style="font-family:var(--mono)">LogRecordCard</code> component is the expanded body for <b>both</b> surfaces; Settings' inline body is migrated to it.</div>
+      <div><b style="color:var(--w90)">Stable keys</b><br>Rows keyed by a stable record id (hash of <code style="font-family:var(--mono)">ts+stream+component+msg</code> when no id) so an open card survives the 4s re-sort.</div>
+      <div><b style="color:var(--w90)">Sizing</b><br>Toolbar list <code style="font-family:var(--mono)">max-h 340→440px</code>, width 900px unchanged; Settings stays <code style="font-family:var(--mono)">flex-1</code>.</div>
+      <div><b style="color:var(--w90)">Capped scroll</b><br>Huge <code style="font-family:var(--mono)">err.stack</code> / <code style="font-family:var(--mono)">data</code> render in height-capped scrollable regions — one record can't blow up the panel.</div>
+      <div><b style="color:var(--w90)">Theme & copy</b><br>Built from existing tokens (level colours, stream badges, <code style="font-family:var(--mono)">border-white/10</code>, <code style="font-family:var(--mono)">font-mono</code>); Copy JSON reuses the context-menu <code style="font-family:var(--mono)">copyToClipboard</code>.</div>
+    </div>
+  </div>
+
+</div>
+<div id="toast" style="position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--surf-active);border:1px solid var(--focus);color:var(--w90);padding:8px 16px;border-radius:999px;font:12px var(--sans);opacity:0;pointer-events:none;transition:opacity .2s;box-shadow:0 10px 30px rgba(0,0,0,.5)"></div>
+<script>
+  // Interactivity is a proxy only — the real feature is native <details>. This just demos the Copy JSON affordance.
+  let t; function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.style.opacity='1';clearTimeout(t);t=setTimeout(()=>el.style.opacity='0',1600);}
+</script>
+</body>
+</html>
