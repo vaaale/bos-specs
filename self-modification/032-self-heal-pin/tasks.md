@@ -1,6 +1,6 @@
 # Tasks: Self-Heal "Pin & open preview" performs the Supervisor work
 
-**Input**: Design documents from `Specs/user-specs/self-modification/032-self-heal-pin/`
+**Input**: `design.md` (authoritative) + `spec.md` + `plan.md`, all in `Specs/user-specs/self-modification/032-self-heal-pin/`
 **Branch**: `bos/032-self-heal-pin`
 **Prerequisites**: plan.md (required), spec.md (required for user stories)
 
@@ -30,11 +30,11 @@ Anything outside this list requires coming back to the spec, not improvising.
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: The unit test for the handler's decision matrix. Written first so it FAILS before the implementation exists (TDD). It exercises the `activate` → `pin` → reload contract from the spec's edge cases, with `supervisorPost` and `window.location.reload` mocked.
+**Purpose**: The unit test for the handler's decision matrix. Written first so it FAILS before the implementation exists (TDD). It exercises the `activate` → `pin` → reload contract from the spec's edge cases. Per the finalized design (§7), the decision logic lives in a **pure, framework-free function** inside `PreviewStatus.tsx`, and the test asserts on that function by **stubbing `globalThis.fetch`** (so the real `supervisorPost` wrapper receives the shaped JSON) and **`globalThis.window.location.reload`** — the repo's `test:unit` runner is browser-less (no module mocking, no React renderer), so the test does NOT mock `supervisorPost` or render the component.
 
 **⚠️ CRITICAL**: No user-story implementation until this test is written and observed failing.
 
-- [ ] T002 Write `tests/self-heal/preview-pin.test.ts` covering the handler decision matrix. Mock `supervisorPost` (`@/lib/supervisor/client`) and `window.location.reload`. Cases (from spec edge cases):
+- [ ] T002 Write `tests/self-heal/preview-pin.test.ts` covering the handler decision matrix. Stub `globalThis.fetch` (the real `supervisorPost` in `@/lib/supervisor/client` is a thin `fetch`+`r.json()` wrapper, so stubbing fetch drives it) and `globalThis.window.location.reload`; assert against the **pure decision function** in `PreviewStatus.tsx` (do NOT mock `supervisorPost` or render the component — the runner can't). Cases (from spec edge cases):
   - (a) `activate` returns not-`ready` (`state: "building"` or `ok: false`) ⇒ assert `pin` is NOT called and `reload` is NOT called.
   - (b) `activate` returns `state: "ready"`, `pin` returns `ok: true` ⇒ assert `pin` called with `{ version: "preview", branch }` and `reload` called exactly once.
   - (c) `activate` `ready` but `pin` returns `ok: false` ⇒ assert `reload` NOT called and the in-progress flag is cleared (button retryable).
@@ -55,8 +55,8 @@ Anything outside this list requires coming back to the spec, not improvising.
 
 - [ ] T003 [US1] In `src/apps/build-studio/selfheal/PreviewStatus.tsx`, add an in-progress state: `import { useState } from "react"` and `const [opening, setOpening] = useState(false)`.
 - [ ] T004 [US1] In `src/apps/build-studio/selfheal/PreviewStatus.tsx`, remove the Settings navigation dependency: drop `import { useOSStore } from "@/store/os-provider"` and the `const launch = useOSStore((s) => s.launch)` line (FR-001 — the button no longer navigates).
-- [ ] T005 [US1] In `src/apps/build-studio/selfheal/PreviewStatus.tsx`, add `import { supervisorPost } from "@/lib/supervisor/client"` (FR-006) and define the async `pinAndOpenPreview` handler: guard `if (!branch) return;`; `setOpening(true)`; `const a = await supervisorPost("activate", { branch })`; `if (a.ok === false || a.state !== "ready") return;` (FR-003); `const p = await supervisorPost("pin", { version: "preview", branch })`; `if (p.ok) window.location.reload();`; `finally { setOpening(false); }` (FR-002, FR-004).
-- [ ] T006 [US1] In `src/apps/build-studio/selfheal/PreviewStatus.tsx`, rewire the button: `onClick={() => void pinAndOpenPreview()}`, `disabled={opening}`, add `disabled:opacity-50` to its className, and render `{opening ? "Opening preview…" : "Pin & open preview"}` (FR-004). Keep `data-testid="self-heal-open-versions"`.
+- [ ] T005 [US1] In `src/apps/build-studio/selfheal/PreviewStatus.tsx`, add `import { supervisorPost } from "@/lib/supervisor/client"` (FR-006) and define the async `pinAndOpenPreview` handler: guard `if (!branch) return;`; `setOpening(true)`; `const a = await supervisorPost("activate", { branch })`; `if (a.ok === false || a.state !== "ready") return;` (FR-003); `const p = await supervisorPost("pin", { version: "preview", branch })`; `if (p.ok) window.location.reload();`; `finally { setOpening(false); }` (FR-002, FR-004). Extract this sequence into a **pure, framework-free function** (e.g. `async function pinAndOpen(branch, post, reload)`) so the unit test can call it directly with `globalThis.fetch`/`reload` stubs — the `onClick` handler then calls it with the real `supervisorPost` and `window.location.reload`. (See `design.md` §7 — the browser-less runner cannot mock `supervisorPost` or render React.)
+- [ ] T006 [US1] In `src/apps/build-studio/selfheal/PreviewStatus.tsx`, rewire the button: `onClick={() => void pinAndOpenPreview()}`, `disabled={opening}`, add `disabled:opacity-50` to its className, and render `{opening ? "Opening preview…" : "Pin & open preview"}` (FR-004). **Rename `data-testid="self-heal-open-versions"` → `data-testid="self-heal-pin-preview"`** — the old name no longer describes the behaviour (the button no longer opens the versions/Settings view). Verified un-referenced by any test, so the rename is safe.
 - [ ] T007 [US1] Verify the FR-024 footnote beneath the button is preserved verbatim (FR-005) — it must still state Promote/Discard live in the Topbar and self-healing never promotes. Do not add a second Promote/Discard control.
 - [ ] T008 [US1] Run `npm run test:unit` and confirm T002 case (b) (and the US1-related cases) now PASS.
 
@@ -72,7 +72,7 @@ Anything outside this list requires coming back to the spec, not improvising.
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T009 [P] [US2] Confirm `tests/self-heal/preview-pin.test.ts` case (a) — `activate` not-`ready` ⇒ no `pin`, no `reload` — is present and PASSING (it is the US2 behaviour; add it here if T002 did not already cover a `building` return distinct from an `ok:false` return).
+- [ ] T009 [P] [US2] Confirm `tests/self-heal/preview-pin.test.ts` case (a) — `activate` not-`ready` ⇒ no `pin`, no `reload` — is present and PASSING (it is the US2 behaviour; add it here if T002 did not already cover a `building` return distinct from an `ok:false` return). It is asserted against the pure decision function with a stubbed `globalThis.fetch` (same pattern as T002, not a separate mock).
 
 ### Implementation for User Story 2
 
@@ -142,6 +142,6 @@ Anything outside this list requires coming back to the spec, not improvising.
 
 - [P] tasks = different files, no dependencies.
 - TDD: T002 must be observed failing before T003–T006.
-- The change is confined to `PreviewStatus.tsx` + `tests/self-heal/preview-pin.test.ts` (SC-004). No new Supervisor endpoint, client, or Promote/Discard control (FR-005, FR-006).
+- The change is confined to `PreviewStatus.tsx` + `tests/self-heal/preview-pin.test.ts` (SC-004); the pure decision function extracted for testability lives inside `PreviewStatus.tsx` (a same-directory sibling is permitted but not required — see `design.md` §4/§7). No new Supervisor endpoint, client, or Promote/Discard control (FR-005, FR-006).
 - Commit after each task or logical group on `bos/032-self-heal-pin`.
 - Do not run `npm run build` while `next dev` is running (Constitution VII).
