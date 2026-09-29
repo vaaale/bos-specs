@@ -332,7 +332,7 @@ The skill is **the same method, run headless.** Its router's two human-waiting s
 - `seed/agents/gitlab-issue-agent/AGENT.md`
 - `seed/skills/gitlab-issue-triage/SKILL.md` + `references/*.md` (the router + per-stage references, §3.8 — including `references/notes.md` the R7 re-entry decision) — **R8** adds `references/approve-spec.md` (approval-1), `references/approve-design.md` (approval-2), and extends `references/notes.md` (approval-vs-feedback) + `references/status-labels.md` (R8 work stages + gate reclassifications), §3.12
 - `src/lib/integrations/services/gitlab/triage/pipeline.ts` — **R8** the per-issue conversation: id derivation, ghost seed, the conversation-bound run wrapper (§3.10)
-- `src/lib/integrations/services/gitlab/tools/gitlab-feature-branch.ts` — **R8** the `gitlab_start_feature` server tool: resolve project + next NNN + slug, bind the ordinary branch to the run's conversation, return branch + feature path (§3.10) — registered into the agent's server-tool map (the `assistantTools()` composition the dispatcher's run resolves through)
+- `src/lib/integrations/services/gitlab/tools/gitlab-feature-branch.ts` — **R8** the `gitlab_start_feature` server tool (a `serverTool`, so `execution: "server"`): resolve project + next NNN + slug, bind the ordinary branch to the run's conversation via `setConversationActiveFeatureBranch(ctx.conversationId, …)`, return `{ branch, featurePath, store }` (§3.10, ADR-15). **Cycle-free by construction:** it imports only the pure/spec/conversation helpers (`lib/agent/feature-branch`, `lib/specs/projects` + `spec-fs` for the `NNN` scan, `lib/assistant/conversation-store`) — never the integration's `dispatch.ts`/`runner`, which import the tool registry. It is added to the registry's static spread (below) and named in the seed agent's `tools` allowlist (§3.11), which is what makes `gateFor`/`headlessGate` surface it.
 - `seed/agents/gitlab-issue-agent/AGENT.md` — **R8** `tools` widened to the pipeline gate (§3.11); `skills` gains `spec-kit-driver` + `ui-designer-craft` (the method + mockup craft the agent runs headless)
 - `src/components/apps/settings/integrations/GitLabDetailView.tsx`
 - `src/components/apps/settings/integrations/GitLabWorkflowSection.tsx`
@@ -348,9 +348,14 @@ The skill is **the same method, run headless.** Its router's two human-waiting s
 - `src/app/api/integrations/[id]/services/[serviceId]/webhook/route.ts` — POST `enable` forwards `body.mintSecret`.
 - `src/lib/events/legacy-mapping.ts` — `KNOWN_TYPES` + `KNOWN_NAMES` + `legacyFriendlySummary` for gitlab (§3.5).
 - `src/instrumentation.ts` — call `registerGitLabTriageHandler()` after `startEventKernel()`.
-- `src/components/apps/settings/IntegrationsTab.tsx` — route `gitlab` → `GitLabDetailView`; update the generic fallback (F2).
+- `src/lib/assistant/registry.ts` — **R8** import + spread `gitlabStartFeatureTools()` into `assistantTools()`'s static map (a new server-tool module; the registry's cache is built once, so a static import is present from the first build — no invalidation needed). The only registration edit for the new tool.
+- `src/lib/integrations/services/gitlab/adapters/webhook.ts` — **R8** the note projection gains the issue's current `labels[]` (from the top-level `issue` object — §3.4); the `gitlab.issue.noted` event payload carries it so the dispatcher can see the gate state.
+- `src/lib/integrations/services/gitlab/triage/dispatch.ts` — **R8** the noted run is conversation-bound: for `gitlab.issue.noted` the dispatcher resolves/seeds the per-issue conversation and passes `conversationId` to `runSubAgent` (omitting `contentOnly`); the fresh (`opened`) run is unchanged (genuinely headless, `contentOnly: true`). The resume task text gains the approval-path + "never promote/merge" clauses (§3.7.2).
+- `src/lib/integrations/services/gitlab/labels.ts` — **R8** the new work-stage constants (`Mockup`, `Design`, `Plan`, `Tasks`, `Implementing`) + the gate reclassifications (`Design Complete`, `Needs Review` = implementation complete / preview healthy); the single-active-status invariant and the human-waiting set are unchanged in meaning, only extended.
+- `src/components/apps/settings/integrations/GitLabLabelsReference.tsx` — **R8** the status-label chip group grows with the R8 labels (sourced from `labels.ts`; the mockup's label reference is the binding shape).
+- `seed/agents/gitlab-issue-agent/AGENT.md` — **R8** `tools` widened to the full pipeline gate (§3.11, all server tools); `skills` gains `spec-kit-driver` + `ui-designer-craft`.
 
-> The webhook **receiver route** is **not** modified. The self-heal module is **not** modified (R6 — fully separate).
+> The webhook **receiver route** is **not** modified. The self-heal module is **not** modified (R6 — fully separate; R8 *reuses its conversation+branch pattern* by import-free convention, not by touching it).
 
 ---
 
