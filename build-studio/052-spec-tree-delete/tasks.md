@@ -28,20 +28,20 @@ logic. Nothing in US2/US3 can be wired until these exist.
 
 **⚠️ CRITICAL**: US2 and US3 depend on this phase.
 
-- [ ] T001 [P] Implement `describeDirDeletion(storePrefixedPath)` in
+- [x] T001 [P] Implement `describeDirDeletion(storePrefixedPath)` in
   `src/lib/specs/lifecycle.ts` — resolves the store via `resolveOpStore`/`resolveInStore`,
   walks the store subtree under `path`, returns `{ deletion: { label, files, units } }`
   counting files and feature units (read-only). (design.md §3.4)
-- [ ] T002 [P] Implement `deleteDirIn(storePrefixedPath, ctx)` in
+- [x] T002 [P] Implement `deleteDirIn(storePrefixedPath, ctx)` in
   `src/lib/specs/lifecycle.ts` — refuses with `409` + the describe count unless
   `confirm: true`; applies `assertEditablePath(path)` (frozen/terminal gate) and the branch
   gate; then calls `specfs.remove(path, { branch })` (already recursive + `commitOnSave`).
   (design.md §3.4, ADR-2/ADR-5)
-- [ ] T003 Add the `describe-dir-deletion` and `delete-dir` cases to the POST op dispatch in
+- [x] T003 Add the `describe-dir-deletion` and `delete-dir` cases to the POST op dispatch in
   `src/app/api/specs/route.ts`, mirroring the existing `describe-project-deletion` /
   `delete-project` handlers (including the 409-unconfirmed guard and `assertEditablePath`).
   (design.md §3.4)
-- [ ] T004 [P] Add unit tests for the new ops in the repo's existing unit-test location for
+- [x] T004 [P] Add unit tests for the new ops in the repo's existing unit-test location for
   `src/lib/specs` (co-located `*.test.ts` per current convention): (a) `describe-dir-deletion`
   returns a correct file/unit count for a nested folder and `0` for an empty folder;
   (b) `delete-dir` without `confirm` is refused with a 409 carrying the count; (c)
@@ -63,13 +63,13 @@ from tree, dialog closed). Then with no branch (or a frozen section), confirm a 
 dialog closes, file remains, one banner line names the reason, and re-attempting re-prompts
 rather than silently re-firing.
 
-- [ ] T005 [US1] In `src/apps/build-studio/index.tsx`, rewrite
+- [x] T005 [US1] In `src/apps/build-studio/index.tsx`, rewrite
   `deleteFileAction.onConfirm` to the symmetric form (design.md §3.1): on `!r.ok`, `throw`
   the server error; in the `catch`, call `setConfirmDialog(null)` **and** `setError(e.message)`
   (do **not** `setDialogError` and leave the box open); in `finally`, clear `dialogBusy`.
   Success path: `setConfirmDialog(null)`, clear `activePath` if it equals an ancestor of the
   deleted path (FR-011), then `loadTree()`.
-- [ ] T006 [US1] In `src/apps/build-studio/index.tsx`, pre-disable *Delete…* with a hint when
+- [x] T006 [US1] In `src/apps/build-studio/index.tsx`, pre-disable *Delete…* with a hint when
   the node's store is not on the active branch (`group.liveBranch` empty) — reuse the
   existing disabled-action pattern — so a guaranteed refusal is not sent (design.md §3.2,
   ADR-4). Leave the no-branch-at-all case to the existing branch-elicitation flow (FR-010).
@@ -90,26 +90,26 @@ perform flow with a confirm count. (FR-004 / FR-005 / FR-006 / FR-007 / FR-008)
 dialog first shows a count, and on confirm the folder and all its files are gone from the
 tree. In a read-only store, no Delete… is offered on any container.
 
-- [ ] T007 [US2] In `src/apps/build-studio/index.tsx`, replace the `renderNode` container
+- [x] T007 [US2] In `src/apps/build-studio/index.tsx`, replace the `renderNode` container
   menu gate `node.type === "project"` with `isWritableContainer(node)`
   (`project | dir | feature` **and** `group.writable`); route it to a generalized
   `openContainerMenu(e, node)` (design.md §3.3, FR-004). Keep Read-only and item-owned rows
   unmenued (FR-009).
-- [ ] T008 [US2] In `src/apps/build-studio/index.tsx`, generalize `openProjectMenu` into
+- [x] T008 [US2] In `src/apps/build-studio/index.tsx`, generalize `openProjectMenu` into
   `openContainerMenu`: for `project` keep today's menu (Rename… + Delete… via the existing
   `delete-project` op); for `dir`/`feature` offer **Delete…** (no Rename, since it did not
   previously apply) plus the existing View-history read action (design.md §3.3, FR-005).
-- [ ] T009 [US2] In `src/apps/build-studio/index.tsx`, wire *Delete…* on a `dir`/`feature`
+- [x] T009 [US2] In `src/apps/build-studio/index.tsx`, wire *Delete…* on a `dir`/`feature`
   to the folder flow (design.md §3.5, FR-006): open the confirm dialog immediately
   ("Checking what this would remove…"), call `describe-dir-deletion` to fill the
   count/units (`dialogBusy` keeps Confirm disabled until it arrives), and on confirm call
   `delete-dir { path, confirm: true }`. Route success and failure through T005's symmetric
   handler (close dialog; failure → banner once).
-- [ ] T010 [US2] In `src/apps/build-studio/index.tsx`, apply T006's branch-uncoupled
+- [x] T010 [US2] In `src/apps/build-studio/index.tsx`, apply T006's branch-uncoupled
   pre-disable to the container *Delete…* items as well, so a folder in a store not on the
   active branch is offered disabled-with-hint rather than sent as a guaranteed refusal
   (design.md §3.2, ADR-4).
-- [ ] T011 [US2] Verify `describe-dir-deletion` / `delete-dir` are invoked with a
+- [x] T011 [US2] Verify `describe-dir-deletion` / `delete-dir` are invoked with a
   **store-prefixed path** (not a project id) end-to-end from the menu → dialog → route →
   `lifecycle.ts` (ADR-3), and that `delete-dir` success triggers `loadTree()` so the folder
   and its contents disappear from the tree (FR-007, SC-003/SC-004).
@@ -128,11 +128,11 @@ confirm flow as any other; no destructive fast-path is introduced. (FR-008, ADR-
 shows a count of 0 units, confirmation still occurs, and the folder is removed. A
 not-confirmed delete removes nothing and the dialog dismisses.
 
-- [ ] T012 [US3] In `src/apps/build-studio/index.tsx`, confirm the folder flow from US2
+- [x] T012 [US3] In `src/apps/build-studio/index.tsx`, confirm the folder flow from US2
   **always** opens the confirm dialog before deleting — even when `describe-dir-deletion`
   returns 0 units — and never adds a bypass that commits without confirmation (ADR-5).
   Add an explicit code comment marking the destructive fast-path as intentionally absent.
-- [ ] T013 [US3] Confirm the server guard from T002/T004 holds for the 0-count case:
+- [x] T013 [US3] Confirm the server guard from T002/T004 holds for the 0-count case:
   `delete-dir` without `confirm` is refused (409 + count, even when count is 0) — no
   special-casing of zero that skips the confirm requirement (FR-008).
 
@@ -143,13 +143,13 @@ number; both require confirmation (Story 3 scenarios 1–2).
 
 ## Phase 5: Polish & Cross-Cutting Concerns
 
-- [ ] T014 [P] Cross-check the whole flow against `mockup.html` (binding UI contract):
+- [x] T014 [P] Cross-check the whole flow against `mockup.html` (binding UI contract):
   dialog copy, disabled-with-hint styling, count presentation, and the one-line banner on
   failure all match the mockup; fix any drift in `src/apps/build-studio/index.tsx`.
-- [ ] T015 [P] Verify FR-011 across both file and folder paths: deleting a folder that
+- [x] T015 [P] Verify FR-011 across both file and folder paths: deleting a folder that
   contains the currently open file (centre viewer) clears `activePath` / surfaces the
   not-found state rather than a stale artifact (SC-005, design.md R2).
-- [ ] T016 Run the full verification pass from `spec.md` → Acceptance Scenarios (US1–US3)
+- [x] T016 Run the full verification pass from `spec.md` → Acceptance Scenarios (US1–US3)
   and Success Criteria (SC-001…SC-005) against the running instance, and record any
   drift in `/Specs/user-specs/discrepancies.md`.
 
