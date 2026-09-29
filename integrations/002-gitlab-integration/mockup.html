@@ -300,7 +300,7 @@
             </h4>
             <div class="space-y-2">
               <div>
-                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Classification (issue type)</span>
+                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Classification (issue type — additive)</span>
                 <div class="mt-1 flex flex-wrap gap-1.5">
                   <span class="rounded border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-200">Bug</span>
                   <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Feature</span>
@@ -308,14 +308,34 @@
                 </div>
               </div>
               <div>
-                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Status (pipeline stage — one active)</span>
+                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Work stages (one active)</span>
                 <div class="mt-1 flex flex-wrap gap-1.5">
                   <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Triage</span>
                   <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Analyzing</span>
                   <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Verifying</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Spec Drafted</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Mockup</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Design</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Plan</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Tasks</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Implementing</span>
+                </div>
+              </div>
+              <div>
+                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Human-waiting (a comment here drives it)</span>
+                <div class="mt-1 flex flex-wrap gap-1.5">
                   <span class="rounded border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-200">Fix Proposed</span>
-                  <span class="rounded border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-200">Spec Drafted</span>
-                  <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Needs Review</span>
+                  <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Spec Drafted&nbsp;→&nbsp;approve: branch + spec</span>
+                  <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Design Complete</span>
+                  <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Needs Review&nbsp;→&nbsp;promote</span>
+                </div>
+                <p class="mt-1 text-[9px] leading-relaxed text-white/35">
+                  In a human-waiting state, a GitLab comment is approval (advance) or feedback (revise, stay). Two gates: approve the deliverable → <code class="font-mono">Design Complete</code>; approve the design → implementation → <code class="font-mono">Needs Review</code> (you promote).
+                </p>
+              </div>
+              <div>
+                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Side states</span>
+                <div class="mt-1 flex flex-wrap gap-1.5">
                   <span class="rounded border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">Needs Input</span>
                   <span class="rounded border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-200">Failed</span>
                 </div>
