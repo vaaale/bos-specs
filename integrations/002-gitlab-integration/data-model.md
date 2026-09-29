@@ -71,6 +71,7 @@ Two-stage: the handler's `IntegrationEvent` (inbound) → the BOS event (after `
 | `iid` | `number` | **`issue.iid`** (top level) | The issue's PROJECT-SCOPED number. See the warning below. |
 | `note` | `string` | `object_attributes.note` | Truncated. |
 | `author` | `{ name, username }` | top-level `user` | The **comment's** author, not the issue's. |
+| `issueLabels` | `string[]` | **`issue.labels[].title`** (top level, R8) | The issue's **current** labels — the **gate signal**. Verified present in the note payload (the note hook carries the issue's own `labels[]` on the top-level `issue` object — `note_builder.rb`/`data_builder/note.rb`); `object_attributes` describes the *comment*. Lets the dispatcher see a human-waiting state and seed the per-issue conversation (the dispatcher reads the *gate*, not the *intent* — FR-027). |
 | `url` | `string` | `object_attributes.url` | Issue URL + `#note_<id>` anchor. |
 
 > **The note-hook field layout, verified.** A note hook's `object_attributes` describes the **comment**: `note`, `noteable_type` (`"Issue"` / `"MergeRequest"` / `"Snippet"` / `"Commit"`), `noteable_id`, `url`, `action`. `noteable_id` is the issue's **global/database** id, and GitLab emits **no `noteable_iid`** — confirmed against `lib/gitlab/hook_data/note_builder.rb`'s `SAFE_HOOK_ATTRIBUTES` and the documented "Comment on an issue" payload. The project-scoped iid, which is what every GitLab MCP call takes, is on the **top-level `issue`** object. The implementation reads `noteable_iid` first and falls back to `issue.iid` for self-hosted tolerance, but `issue.iid` is the field that answers; `webhook.receive.test.ts` pins this with a payload whose two ids deliberately differ (900 vs 17).
@@ -109,16 +110,16 @@ Seeded from `seed/agents/gitlab-issue-agent/AGENT.md` → `data/agents/gitlab-is
 |---|---|---|
 | `id` | `gitlab-issue-agent` | |
 | `type` | `local` | Headless local agent (reads/classifies/drafts + calls MCP; no BOS source edits). |
-| `skills` | `["gitlab-issue-triage"]` | Pins the triage skill (re-review note: must be explicit). |
+| `skills` | `["gitlab-issue-triage", "spec-kit-driver", "ui-designer-craft"]` | R8: the triage skill (pins the state machine) **+ the spec-kit method driver + the UI-designer craft** — the agent runs the spec pipeline itself (R8), so it loads the same method skills the Build Studio agent does. |
 | `mcp` | `[]` | Empty = all servers (robust to the user's server naming; user may narrow). The GitLab MCP server must be among them to act. |
-| `tools` | MCP tools + text/skill scope | No source-edit / VFS-spec-write tools. |
+| `tools` | **All-server pipeline gate (R8)**: `mcp_*`, `skill_*` (incl. `skill_read_file`), `web_search`/`web_fetch`, `scratchpad_*`, `memory_*`, `file_*` (spec-store writes on the branch), `gitlab_start_feature` (the new server tool), `dev_delegate` (approval-2 implementation) | R8 widens the gate from "MCP + text/skill" to the full server-tool set so the agent can write real artifacts to the branch and delegate implementation. The gate is the `baseGate.allow` filtered to `execution: "server"` (survives `headlessGate`) — **no promote/merge tool exists**, so the boundary holds by construction (FR-028). |
 | system prompt | "You are the Gitlab Issue Agent… use the `gitlab-issue-triage` skill…" | |
 
 ## 6. Triage Skill (`SKILL.md`)
 
 `seed/skills/gitlab-issue-triage/` (a `SKILL.md` **router** plus `references/*.md`, read on demand with `skill_read_file`) → `data/skills/gitlab-issue-triage/` at boot. The **pipeline driver** (model-followed guidance — design §3.8): read the issue via MCP → classify (labels first, inference fallback) → idempotency/resume (existing status label ⇒ resume) → run the matching pipeline applying the transient status label → terminal `Needs Review`. Owns the single-active-status swap and the Q2 "never close/commit" boundary.
 
-`references/notes.md` (R7) owns the **re-entry decision**: establish the agent's own GitLab identity from the MCP token, read the thread, then either resume from the current status label (addressing the newest human note, one reply per dispatch) or — when the newest note is the agent's own — post nothing, change no label, and stop. That last branch is what makes the comment chain self-terminating (ADR-9/ADR-13).
+`references/notes.md` (R7) owns the **re-entry decision**: establish the agent's own GitLab identity from the MCP token, read the thread, then either resume from the current status label (addressing the newest human note, one reply per dispatch) or — when the newest note is the agent's own — post nothing, change no label, and stop. That last branch is what makes the comment chain self-terminating (ADR-9/ADR-13). **R8** adds two references — `references/approve-spec.md` (approval-1: judge approval → `gitlab_start_feature` → run the method headless to write `spec.md` [+ `mockup.html` via `file_write` + `design.md` for UI features] → FR-031 attach → `Design Complete`) and `references/approve-design.md` (approval-2: reuse the bound branch → `plan.md` → `tasks.md` → `dev_delegate` (TDD, same branch) → FR-031 attach → `Needs Review`) — and extends `notes.md` (approval-vs-feedback, FR-027), `status-labels.md` (R8 work stages + gate reclassifications), and `finalize.md` (FR-031 attachment; `Needs Review` = implementation complete).
 
 ## 7. Labels (`labels.ts` — shared constants)
 
@@ -132,33 +133,49 @@ Seeded from `seed/agents/gitlab-issue-agent/AGENT.md` → `data/agents/gitlab-is
 
 **Status labels** (transient, exactly one active — the pipeline stage):
 
-| Label | Meaning | Path |
-|---|---|---|
-| `Triage` | received, being classified | all |
-| `Analyzing` | analyzing the report | Bug |
-| `Verifying` | assessing plausibility / root cause | Bug |
-| `Fix Proposed` | a fix was posted in a comment | Bug |
-| `Spec Drafted` | a spec was posted in a comment | Feature, Improvement |
-| `Needs Review` | **terminal** — agent finished; a human verifies before finalizing (Q2) | all |
-| `Needs Input` | blocked — the agent needs more info from the reporter | any |
-| `Failed` | the run errored; a failure note was posted | any |
+R8 reclassifies the terminal state and adds the spec-pipeline work stages (FR-014). **Work stages** advance autonomously; **human-waiting gates** are where a GitLab comment is read as approval-or-feedback (FR-027).
 
-**State transitions** (Bug path, the richest):
+| Label | Kind | Meaning | Path |
+|---|---|---|---|
+| `Triage` | work stage | received, being classified | all |
+| `Analyzing` | work stage | analyzing the report | Bug |
+| `Verifying` | work stage | assessing plausibility / root cause | Bug |
+| `Mockup` | work stage | (R8) producing the UI mockup on the branch (a `file_write` of `mockup.html`) | Feature, Improvement (UI surface) |
+| `Design` | work stage | (R8) producing the technical `design.md` on the branch | Feature, Improvement |
+| `Plan` | work stage | (R8) writing `plan.md` on the branch | all (approval-2) |
+| `Tasks` | work stage | (R8) writing `tasks.md` on the branch | all (approval-2) |
+| `Implementing` | work stage | (R8) `dev_delegate` running the implementation on the branch | all (approval-2) |
+| `Fix Proposed` | **gate (approval 1)** | (R8) Bug deliverable posted in a comment — awaiting the user's approval to branch + write the real spec | Bug |
+| `Spec Drafted` | **gate (approval 1)** | (R8) Feature/Improvement deliverable posted in a comment — parallel to `Fix Proposed`; awaiting approval | Feature, Improvement |
+| `Design Complete` | **gate (approval 2)** | (R8) real `spec.md` (+ `mockup.html` + `design.md`) on the branch, attached to the issue (FR-031) — awaiting approval to plan → tasks → implement | all |
+| `Needs Review` | **gate (promotion)** | (R8) **implementation complete, preview healthy** — the user promotes (human-only, always). Refined from R5's "agent finished its deliverable." | all |
+| `Needs Input` | side | blocked — the agent needs more info from the reporter | any |
+| `Failed` | side | the run errored; a failure note was posted | any |
+
+**State transitions** (R8, the full two-gate flow — Bug path, the richest):
 
 ```
 (open, no status) ──classify──▶ Triage
-        Triage ──▶ Analyzing ──▶ Verifying ──▶ Fix Proposed ──▶ Needs Review   (terminal)
-        any ──(blocked)──▶ Needs Input            any ──(error)──▶ Failed
+  Triage ─▶ Analyzing ─▶ Verifying ─▶ Fix Proposed   (GATE 1)
+                          │  user comment: approval (gitlab_start_feature → real spec.md) →  …
+  Fix Proposed ─approval─▶ (branch) ─▶ [Feature/Improvement: Mockup ─▶ Design] ─▶ Design Complete   (GATE 2)
+  Design Complete ─approval─▶ Plan ─▶ Tasks ─▶ Implementing ─▶ Needs Review   (GATE 3: promote)
+  any work stage ─(blocked)─▶ Needs Input        any ─(error)─▶ Failed
+  (feedback at any gate: revise + re-post, STAY at that gate, NO branch on feedback)
 ```
 
-Feature/Improvement path: `Triage ──▶ (work) ──▶ Spec Drafted ──▶ Needs Review`.
+Feature/Improvement approval-1 path: `Triage ─▶ (work) ─▶ Spec Drafted (GATE 1) ─approval─▶ (branch) ─▶ Mockup ─▶ Design ─▶ Design Complete (GATE 2) …`.
 
-**Re-entry** (R7): `Needs Review` is terminal for the agent's own initiative but **resumable** on a new human comment — the agent revises its deliverable, re-posts it, and keeps the label. `Needs Input` resumes the same way. A human still closes the issue.
+**Re-entry** (R7, R8): a human comment on a **gate** (`Spec Drafted` / `Fix Proposed` / `Design Complete` / `Needs Review`) is disambiguated by the agent (FR-027) — **approval** advances the pipeline (approval-1 creates the branch + writes the real artifacts → `Design Complete`; approval-2 runs plan → tasks → implement → `Needs Review`); **feedback** revises the deliverable, re-posts it, and **stays** in the same gate (no branch on feedback). `Needs Review` is now *implementation complete, awaiting promotion* — a human comment there is promotion-feedback (revise) or the user promotes from the top bar (the agent never promotes). `Needs Input` resumes the same way. A human still closes the issue.
 
 ```
+Spec Drafted / Fix Proposed ──human comment──┬ approval → gitlab_start_feature → real artifacts → Design Complete
+                                             └ feedback → revise draft, re-post, STAY (no branch)
+Design Complete ──human comment──────────────┬ approval → plan → tasks → dev_delegate → Needs Review
+                                             └ feedback → revise design, re-post, STAY
+Needs Review ──human comment────────────────┬ promotion (top bar) → base            (agent never promotes)
+                                             └ feedback → revise implementation, re-post, STAY
 Needs Input  ──human comment──▶ continue from the stage that asked
-Needs Review ──human comment──┬ approval → stop (leave Needs Review; they close it)
-                              └ feedback → revise, re-post, KEEP Needs Review
 any note authored by the AGENT ──▶ no comment, no label, stop   (self-terminating)
 ```
 
