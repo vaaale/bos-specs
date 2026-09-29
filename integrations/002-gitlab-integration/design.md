@@ -1,7 +1,7 @@
 # Design: GitLab Integration (Webhook → Triage)
 
 **Spec**: [`spec.md`](./spec.md) · **UI contract**: [`mockup.html`](./mockup.html) · **Checklist**: [`checklists/requirements.md`](./checklists/requirements.md)
-**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v7 — R7 comment-driven re-entry: the receiver also emits `gitlab.issue.noted`, the handler subscribes to the `gitlab.issue.*` prefix, and the dispatcher has two task shapes)
+**Feature Branch**: `002-gitlab-integration` · **Status**: Draft (v6 — R8: the GitLab agent runs the spec-kit pipeline *itself* on a server-side, per-issue feature branch — no Build Studio delegation. Adds the approval-path dispatcher logic, the agent's expanded headless tool gate, the skill's pipeline-running stage, and the mid-run branch-creation mechanism.)
 **App Target**: `bos-core` (confirmed; agrees with `spec.md`)
 
 ---
