@@ -330,7 +330,10 @@ The skill is **the same method, run headless.** Its router's two human-waiting s
 - `src/lib/integrations/services/gitlab/triage/handler.ts`
 - `src/lib/integrations/services/gitlab/triage/dispatch.ts`
 - `seed/agents/gitlab-issue-agent/AGENT.md`
-- `seed/skills/gitlab-issue-triage/SKILL.md` + `references/*.md` (the router + per-stage references, §3.8 — including `references/notes.md`, the R7 re-entry decision)
+- `seed/skills/gitlab-issue-triage/SKILL.md` + `references/*.md` (the router + per-stage references, §3.8 — including `references/notes.md` the R7 re-entry decision) — **R8** adds `references/approve-spec.md` (approval-1), `references/approve-design.md` (approval-2), and extends `references/notes.md` (approval-vs-feedback) + `references/status-labels.md` (R8 work stages + gate reclassifications), §3.12
+- `src/lib/integrations/services/gitlab/triage/pipeline.ts` — **R8** the per-issue conversation: id derivation, ghost seed, the conversation-bound run wrapper (§3.10)
+- `src/lib/integrations/services/gitlab/tools/gitlab-feature-branch.ts` — **R8** the `gitlab_start_feature` server tool: resolve project + next NNN + slug, bind the ordinary branch to the run's conversation, return branch + feature path (§3.10) — registered into the agent's server-tool map (the `assistantTools()` composition the dispatcher's run resolves through)
+- `seed/agents/gitlab-issue-agent/AGENT.md` — **R8** `tools` widened to the pipeline gate (§3.11); `skills` gains `spec-kit-driver` + `ui-designer-craft` (the method + mockup craft the agent runs headless)
 - `src/components/apps/settings/integrations/GitLabDetailView.tsx`
 - `src/components/apps/settings/integrations/GitLabWorkflowSection.tsx`
 - `src/components/apps/settings/integrations/GitLabLabelsReference.tsx`
