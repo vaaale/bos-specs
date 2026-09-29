@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Build Studio — spec-tree delete (mockup)</title>
+<style>
+  :root{
+    --bg:#0f1117; --bg2:#12151d; --panel:#141821; --line:rgba(255,255,255,.10);
+    --line2:rgba(255,255,255,.06); --tx:rgba(255,255,255,.85); --tx2:rgba(255,255,255,.62);
+    --tx3:rgba(255,255,255,.40); --tx4:rgba(255,255,255,.32);
+    --emerald:rgba(16,185,129,.16); --emerald-tx:#a7f3d0;
+    --sky:rgba(14,165,233,.18); --sky-tx:#bae6fd;
+    --rose:rgba(244,63,94,.16); --rose-tx:#fecdd3;
+    --amber:rgba(245,158,11,.16); --amber-tx:#fde68a;
+    --violet:rgba(139,92,246,.18); --violet-tx:#ddd6fe;
+    --amber-bg:rgba(245,158,11,.12);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+  .app{display:flex;height:100%}
+
+  /* ── Left: tree ─────────────────────────────────────────── */
+  .tree{width:300px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--line);background:rgba(255,255,255,.02)}
+  .tree-h{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;font:600 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--tx4)}
+  .tree-h .ico{display:inline-flex;align-items:center;gap:6px}
+  .iconbtn{cursor:pointer;border:0;background:transparent;color:var(--tx4);border-radius:5px;padding:4px;display:inline-flex}
+  .iconbtn:hover{background:rgba(255,255,255,.10);color:var(--tx2)}
+  .scroll{min-height:0;flex:1;overflow:auto;padding:0 4px 16px}
+  .store{margin-top:8px}
+  .store-h{display:flex;align-items:center;gap:6px;padding:5px 8px 3px;font:600 10px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--tx4);cursor:context-menu}
+  .badge{margin-left:auto;flex:none;font:500 9px/1 var(--sans);letter-spacing:0;text-transform:none;border-radius:4px;padding:3px 5px}
+  .badge.owner{color:var(--emerald-tx);background:var(--emerald)}
+  .badge.branch{color:var(--emerald-tx);background:var(--emerald)}
+  .badge.ro{color:var(--tx4);background:rgba(255,255,255,.10)}
+  .row{display:flex;align-items:center;gap:5px;border-radius:5px;padding:4px 6px;cursor:pointer;position:relative}
+  .row:hover{background:rgba(255,255,255,.06)}
+  .row.active{background:rgba(255,255,255,.15);color:#fff}
+  .row .chev{flex:none;width:12px;height:12px;opacity:.7}
+  .row .fico{flex:none;width:12px;height:12px;opacity:.55}
+  .row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+  .row.file .nm{font-weight:400}
+  .row.dim{color:var(--tx2)}
+  .row .fnum{font:500 9px/1 var(--mono);color:var(--tx4);flex:none}
+  .indent1{padding-left:24px}.indent2{padding-left:38px}.indent3{padding-left:52px}
+
+  /* ── Center ─────────────────────────────────────────────── */
+  .centre{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;background:var(--bg)}
+  .banner{display:none;gap:8px;align-items:flex-start;margin:8px 12px 0;padding:9px 11px;border:1px solid rgba(245,158,11,.35);background:var(--amber-bg);border-radius:8px;color:var(--amber-tx);font-size:12px}
+  .banner.show{display:flex}
+  .banner .x{margin-left:auto;cursor:pointer;opacity:.7}
+  .viewer{min-height:0;flex:1;overflow:auto;padding:22px 26px}
+  .viewer h1{font-size:19px;font-weight:650;margin:0 0 2px}
+  .viewer .sub{color:var(--tx3);font:12px/1 var(--mono);margin-bottom:16px}
+  .viewer .lead{color:var(--tx2);max-width:60ch}
+  .viewer h2{font-size:14px;font-weight:600;margin:20px 0 8px;color:var(--tx)}
+  .viewer p{color:var(--tx2);max-width:64ch;margin:0 0 10px}
+  .viewer .ghost{display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx4);font-size:13px}
+  .foot{flex:none;border-top:1px solid var(--line);padding:7px 12px;display:flex;align-items:center;justify-content:space-between}
+  .foot .path{font:11px/1 var(--mono);color:var(--tx4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pill{border:0;font:500 11px/1 var(--sans);border-radius:6px;padding:6px 10px;cursor:pointer}
+  .pill.edit{background:rgba(255,255,255,.08);color:var(--tx2)}
+
+  /* ── Right (chat stub) ──────────────────────────────────── */
+  .chat{width:300px;flex:none;border-left:1px solid var(--line);background:var(--bg2);display:flex;flex-direction:column}
+  .chat-h{padding:10px 12px;font:600 11px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--tx4);border-bottom:1px solid var(--line2)}
+  .chat-b{padding:14px 12px;display:flex;flex-direction:column;gap:10px}
+  .msg{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;color:var(--tx2);font-size:12px}
+  .msg.me{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2)}
+
+  /* ── Context menu ───────────────────────────────────────── */
+  .menu{position:fixed;z-index:40;min-width:168px;background:var(--panel);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 34px rgba(0,0,0,.5);padding:5px;display:none}
+  .menu.show{display:block}
+  .mi{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;cursor:pointer;color:var(--tx)}
+  .mi:hover{background:rgba(255,255,255,.09)}
+  .mi.danger{color:var(--rose-tx)}
+  .mi.danger:hover{background:var(--rose)}
+  .mi .ico{width:14px;height:14px;opacity:.8}
+  .mi .k{margin-left:auto;font:10px/1 var(--mono);color:var(--tx4)}
+  .msep{height:1px;background:var(--line2);margin:5px 4px}
+
+  /* ── Dialog ─────────────────────────────────────────────── */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50}
+  .scrim.show{display:flex}
+  .dlg{width:420px;max-width:calc(100vw - 32px);background:var(--panel);border:1px solid var(--line);border-radius:13px;box-shadow:0 24px 70px rgba(0,0,0,.6);padding:18px}
+  .dlg h3{margin:0 0 6px;font-size:15px;font-weight:600}
+  .dlg .body{color:var(--tx2);font-size:12.5px;line-height:1.55}
+  .dlg .count{margin-top:10px;padding:9px 11px;border:1px solid var(--line2);background:rgba(255,255,255,.03);border-radius:8px;font:12px/1.5 var(--mono);color:var(--sky-tx)}
+  .dlg .row-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  .btn{border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--tx);border-radius:8px;padding:8px 14px;font:500 12px/1 var(--sans);cursor:pointer}
+  .btn:hover{background:rgba(255,255,255,.10)}
+  .btn.danger{background:var(--rose);border-color:rgba(244,63,94,.4);color:var(--rose-tx)}
+  .btn.danger:hover{background:rgba(244,63,94,.28)}
+  .btn:disabled{opacity:.5;cursor:default}
+
+  /* ── Demo / legend bar ──────────────────────────────────── */
+  .demo{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;display:flex;gap:6px;align-items:center;background:rgba(15,17,23,.92);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:11px;padding:8px 10px;box-shadow:0 12px 34px rgba(0,0,0,.5)}
+  .demo .lbl{font:600 10px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--tx4);margin-right:2px}
+  .chip{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--tx2);border-radius:7px;padding:6px 9px;font:12px/1 var(--sans);cursor:pointer}
+  .chip:hover{background:rgba(255,255,255,.10);color:var(--tx)}
+  .hint{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:30;background:rgba(15,17,23,.9);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font:12px/1 var(--sans);color:var(--tx3)}
+  .hint b{color:var(--tx)}
+  svg{display:block}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- LEFT: spec tree -->
+  <nav class="tree">
+    <div class="tree-h">
+      <span class="ico">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 12l-8.5 8.5a2.12 2.12 0 0 1-3-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.06 1.86Z"/></svg>
+        Build Studio
+      </span>
+      <button class="iconbtn" title="Refresh" id="reset">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+      </button>
+    </div>
+    <div class="scroll" id="scroll">
+      <!-- WORKFLOWS (decorative) -->
+      <div class="store">
+        <div class="store-h">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+          Workflows
+        </div>
+        <div class="row dim"><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg><span class="nm">spec-kit</span><span class="fnum">9</span></div>
+      </div>
+
+      <!-- USER SPECS (writable, on branch) -->
+      <div class="store">
+        <div class="store-h">
+          <span>user-specs</span>
+          <span class="badge owner">User</span>
+          <span class="badge branch">on bos/052-spec-tree-delete</span>
+        </div>
+
+        <!-- Project -->
+        <div class="row indent1" data-node="project" data-name="build-studio">
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          <svg class="fico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span class="nm">build-studio</span>
+        </div>
+
+        <!-- plain dir (the newly-deletable kind) -->
+        <div class="row indent2" data-node="dir" data-name="052-spec-tree-delete">
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          <svg class="fico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span class="nm">052-spec-tree-delete</span>
+        </div>
+        <div class="row file indent3" data-node="file" data-name="spec.md">
+          <svg class="fico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+          <span class="nm">spec.md</span>
+        </div>
+        <div class="row file indent3" data-node="file" data-name="mockup.html">
+          <svg class="fico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+          <span class="nm">mockup.html</span>
+        </div>
+
+        <!-- a sibling plain dir (the "folder" the reporter means) -->
+        <div class="row indent2" data-node="dir" data-name="old-drafts" id="old-drafts-row">
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          <svg class="fico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span class="nm">old-drafts</span>
+        </div>
+        <div class="row file indent3" data-node="file" data-name="notes.md" id="notes-file">
+          <svg class="fico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+          <span class="nm">notes.md</span>
+        </div>
+
+        <!-- a feature folder -->
+        <div class="row indent2" data-node="feature" data-name="spec-promote-conflict" data-fnum="035">
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          <svg class="fico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span class="nm">035 · Spec promote conflict</span>
+        </div>
+      </div>
+
+      <!-- SYSTEM SPECS (read-only: no menu at all) -->
+      <div class="store">
+        <div class="store-h">
+          <span>bos-system-specs</span>
+          <span class="badge ro" style="color:var(--violet-tx);background:var(--violet)">System</span>
+        </div>
+        <div class="row indent1 ro" data-node="dir" data-ro="1" data-name="core">
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          <svg class="fico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span class="nm" style="opacity:.6">core</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- CENTER -->
+  <div class="centre">
+    <div class="banner" id="banner">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none;margin-top:1px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <span id="banner-text"></span>
+      <span class="x" id="banner-x" title="Dismiss">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </span>
+    </div>
+    <div class="viewer" id="viewer">
+      <h1>Fix Spec-Tree Deletion in Build Studio</h1>
+      <div class="sub">user-specs/build-studio/052-spec-tree-delete/spec.md</div>
+      <p class="lead">Right-click a spec item in the left treeview → Delete → confirm. The deletion does not complete and the same warning box is shown again. Also, right-clicking the folders must offer a working Delete.</p>
+      <h2>Why it matters</h2>
+      <p>Today the confirmation dialog only closes on a <em>successful</em> delete. When the delete is refused, the box stays open, appends the error, and re-fires the identical request on every Ok — the "same warning box reappears" loop. Separately, plain folders have no right-click menu at all.</p>
+      <h2>What changes</h2>
+      <p>1 — A failed delete of any kind closes the dialog and shows the reason once in a banner. 2 — Every writable container (project / dir / feature) gets a Delete… menu, with a count of what will be removed.</p>
+    </div>
+    <div class="foot">
+      <span class="path" id="foot-path">user-specs/build-studio/052-spec-tree-delete/spec.md</span>
+      <button class="pill edit">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:5px"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Edit
+      </button>
+    </div>
+  </div>
+
+  <!-- RIGHT: chat stub -->
+  <aside class="chat">
+    <div class="chat-h">Assistant</div>
+    <div class="chat-b">
+      <div class="msg">Spec approved. I've created <b>bos/052-spec-tree-delete</b> and written the spec + mockup + design.</div>
+      <div class="msg me">Reading the mockup now — the folder delete count is exactly what I wanted to see.</div>
+    </div>
+  </aside>
+</div>
+
+<!-- Context menu -->
+<div class="menu" id="menu">
+  <div class="mi" data-act="history"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>View history</div>
+  <div class="mi" data-act="rename"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Rename…</div>
+  <div class="msep"></div>
+  <div class="mi danger" data-act="delete"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Delete…</div>
+</div>
+
+<!-- Confirm dialog -->
+<div class="scrim" id="scrim">
+  <div class="dlg" role="dialog" aria-modal="true">
+    <h3 id="dlg-title">Delete?</h3>
+    <div class="body" id="dlg-body"></div>
+    <div class="count" id="dlg-count" style="display:none"></div>
+    <div class="row-btns">
+      <button class="btn" id="dlg-cancel">Cancel</button>
+      <button class="btn danger" id="dlg-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Demo bar -->
+<div class="demo">
+  <span class="lbl">Try</span>
+  <button class="chip" data-demo="file-ok">File delete · success</button>
+  <button class="chip" data-demo="file-fail">File delete · fails (no loop)</button>
+  <button class="chip" data-demo="dir">Folder delete · dir</button>
+  <button class="chip" data-demo="feature">Folder delete · feature</button>
+  <button class="chip" data-demo="ro">Read-only folder</button>
+  <button class="chip" data-demo="no-branch">No branch selected</button>
+</div>
+<div class="hint"><b>Tip:</b> right-click any row in the tree to open the real context menu — <span style="color:var(--tx2)">folders now offer Delete…</span>. Use the chips to jump to a state.</div>
+
+<script>
+(function(){
+  var menu=document.getElementById('menu'), scrim=document.getElementById('scrim');
+  var banner=document.getElementById('banner'), bannerText=document.getElementById('banner-text');
+  var viewer=document.getElementById('viewer'), footPath=document.getElementById('foot-path');
+  var activeMenu=null; // node type+id being deleted
+
+  function closeMenu(){ menu.classList.remove('show'); }
+  document.addEventListener('click', function(){ if(menu.classList.contains('show') && !menu.contains(event.target)) closeMenu(); });
+  document.addEventListener('scroll', closeMenu, true);
+
+  function openMenuFor(row){
+    var kind=row.getAttribute('data-node');
+    var ro=row.getAttribute('data-ro');
+    if(ro){ return; } // read-only: no menu at all (matches today)
+    var historyEl=menu.querySelector('[data-act="history"]');
+    // History is a read — files and folders both can have it; folders are the point of this fix.
+    menu.querySelectorAll('[data-act="delete"],[data-act="rename"]').forEach(function(el){
+      // Rename only existed for project/file before; keep Delete universal on writable containers+files.
+      if(el.getAttribute('data-act')==='rename' && kind!=='project' && kind!=='file'){ el.style.display='none'; }
+      else el.style.display='';
+    });
+    menu.style.left=Math.min(event.clientX, window.innerWidth-180)+'px';
+    menu.style.top=Math.min(event.clientY, window.innerHeight-150)+'px';
+    menu.classList.add('show');
+    activeMenu={kind:kind, name:row.getAttribute('data-name'), row:row};
+  }
+
+  document.querySelectorAll('.row').forEach(function(row){
+    row.addEventListener('contextmenu', function(e){ e.preventDefault(); openMenuFor(row); });
+    row.addEventListener('click', function(){
+      document.querySelectorAll('.row').forEach(function(r){r.classList.remove('active');});
+      row.classList.add('active');
+      if(row.getAttribute('data-node')!=='file'){ row.querySelector('.chev').style.transform = row.querySelector('.chev').style.transform==='rotate(90deg)'?'':'rotate(90deg)'; }
+    });
+  });
+
+  function showBanner(msg){ bannerText.textContent=msg; banner.classList.add('show'); }
+  function clearBanner(){ banner.classList.remove('show'); }
+  document.getElementById('banner-x').addEventListener('click', clearBanner);
+
+  // count for a folder: number of descendant file rows (rough) — just for the demo.
+  function descCount(row){
+    var n=0, i=Array.prototype.indexOf.call(document.getElementById('scroll').children, row);
+    var rows=Array.prototype.slice.call(document.querySelectorAll('#scroll .row'));
+    var kids=[];
+    rows.forEach(function(r,j){
+      if(j<=i) return;
+      var cur=ind(r), base=ind(row);
+      // stop when a less-indented row appears
+      if(cur<base) return;
+      kids.push(r);
+    });
+    return kids.length;
+  }
+  function ind(r){ return r.className.match(/indent(\d)/)?+r.className.match(/indent(\d)/)[1]:0; }
+
+  var dlgTitle=document.getElementById('dlg-title'), dlgBody=document.getElementById('dlg-body'), dlgCount=document.getElementById('dlg-count'), dlgOk=document.getElementById('dlg-ok');
+  var pending=null;
+  function openConfirm(opts){
+    dlgTitle.textContent=opts.title; dlgBody.innerHTML=opts.body;
+    if(opts.count!=null){ dlgCount.style.display=''; dlgCount.textContent=opts.count; } else { dlgCount.style.display='none'; }
+    pending=opts; scrim.classList.add('show');
+  }
+  function closeConfirm(){ scrim.classList.remove('show'); pending=null; }
+  document.getElementById('dlg-cancel').addEventListener('click', closeConfirm);
+  scrim.addEventListener('click', function(e){ if(e.target===scrim) closeConfirm(); });
+  dlgOk.addEventListener('click', function(){
+    var p=pending; if(!p) return;
+    if(p.countFirst){
+      // simulate the round-trip: show count, then proceed
+      closeConfirm();
+      doDelete(p);
+    } else doDelete(p);
+  });
+
+  function doDelete(p){
+    if(p.fail){
+      // THE FIX: dialog closes (already), reason shown once, no re-appearing box.
+      closeConfirm();
+      showBanner(p.failMsg);
+      return;
+    }
+    closeConfirm();
+    if(p.row){
+      // remove the node and (for folders) its descendants
+      var rows=Array.prototype.slice.call(document.querySelectorAll('#scroll .row'));
+      var i=rows.indexOf(p.row); var base=ind(p.row);
+      for(var j=rows.length-1;j>=i;j--){ if(ind(rows[j])>=base) rows[j].remove(); }
+    }
+    if(p.name && p.name===currentOpenName()){
+      viewer.innerHTML='<div class="ghost">Artifact removed — <span style="font-family:var(--mono);color:var(--tx3)">'+p.gone+'</span> no longer exists on this branch.</div>';
+      footPath.textContent=p.gone;
+    }
+  }
+  function currentOpenName(){ return (footPath.textContent.split('/').pop()||''); }
+
+  // Wire the demo chips.
+  function fileOpts(name){
+    return { title:'Delete "'+name+'"?', body:'This can be undone via View history only if a prior commit still has it.', countFirst:true,
+      row:document.querySelector('.row.file[data-name="'+name+'"]'), name:name, gone:'user-specs/build-studio/052-spec-tree-delete/'+name };
+  }
+  function folderOpts(kind,name){
+    var row=document.querySelector('.row[data-node="'+kind+'"][data-name="'+name+'"]') || document.getElementById(name+'-row');
+    return { title:'Delete "'+name+'"?', body:'This removes everything in the folder and lands on your active feature branch.',
+      countFirst:true, count:'This removes 2 unit(s) and everything in the folder.',
+      row:row, name:name, gone:'user-specs/build-studio/'+name };
+  }
+
+  document.querySelectorAll('[data-demo]').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      closeMenu();
+      var d=chip.getAttribute('data-demo');
+      if(d==='file-ok'){ var n=currentOpenName()||'notes.md'; openConfirm(fileOpts(n)); }
+      else if(d==='file-fail'){
+        // open a file delete, then let it fail — the box closes, banner shows once.
+        openConfirm(Object.assign(fileOpts('notes.md'), {countFirst:false,
+          fail:true, failMsg:'Delete failed: "user-specs" is not mounted on branch "bos/052-spec-tree-delete". Select a branch that covers this store, then try again.'}));
+      }
+      else if(d==='dir'){ openConfirm(folderOpts('dir','old-drafts')); }
+      else if(d==='feature'){ openConfirm(folderOpts('feature','spec-promote-conflict')); }
+      else if(d==='ro'){
+        var roRow=document.querySelector('.row[data-ro="1"]');
+        showBanner('No action — "bos-system-specs" is read-only. It has nothing to delete.');
+      }
+      else if(d==='no-branch'){
+        openConfirm(Object.assign(folderOpts('dir','old-drafts'), {countFirst:false,
+          fail:true, failMsg:'Pick a feature branch first — use the branch selector at the top of the assistant chat. Every change to a repository lands on a branch, never on its default branch.'}));
+      }
+    });
+  });
+
+  document.getElementById('reset').addEventListener('click', function(){ location.reload(); });
+
+  // pre-select the feature row's spec
+  var first=document.querySelector('.row.file[data-name="spec.md"]');
+  if(first){ first.classList.add('active'); }
+})();
+</script>
+</body>
+</html>
