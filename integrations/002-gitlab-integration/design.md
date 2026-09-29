@@ -329,11 +329,10 @@ The skill is **the same method, run headless.** Its router's two human-waiting s
 - `src/lib/integrations/services/gitlab/adapters/webhooks-adapter.ts`
 - `src/lib/integrations/services/gitlab/triage/handler.ts`
 - `src/lib/integrations/services/gitlab/triage/dispatch.ts`
-- `seed/agents/gitlab-issue-agent/AGENT.md`
+- `seed/agents/gitlab-issue-agent/AGENT.md` — the Gitlab Issue Agent (`type: local`). **R8:** `tools` widened from the v5 MCP+text/skill set to the full pipeline gate (§3.11, all server tools); `skills` gains `spec-kit-driver` + `ui-designer-craft` (the method + mockup craft the agent runs headless)
 - `seed/skills/gitlab-issue-triage/SKILL.md` + `references/*.md` (the router + per-stage references, §3.8 — including `references/notes.md` the R7 re-entry decision) — **R8** adds `references/approve-spec.md` (approval-1), `references/approve-design.md` (approval-2), and extends `references/notes.md` (approval-vs-feedback) + `references/status-labels.md` (R8 work stages + gate reclassifications), §3.12
 - `src/lib/integrations/services/gitlab/triage/pipeline.ts` — **R8** the per-issue conversation: id derivation, ghost seed, the conversation-bound run wrapper (§3.10)
 - `src/lib/integrations/services/gitlab/tools/gitlab-feature-branch.ts` — **R8** the `gitlab_start_feature` server tool (a `serverTool`, so `execution: "server"`): resolve project + next NNN + slug, bind the ordinary branch to the run's conversation via `setConversationActiveFeatureBranch(ctx.conversationId, …)`, return `{ branch, featurePath, store }` (§3.10, ADR-15). **Cycle-free by construction:** it imports only the pure/spec/conversation helpers (`lib/agent/feature-branch`, `lib/specs/projects` + `spec-fs` for the `NNN` scan, `lib/assistant/conversation-store`) — never the integration's `dispatch.ts`/`runner`, which import the tool registry. It is added to the registry's static spread (below) and named in the seed agent's `tools` allowlist (§3.11), which is what makes `gateFor`/`headlessGate` surface it.
-- `seed/agents/gitlab-issue-agent/AGENT.md` — **R8** `tools` widened to the pipeline gate (§3.11); `skills` gains `spec-kit-driver` + `ui-designer-craft` (the method + mockup craft the agent runs headless)
 - `src/components/apps/settings/integrations/GitLabDetailView.tsx`
 - `src/components/apps/settings/integrations/GitLabWorkflowSection.tsx`
 - `src/components/apps/settings/integrations/GitLabLabelsReference.tsx`
@@ -353,8 +352,6 @@ The skill is **the same method, run headless.** Its router's two human-waiting s
 - `src/lib/integrations/services/gitlab/triage/dispatch.ts` — **R8** the noted run is conversation-bound: for `gitlab.issue.noted` the dispatcher resolves/seeds the per-issue conversation and passes `conversationId` to `runSubAgent` (omitting `contentOnly`); the fresh (`opened`) run is unchanged (genuinely headless, `contentOnly: true`). The resume task text gains the approval-path + "never promote/merge" clauses (§3.7.2).
 - `src/lib/integrations/services/gitlab/labels.ts` — **R8** the new work-stage constants (`Mockup`, `Design`, `Plan`, `Tasks`, `Implementing`) + the gate reclassifications (`Design Complete`, `Needs Review` = implementation complete / preview healthy); the single-active-status invariant and the human-waiting set are unchanged in meaning, only extended.
 - `src/components/apps/settings/integrations/GitLabLabelsReference.tsx` — **R8** the status-label chip group grows with the R8 labels (sourced from `labels.ts`; the mockup's label reference is the binding shape).
-- `seed/agents/gitlab-issue-agent/AGENT.md` — **R8** `tools` widened to the full pipeline gate (§3.11, all server tools); `skills` gains `spec-kit-driver` + `ui-designer-craft`.
-
 > The webhook **receiver route** is **not** modified. The self-heal module is **not** modified (R6 — fully separate; R8 *reuses its conversation+branch pattern* by import-free convention, not by touching it).
 
 ---
