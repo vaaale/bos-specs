@@ -27,6 +27,8 @@ This **agrees** with `spec.md`'s `App Target: builtin-app`. No disagreement to f
 
 No conflicts. Nothing to flag.
 
+> **Verification note** — the seven principles above were checked against the live constitution at `/Specs/bos-system-specs/.specify/memory/constitution.md` (confirmed by Build Studio, which read it directly; the architecture reviewer could not reach that path from its worktree). §2's content is verified against the live constitution.
+
 ## 3. Architecture
 
 ### Context
