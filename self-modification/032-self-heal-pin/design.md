@@ -54,7 +54,7 @@ flowchart LR
 
 ### The decision the handler encodes
 
-The handler mirrors the two-call sequence the top toolbar already runs (`VersionControls.tsx` `onSelect`/`pinPreview`). The branching is on the **`state` field the `activate` response itself carries** — not a re-fetch of `/__supervisor/state`:
+The handler composes the same primitives the top toolbar already uses (`supervisorPost` + the `activate`/`pin` endpoints + the `busy`/`finally` in-progress model) — into a single activate→pin→reload sequence that **no single existing toolbar control performs** (`VersionControls.onSelect` does *either* pin, when its polled state says `ready`, *or* activate; `pinPreview` is a separate button). The branching is on the **`state` field the `activate` response itself carries** — not a re-fetch of `/__supervisor/state`:
 
 ```mermaid
 flowchart TD
