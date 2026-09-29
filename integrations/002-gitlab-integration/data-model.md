@@ -184,6 +184,36 @@ any note authored by the AGENT ──▶ no comment, no label, stop   (self-term
 - **Structural, for label edits.** The skill's relabels come back as `issue`/`merge_request` hooks with `action:"update"`, excluded by the receiver's `action === "open"` requirement. The agent may relabel freely.
 - **Agent-side identity, for comments.** The skill's comments come back as `note` hooks and ARE re-dispatched — that is the R7 trigger. The agent's note and a human's are the same shape on the wire, and BOS has no credential with which to tell them apart, so the **agent** determines its own GitLab identity from the MCP token and no-ops when the newest note is its own. Cost: one cheap no-op dispatch per comment the agent posts, terminating there because a no-op writes nothing.
 
+## 8. The per-issue ghost conversation (R8)
+
+A **stable, per-issue** conversation the dispatcher seeds on every `gitlab.issue.noted` so the agent can run **conversation-bound** and bind a feature branch **mid-run** (design ADR-14).
+
+- **Id**: `c-gitlab-issue-<projectId>-<iid>` — derived from the note payload, **stable across every comment on the issue** (the same id on re-dispatch, so an approval's branch + artifacts persist across the issue's later comments). This is the R8 idempotency key.
+- **Seeded by**: `conversationStore.saveConversationMessages(conversationId, agentId, [task])` on each noted dispatch — the **ghost seed**, idempotent (mirrors `self-heal/intake.ts:515`, keyed on the issue instead of a case id). Import-free reuse — self-heal is **not** modified.
+- **Content**: a **ghost** — its transcript is ignored by `runLocalHeadless` (`io.loadMessages` returns `[]`); it exists only to (i) **carry the branch** (via `setConversationActiveFeatureBranch`) and (ii) be the **FR-030 visibility home** (the conversation on the branch). It is **not** a user Assistant conversation (Assumption A; the trajectory is the headless run transcript, not attached).
+- **Relationship to the run + branch**: the run is bound to this conversation by `runSubAgent(agent, task, { conversationId })`. The branch (when an approval has bound one) is read **fresh per tool call** from this conversation (`getConversationActiveFeatureBranch` is an uncached read), so a mid-run bind is picked up by the agent's next `file_*` write / `dev_delegate` (the linchpin).
+- **Lifespan**: bounded by the number of **distinct issues** processed (not notes — the id is per-issue), inert, no GC in v1 (Risk 13). Disabling the handler does not delete them.
+
+## 9. The per-issue feature branch (R8)
+
+The ordinary BOS feature branch the agent creates on approval, carrying the real spec-kit artifacts (FR-023/024/025/026).
+
+- **Name**: `bos/<NNN>-<slug>` — **ordinary** naming (NNN = next feature number in the chosen `user-specs` project, `bos/` prefix), **never** self-heal naming (FR-023). Computed server-side by `gitlab_start_feature` ([contracts/gitlab-start-feature.md](./contracts/gitlab-start-feature.md)).
+- **Bound mid-run**: `setConversationActiveFeatureBranch(ctx.conversationId, branch)` — bound to the ghost conversation **while the agent is already running on it**; picked up by the next spec write / `dev_delegate` because the branch is read fresh per call (§8 linchpin).
+- **Git ref is lazy**: `gitlab_start_feature` does **not** create a git branch — the ref is created lazily by the first `dev_delegate` (the same mechanism self-heal relies on). A **feedback** comment never calls the tool, so the ref (and the feature dir) never materialize — no number burned, no empty branch.
+- **Contents**: `spec.md` (approval-1); + `mockup.html` (a `file_write`, **not** the live UI-Preview surface — ADR-16) + `design.md` (approval-1, UI-surface features); `plan.md` + `tasks.md` (approval-2); the Developer's source edits on `dev_delegate`'s worktree of this branch (approval-2). Written to `/Specs/user-specs/<project>/<NNN>-<slug>/` via `withFeatureScope({ conversationId })`.
+- **Idempotency**: re-approval of the same issue reuses the branch already bound to the ghost conversation (the tool does not allocate a second NNN). Write-time re-check-and-bump handles the concurrent-approval collision (Risk 11).
+- **FR-030**: the branch is just a branch — Build Studio's spec tree + artifact viewer already read from the branch-coupled store root, so the artifacts are visible with zero integration-specific code.
+
+## 10. The FR-031 issue artifact post (R8)
+
+Once approved and the agent has written the **real** artifacts on the branch, it makes them visible on the **GitLab issue** (FR-031) — the human-facing view (the branch artifacts remain the source of truth, FR-030).
+
+- **Form**: a **file attachment** where the GitLab MCP server exposes an upload/attachment capability, otherwise a **comment** carrying the artifact. The mechanism is **MCP-driven** — the skill discovers the server's tool names (same as the comment/label tools), so the integration code holds no attachment logic and no GitLab identity (R4).
+- **When**: at `Design Complete` (post `spec.md`/`mockup.html`/`design.md`) and at `Needs Review` (post `plan.md`/`tasks.md`).
+- **Names**: the post carries the **branch name** + **spec path** (`/Specs/user-specs/<project>/<NNN>-<slug>`), so a human reviewing in GitLab can open the branch in Build Studio.
+- **vs the pre-approval draft**: the *draft* deliverable (the fix / spec the agent posts in a comment before approval-1) stays a plain comment (FR-012); FR-031 covers the **approved, real** artifacts only.
+
 ## Relationships
 
 ```
@@ -194,11 +224,18 @@ GitLab integration (authless)
    └─ inbound webhook ── emits ── BOS event (gitlab.issue.opened / gitlab.issue.noted / gitlab.mr.opened)
                                         │
 Triage Handler (core, gitlab-issue-triage) ── consumes gitlab.issue.* ──▶ runSubAgent(triageAgentId)
-                                               (opened → fresh task, noted → resume task)
-                                                                                   │
-                                                                              Agent + skill
-                                                                                   │  (via the agent's MCP allowlist)
-                                                                              GitLab MCP server (external, user-configured)
-                                                                                   │
-                                                                              GitLab REST (read issue / comment / label)
+   (opened → fresh task, headless)            (noted → resume task, CONVERSATION-BOUND, R8)
+                                                                                        │
+                                                                              per-issue ghost conversation  (c-gitlab-issue-<projectId>-<iid>)
+                                                                                        │
+                                                                              Agent + skill (all-server gate, R8)
+                                                                                        │
+                          ┌── MCP (read issue / comment / label / attach artifact) ─────┤
+                          ├── gitlab_start_feature ── binds ──▶ feature branch (bos/<NNN>-<slug>, ordinary)  (R8, mid-run)
+                          ├── file_* (spec.md / mockup.html / design.md / plan.md / tasks.md) ── write to ──▶ branch  (R8)
+                          └── dev_delegate (approval-2, TDD) ── implements on ──▶ branch worktree  (R8)
+                                                                                        │
+                                                                              Build Studio (reads the branch — FR-030)  │
+                                                                              GitLab issue (FR-031 artifact post)        ▼
+                                                                              GitLab MCP server (external) ──▶ GitLab REST
 ```
