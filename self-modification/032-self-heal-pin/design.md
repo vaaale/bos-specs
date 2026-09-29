@@ -143,7 +143,7 @@ These are dependencies, not deliverables — none of them is edited by this chan
 ### ADR-2 — No new Supervisor endpoint, no second client (FR-006)
 - **Context**: A "pin-or-build" one-call endpoint would look convenient (one round-trip instead of two).
 - **Options**: (a) add a new combined endpoint; (b) reuse `activate` + `pin` as two calls.
-- **Decision**: (b). The control surface already has exactly these two verbs, and the top toolbar (`VersionControls.onSelect`) already composes them this way. A new endpoint would duplicate existing logic, add a new surface to test, and violate "reuse the same Supervisor control surface."
+- **Decision**: (b). The control surface already has exactly these two verbs, and the top toolbar already uses the same primitives (`supervisorPost` + the `activate`/`pin` endpoints) — though as *separate* controls (`onSelect` pins *or* activates; `pinPreview` is its own button), not as one activate→pin sequence. A new endpoint would duplicate existing logic, add a new surface to test, and violate "reuse the same Supervisor control surface."
 - **Consequences**: The handler is two sequential `supervisorPost` calls. No change to `control.mjs`, `client.ts`, or any Supervisor file.
 
 ### ADR-3 — Branch on the `activate` response's `state`, not a re-fetch of `/__supervisor/state`
