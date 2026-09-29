@@ -62,7 +62,7 @@ The reporter explicitly requested that the previously-out-of-scope blur / `backd
 
 **Acceptance Scenarios**:
 
-1. **Given** the default (Frosted glass off), **When** the user enables it, **Then** chrome over the wallpaper renders with `backdrop-filter: blur(<radius>px)` at the chosen radius, and the setting persists.
+1. **Given** the default (Frosted glass **on** at 12px — reproducing the window's pre-existing `backdrop-blur-md`), **When** the user changes the blur radius, **Then** chrome over the wallpaper renders with `backdrop-filter: blur(<radius>px)` at the chosen radius, and the setting persists.
 2. **Given** transparency 70% and Frosted glass on (e.g. 12px), **When** a window is open over the wallpaper, **Then** the wallpaper shows through the window chrome blurred rather than sharp.
 3. **Given** Frosted glass on and transparency at 100% (opaque), **When** the user views a window, **Then** no visible blur change is expected (an opaque surface covers the backdrop) — this is compositional behaviour, documented and surfaced in the live preview, not an error.
 4. **Given** a Frosted glass setting, **When** the app restarts, **Then** the toggle and blur radius are restored.
@@ -96,11 +96,11 @@ The reporter explicitly requested that the previously-out-of-scope blur / `backd
 - **FR-010**: When Frosted glass is enabled, the system MUST apply `backdrop-filter: blur(<radius>px)` to the **same chrome surfaces the transparency setting affects**, so the wallpaper behind them appears blurred. Frosted glass and transparency MUST compose.
 - **FR-011**: The system MUST persist all three settings (wallpaper pointer, transparency, frosted-glass toggle + radius) so they survive an app restart.
 - **FR-012**: The Appearance tab MUST render a **live preview** that reflects the current wallpaper, transparency, and frosted-glass values.
-- **FR-013**: At the default values (no upload, transparency 100%, Frosted glass off) the OS chrome MUST be visually identical to today's behaviour (backward compatible).
+- **FR-013**: At the default values (no upload, transparency 100%, Frosted glass **on** at its 12px default) the OS chrome MUST be visually identical to today's behaviour (backward compatible).
 
 ### Key Entities
 
-- **OSSettings (extended)**: the existing persisted settings object. This feature adds fields: `uiOpacity` (number, 0–100, default 100), `frostedGlass` (boolean, default false), `frostedGlassBlur` (number, px, default set in design). The existing `wallpaper` (string) now additionally holds VFS paths produced by uploads.
+- **OSSettings (extended)**: the existing persisted settings object. This feature adds fields: `uiOpacity` (number, 0–100, default 100), `frostedGlass` (boolean, default true), `frostedGlassBlur` (number, px, default set in design). The existing `wallpaper` (string) now additionally holds VFS paths produced by uploads.
 - **Wallpaper file**: an image stored in the VFS under the wallpapers location, referenced by its VFS path in `settings.wallpaper`.
 
 ## Success Criteria
@@ -120,7 +120,7 @@ The reporter explicitly requested that the previously-out-of-scope blur / `backd
 - **Upload limits**: image types only (e.g. PNG, JPEG, WebP), with a reasonable size cap (a specific MB cap is a design decision).
 - **The transparency/frosted-glass surface set is the window/panel chrome over the desktop** (window bodies and panels), applied **globally** (a single setting, not per-window). Per-window opacity is explicitly out of scope. *(Open question 3.)*
 - **A readability floor exists** (a minimum effective chrome opacity, e.g. not allowing fully transparent chrome) so text stays legible. The exact floor is a design decision. *(Open question 4.)*
-- **Frosted glass is a toggle + adjustable blur-radius slider** (0–24px, default ~12px) rather than a fixed radius. *(Open question 5.)*
+- **Frosted glass is a toggle + adjustable blur-radius slider** (0–24px, default ~12px) rather than a fixed radius. The **default state is on, at 12px** — this reproduces the window's pre-existing `backdrop-blur-md`, so the default chrome is unchanged (SC-005); toggling off removes the blur entirely. *(Open question 5.)*
 - **Existing `backdrop-blur` on the window chrome** (already present in `Window.tsx`) is the base the new controls tune; the feature extends rather than replaces it.
 - **Default transparency is 100%** (fully opaque) so existing behaviour is unchanged until a user opts in.
 
