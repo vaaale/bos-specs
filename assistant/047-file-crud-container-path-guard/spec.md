@@ -81,7 +81,7 @@ The other CRUD tools have the identical gap: a real container path handed to any
 
 - **SC-001**: A regression test exists that, against the pre-fix code, fails on the specific call from case 0053 (`file_read` with a `/worktrees/bos/…` path) and passes against the post-fix code.
 - **SC-002**: Line and branch coverage on `src/lib/assistant/tools/server/files.ts` is ≥60% after the change, with explicit test coverage of both the reject branch and the no-op (clean-path) branch for each of the six CRUD tools.
-- **SC-003**: A grep of `files.ts` shows `rejectContainerPath(` invoked inside every one of the twelve file tools in the module (the six CRUD + the five search/edit + … actually six CRUD + five search/edit = eleven; the module has eleven file tools and all eleven call the guard).
+- **SC-003**: A grep of `files.ts` shows `rejectContainerPath(` invoked inside every one of the module's eleven file tools — the six CRUD (`file_list`, `file_read`, `file_write`, `file_mkdir`, `file_delete`, `file_rename`) plus the five search/edit (`file_edit`, `file_patch`, `file_search`, `file_grep`, `file_glob`) — so all eleven call the guard.
 - **SC-004**: The module's docstring on `rejectContainerPath` ("Shared guard for every VFS file tool") is now true, not aspirational.
 
 ## Assumptions
