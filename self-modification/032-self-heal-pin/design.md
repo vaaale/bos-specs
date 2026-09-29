@@ -97,7 +97,7 @@ Only these two paths. No other file is created or touched.
 | `src/apps/build-studio/selfheal/PreviewStatus.tsx` | **MODIFIED** — replace the button's `onClick` navigation with the async `openPreview` handler; add a local in-progress `useState`; update the button label/`disabled`; remove the now-unused `useOSStore`/`launch`; add the `supervisorPost` import. Preserve the FR-024 footnote verbatim. |
 | `tests/self-heal/preview-pin.test.ts` | **NEW** — unit test of the handler's activate→pin→reload decision logic (see §7). Lives in `tests/self-heal/`, the established area for self-heal unit tests (which also has a `_test-env.ts` harness helper), per the spec's assumption and the repo's `tests/<area>/<name>.test.ts` convention — **not** a co-located `src/**/__tests__/`. |
 
-Handler shape (mirrors `VersionControls.onSelect`):
+Handler shape (composes the same primitives the top toolbar uses — `supervisorPost` + the `activate`/`pin` endpoints + the `busy`/`finally` in-progress model — into a sequence no single existing control performs):
 
 ```tsx
 const [inProgress, setInProgress] = useState(false);
