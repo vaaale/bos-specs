@@ -5,6 +5,8 @@
 **Mockup**: `./mockup.html`
 **Classification**: `bos-core` (matches the spec's `App Target`)
 
+> **Revision (rev 3)** — the original frosted-glass design made "off" fall back to the window's pre-existing `backdrop-blur-md` (12px) so the default stayed unchanged. That left the toggle inert: **off** rendered `blur(12px)` and **on** at the default 12px also rendered `blur(12px)` — two identical states, so the switch only revealed/hid the blur slider and never toggled the effect. Corrected contract: **off = no backdrop blur at all** (`backdropFilter: undefined`), **on = `blur(<frostedGlassBlur>px)`**, and the **default state is ON at 12px** — which still reproduces the pre-existing `backdrop-blur-md` exactly, so SC-005 (pixel-equivalent at defaults) holds and the control is now functional. This is the source of truth for the frosted-glass logic in §3; `spec.md` was updated in lockstep (default `frostedGlass: true`).
+
 ## Context
 
 The Appearance surface is a single client component — `src/components/apps/settings/AppearanceTab.tsx` — that reads `settings` from the OS store (`useOSStore`) and writes through a single `apply(patch)` helper that calls both `applySettings(patch)` (in-memory, optimistic) and `settingsClient.patch(patch)` (`PATCH /api/settings`, persisted). It already renders a **live preview** by calling `wallpaperToCss(settings.wallpaper, settings.wallpaperFit)`.
@@ -50,7 +52,11 @@ This slice touches `types.ts` (add field), `Window.tsx` (consume it), the settin
 
 **New settings fields**: `frostedGlass: boolean` (default `false`) and `frostedGlassBlur: number` (px, **default 12**, range 0–24 — open question 5, resolved as toggle + adjustable slider per the mockup).
 
-**Where applied**: the **same chrome surfaces** the transparency mapping targets (the window container + title bar in `Window.tsx`). When `frostedGlass` is on, set `backdropFilter: blur(<frostedGlassBlur>px)` (replacing the current fixed `backdrop-blur-md` ≈ 12px, so the slider takes over the blur that the window already had); when off, fall back to the current `backdrop-blur-md` baseline. This keeps "frosted glass off" visually identical to today.
+**Where applied**: the **same chrome surfaces** the transparency mapping targets (the window container in `Window.tsx`, which is the element that carries the blur). The mapping is now a true on/off gate (rev 3):
+- `frostedGlass === true` → `backdropFilter: blur(<frostedGlassBlur>px)`, clamped 0–24px (the slider takes over the radius entirely).
+- `frostedGlass === false` → `backdropFilter: undefined` — **no blur at all**, not a fallback radius.
+
+The **default is `frostedGlass: true` at `frostedGlassBlur: 12`**, which renders `blur(12px)` — byte-identical to the pre-existing `backdrop-blur-md` — so the default chrome is unchanged (SC-005) *and* the toggle is no longer inert: off genuinely removes the blur, on re-applies it. (The earlier "fall back to `backdrop-blur-md` when off" idea is retired — it was the cause of the no-op toggle: off and on-at-default produced the same 12px.) At 100% transparency the opaque background covers the backdrop regardless, so the blur has no visible effect there — that remains the documented compositional no-op (US3 scenario 3), not the toggle being broken.
 
 **Composition (grounded in CSS):** `backdrop-filter: blur()` blurs whatever is *behind* the element (the wallpaper), while the element's own `background` alpha (from slice 2) controls how much of that blurred backdrop shows through. They compose naturally:
 - transparency 70% + frosted on (12px) → wallpaper shows through, blurred. ✓
