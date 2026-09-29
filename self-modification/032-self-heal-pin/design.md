@@ -160,14 +160,19 @@ These are dependencies, not deliverables — none of them is edited by this chan
 
 ## 7. Testing
 
-`tests/self-heal/preview-pin.test.ts` (Playwright unit runner, `npm run test:unit` — same harness as the sibling `tests/self-heal/*.test.ts`). It asserts the decision matrix from the spec's edge cases by mocking `supervisorPost` (and `window.location.reload`) rather than hitting a live Supervisor:
+`tests/self-heal/preview-pin.test.ts` runs on the repo's `test:unit` runner — `npm run test:unit`, Playwright used **purely for TS transpilation + reporting** (see `playwright.unit.config.ts`), browser-less, under `NODE_OPTIONS='--conditions=react-server'`. There is **no jest/vitest and no `@testing-library/react` (or any React renderer) in `package.json` devDeps**, so the test **cannot mock a module or render a component**. It follows the only established precedent for a client function in this area — `tests/self-heal/branch-settled-client.test.ts` — which **stubs `globalThis.fetch` directly and calls the function**. Concretely, the test is the only achievable shape:
 
-1. `activate` not `ready` (e.g. `state:"building"` or `ok:false`) ⇒ `pin` **not** called, reload **not** called, button restored.
-2. `activate` `state:"ready"` + `pin` `ok:true` ⇒ `pin` called with `{ version:"preview", branch }`, reload called **once**.
+- **(a) Extract the activate→pin→reload decision to a pure, framework-free function** — inside `PreviewStatus.tsx` (or a small sibling module under the same directory). It takes `(branch, post, reload)`: `post` is the `supervisorPost` thunk, `reload` is the `window.location.reload` thunk. The component wires the real `supervisorPost` and `window.location.reload` into it. Being framework-free means the test can import and call it without rendering anything.
+- **(b) In the test, stub `globalThis.fetch`** so the **real, un-mocked `supervisorPost`** (`src/lib/supervisor/client.ts` is literally `fetch(…)` then `r.json()`) receives the shaped JSON for the `activate` and `pin` requests. `supervisorPost`'s only other import, `sessionHeader` (`src/lib/logging/client/session.ts`), guards `typeof window === "undefined"`, so it loads cleanly here. Because **no `window` exists in this runner**, also **define `globalThis.window` with a stubbed `location.reload`** so the reload branch is observable.
+
+With that shape it asserts the same four decision-matrix cases:
+
+1. `activate` not `ready` (e.g. `state:"building"` or `ok:false`) ⇒ no `pin` request, reload **not** called, in-progress restored.
+2. `activate` `state:"ready"` + `pin` `ok:true` ⇒ `pin` sent with `{ version:"preview", branch }`, reload called **once**.
 3. `activate` `ok:false` or `pin` `ok:false` ⇒ no reload, in-progress cleared (no swallowed error).
 4. missing `branch` ⇒ no Supervisor call at all.
 
-If the handler's logic is extracted to a pure function for testability, that extraction lives *inside* `PreviewStatus.tsx` (or a small sibling module under the same directory) — the public scope of the change does not grow beyond §4.
+The pure-function extraction still lives inside `PreviewStatus.tsx` (or a same-directory sibling), so the two-path scope of §4 is unchanged — **§4 is not modified**.
 
 ## 8. Risks / open questions
 
