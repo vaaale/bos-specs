@@ -4,18 +4,20 @@
 
 **Input**: Feature specification from `032-self-heal-pin/spec.md` (App Target: `builtin-app`).
 
+**Design**: `032-self-heal-pin/design.md` — the authoritative architecture design (classification, handler decision logic, ADRs, test constraints). This plan references it rather than restating it; where they differ, the finalized design wins.
+
 ## Summary
 
 Fix the **Pin & open preview** button on the self-heal case card (`PreviewStatus.tsx`, class-`e` cases) so that clicking it does the Supervisor work the label promises instead of opening the Settings app. Concretely: issue an idempotent `activate` for the case's `activeFeatureBranch` through the shared `supervisorPost` client, and — only once `activate` reports the preview `ready` — `pin` the preview for that branch and reload the window so the top toolbar flips to `PREVIEW`. A behaviour fix to one existing button in one existing built-in-app file; no new surface, no new Supervisor endpoint, no new client.
 
-**Technical approach.** The single `onClick` navigation (`launch("settings", { tab: "self-modification", branch })`) is replaced by an async handler that (1) sets a local in-progress state, (2) `await supervisorPost("activate", { branch })`, (3) proceeds to `await supervisorPost("pin", { version: "preview", branch })` only when the activate result is `ok !== false` **and** `state === "ready"`, (4) reloads the window only when the `pin` result is `ok`. This mirrors the two-call sequence the existing top-toolbar (`VersionControls.tsx`) and Versions-tab (`VersionsTab.tsx`) controls already perform, reusing the same `supervisorPost` surface (FR-006) and its `replacesServedBuild` reload rule (reload on `pin`). The FR-024 footnote beneath the button is preserved verbatim (FR-005).
+**Technical approach.** The single `onClick` navigation (`launch("settings", { tab: "self-modification", branch })`) is replaced by an async handler that (1) sets a local in-progress state, (2) `await supervisorPost("activate", { branch })`, (3) proceeds to `await supervisorPost("pin", { version: "preview", branch })` only when the activate result is `ok !== false` **and** `state === "ready"`, (4) reloads the window only when the `pin` result is `ok`. This composes the same primitives the existing top-toolbar (`VersionControls.tsx`) and Versions-tab (`VersionsTab.tsx`) controls already use — the shared `supervisorPost` surface (FR-006), the `activate`/`pin` endpoints, and the `busy`/`finally` in-progress model — plus `replacesServedBuild`'s reload rule (reload on `pin` only). No single existing control runs activate→pin as one action; the handler assembles the sequence from those shared parts. (See `design.md` §3.) The FR-024 footnote beneath the button is preserved verbatim (FR-005).
 
 ## Technical Context
 
 - **Language/Version**: TypeScript (the repo's TS config), React (client components, `"use client"`).
 - **Primary Dependencies**: `react` (`useState`), `lucide-react` (icon), `@/lib/supervisor/client` (`supervisorPost`, `PostResult`), existing `@/store/os-provider` import is **removed** (no longer navigates).
 - **Storage**: N/A.
-- **Testing**: Playwright unit runner (`npm run test:unit`). New test file at `tests/self-heal/preview-pin.test.ts` (the repo convention is `tests/<area>/<name>.test.ts`, not co-located `src/**/__tests__/`). The test verifies the handler's decision logic against the Supervisor response contract.
+- **Testing**: Playwright unit runner (`npm run test:unit`) — a browser-less harness (no jest/vitest, no React renderer). New test file at `tests/self-heal/preview-pin.test.ts` (repo convention is `tests/<area>/<name>.test.ts`, not co-located `src/**/__tests__/`). Because the runner cannot mock a module or render a component, the test extracts the activate→pin→reload decision to a pure, framework-free function in `PreviewStatus.tsx` and asserts on it by stubbing `globalThis.fetch` (so the real `supervisorPost` wrapper receives the shaped JSON) and `globalThis.window.location.reload` — the same pattern as `tests/self-heal/branch-settled-client.test.ts`. It does NOT mock `supervisorPost` or render the component. (See `design.md` §7.)
 - **Target Platform**: The BrowserOS desktop web app (Next.js App Router).
 - **Project Type**: modification to an existing built-in app (`src/apps/build-studio/selfheal/`).
 - **Performance Goals**: N/A — two existing HTTP round-trips to the Supervisor control surface; no new work added.
@@ -49,8 +51,9 @@ Fix the **Pin & open preview** button on the self-heal case card (`PreviewStatus
 ```text
 Specs/user-specs/self-modification/032-self-heal-pin/
 ├── spec.md    # approved (Gate 1)
-└── plan.md    # this file
-    (+ tasks.md created in the next step — NOT here)
+├── design.md  # architecture design — authoritative for structure & decisions
+├── plan.md    # this file
+└── tasks.md   # TDD task breakdown
 ```
 
 ### Source Code (repository root)
@@ -69,9 +72,9 @@ tests/self-heal/
 
 ## Design Notes
 
-- **Handler shape.** A local `useState` flag drives the transient state. The handler is `async`, guarded by an early return when `!branch` (defensive — the button only renders when `ready && branch`). Sequence: set in-progress → `activate` → if `a.ok === false || a.state !== "ready"` return (no pin, no reload) → `pin` → if `p.ok` then `window.location.reload()` → finally clear in-progress. This is the same two-call order `VersionControls`/`VersionsTab` use, so the behaviour is consistent with the top toolbar the user is being handed to next.
+- **Handler shape.** A local `useState` flag drives the transient state. The handler is `async`, guarded by an early return when `!branch` (defensive — the button only renders when `ready && branch`). Sequence: set in-progress → `activate` → if `a.ok === false || a.state !== "ready"` return (no pin, no reload) → `pin` → if `p.ok` then `window.location.reload()` → finally clear in-progress. The activate→pin ordering uses the same primitives `VersionControls`/`VersionsTab` already call (it is not a copy of one existing control — none runs activate→pin in a single action), so the behaviour stays consistent with the top toolbar the user is being handed to next. (See `design.md` §3.)
 - **Why `activate` before `pin`.** For a `preview-ready` case the preview is normally already `ready` (`completeFix` verified it), so `activate` is a no-op. It is retained because a preview restored after a Supervisor restart can be `not-built`/`stopped`; `pin` refuses a building preview, so the handler must only pin once `activate` confirms `ready`.
 - **Button label.** Renders `"Opening preview…"` while in progress, else `"Pin & open preview"`; `disabled` while in progress (with `disabled:opacity-50`), matching the existing button's visual language.
 - **Reload scope.** Only a successful `pin` (and `promote`, which this button never does) replace the served build per `replacesServedBuild`, so the reload is gated on `p.ok` — consistent with the top toolbar.
 - **Removed dependency.** `useOSStore` (the `launch` for the Settings navigation) is removed from imports since the button no longer navigates. `ScopeClassBadge`, `Loader2`, and the `HealingCase` type remain.
-- **Testing strategy.** The unit test asserts the decision matrix from the spec's edge cases: (a) `activate` not `ready` ⇒ no pin, no reload; (b) `activate` `ready` + `pin` ok ⇒ reload called once; (c) `activate`/`pin` `ok:false` ⇒ no reload, state restored; (d) missing branch ⇒ no Supervisor call. Mock `supervisorPost` (and `window.location.reload`) rather than hitting a live Supervisor.
+- **Testing strategy.** The unit test asserts the decision matrix from the spec's edge cases: (a) `activate` not `ready` ⇒ no pin, no reload; (b) `activate` `ready` + `pin` ok ⇒ pin called with `{ version: "preview", branch }`, reload called once; (c) `activate`/`pin` `ok:false` ⇒ no reload, state restored; (d) missing branch ⇒ no Supervisor call. Per the finalized design (§7), the decision logic is a pure function and the test stubs `globalThis.fetch` + `globalThis.window.location.reload` (the runner cannot mock a module or render React) — see `design.md` §7.
