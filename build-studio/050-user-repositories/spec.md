@@ -110,6 +110,10 @@ A user adds a second marketplace repository; the Marketplace app lists items fro
 
 - **FR-003b**: **Every write to an arbitrary repository MUST ride a feature branch**, never land directly on its default branch — the same branch-coupled contract `user-specs` (`020`) and `user-apps` (`038`) already have, for the same reason. BOS is not the only thing touching a user's repository, and work that arrives unbidden on `main` is not reviewable. The default naming follows BOS's existing `bos/*` convention; the branch is chosen the same way it is for every other store.
 
+- **FR-003c**: A registered repository's spec store MUST be reachable through the ordinary `file_*` tools at `/Specs/<store-id>`, like every other spec store. The VFS mount table MUST be derived from the discovered stores, not from a hardcoded list — a store with no mount does not fail closed. `/Specs/<unmounted-id>/…` falls through to the plain VFS and writes a real decoy file under `data/vfs/Specs/<id>/`, which reads back perfectly and never reaches the repository; Build Studio then reports `Could not load "<id>/…"` for content the agent has just confirmed it wrote. Registering or deregistering a repository MUST update the mounts without a restart.
+
+- **FR-003d**: Every path a store's content is addressed by MUST be derived from its recorded `repoOffset` (FR-003's method-declared subdirectory), never re-derived as `path.relative(repoRoot, root)` — a store is reached by SYMLINK, so `root` is the link and that subtraction walks out of the data dir and back. This binds BOTH spec-fs implementations, the git surfaces that address a path by repo (`git show <ref>:<path>`, `git log -- <path>`), and the draft-branch listings, which MUST speak ONE path vocabulary: store-relative.
+
 - **FR-004**: Adding a repository that already carries a recognisable framework layout MUST detect it and offer that method, rather than imposing the default over a repo that is already using one.
 
 - **FR-005**: A newly created repository MUST have an initial commit before it is registered. An unborn HEAD is not a usable store, and the failure surfaces later as unrelated git errors.
