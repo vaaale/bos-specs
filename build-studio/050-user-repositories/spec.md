@@ -98,6 +98,8 @@ A user adds a second marketplace repository; the Marketplace app lists items fro
 
 - **FR-001**: BOS MUST let a user register a repository by **cloning an existing one** or by **creating a new one** (`git init`), choosing its KIND at registration.
 
+- **FR-001a**: A clone MUST authenticate through the **platform's one credential mechanism** — the shared git runner and its credential helper — with the credential resolved from the URL's host (the provider connected in Settings → Integrations → Git Providers, or a token already stored for a remote on that same host). A bare `git clone` shell-out MUST NOT be used: it carries no credential and no terminal, so every private repository failed with git's `could not read Username for '<host>'`. When no credential is configured for the host, the failure MUST say **that**, and where to configure it — a state distinct from a credential the host rejects.
+
 - **FR-002**: BOS MUST recognise the four kinds of FR-002a and apply each one's binding scope. Kind MUST be recorded in the store's own manifest, so it survives a restart and travels with the repository.
 
 - **FR-002a**: The kinds and their scopes are: **marketplace store** (projects are its items; bind per item; many allowed), **BOS system specs** (read-only, binds nowhere, exactly one), **BOS user specs** (the store is one project; bind at store level; exactly one — there is no reason to mount a second), **arbitrary repo** (the repo is one project; bind at store level; many allowed).
