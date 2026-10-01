@@ -24,7 +24,7 @@ Conversation `c-munuuem3c515.json` (2026-09-30), branch `bos/playable-core`, sco
 
 - The Supervisor logged the right decision — `branch "bos/playable-core" [repository:fpsoffice] couples: fpsoffice` — and then provisioned a BrowserOS feature branch, a full BrowserOS source worktree, and a clone of `data/` that degraded to a **full copy** when hardlinking failed. It allocated a preview port and ran `next build` twice. None of this has any relationship to a three.js game.
 - The sub-agent's working directory was that BrowserOS checkout, and the runtime note it was given described the mount as "spec stores … they hold the authoritative, up-to-date **specs**". The project it was there to build was that mount. Told it was looking at specs, the agent believed the orchestrator's guess that `/Specs/fpsoffice/` was the repository root — it is `<repo>/openspec` — and wrote the whole game into the VFS at `/workspace/fpsoffice` instead, outside any repository. A third delegation existed only to relocate the result, and a fourth to fix what the relocation disturbed.
-- The reconciler deleted the feature branch twice **mid-session**. A project branch carrying the `bos/` prefix has no BrowserOS commits by construction, so it is permanently "fully merged into base" and permanently eligible for reclamation.
+- The reconciler deleted the feature branch twice **mid-session**. A project branch carrying the `bos/` prefix has no BrowserOS commits by construction, so it is permanently "fully merged into base" and permanently eligible for reclamation. (What it deleted was the *BrowserOS-side* ref — reclamation only ever runs in BOS's own repository — so the game's commits survived in `fpsoffice`. The branch still vanished from every list and took its preview record with it, mid-session, twice.)
 - `git_push` could not resolve the credential `050` FR-001a had already recorded for the repository, so the agent pasted a GitLab PAT inline into a tool call — where it is now persisted in the conversation file.
 - The user pushed by hand, to a different branch than the one holding the fixes. `main` and `bos/playable-core` diverged by 24 files, and the version the user ran was missing every fix.
 
@@ -55,7 +55,9 @@ Three names exist today for this thing — the manifest says `arbitrary`, the Re
 
 `FEATURE_BRANCH_PREFIX` is `"bos/"`, and it gates `isFeatureBranch`, which in turn gates preview restoration, the top-bar branch list, feature-branch reclamation, and the Supervisor's own `requireFeatureBranch` guard. A branch named `prj/<slug>` is therefore invisible to **all four without a single exception being written**.
 
-That is the difference between a rule and an exemption. A project branch excluded by an allow-list is one refactor away from being eligible again — which is exactly how a branch scoped correctly to `fpsoffice` still ended up reclaimed twice. A project branch that BOS's own machinery cannot name is excluded structurally.
+That is the difference between a rule and an exemption. A project branch excluded by an allow-list is one refactor away from being eligible again; a project branch that BOS's own machinery cannot name is excluded structurally — in four places, with no code at any of them.
+
+The reclamation case is the weakest of the four and is included for completeness rather than as the argument: a `bos/`-prefixed project branch was reclaimed, but only its empty BrowserOS-side ref. The argument rests on the other three — preview restoration, the toolbar, and the Supervisor's own guard — where the prefix is what stops a project branch acquiring a worktree, a data clone, a port and a build it has no use for.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -127,6 +129,12 @@ A user opens the feature-branch list and sees the branches that exist, organised
 ### Edge Cases
 
 - **A project whose default branch is not `main`.** The feature branch is cut from whatever that repository's default actually is, and merge goes back to the same. `050` FR-003b makes BOS a contributor to a repo it does not own; guessing `master` is how that contract gets broken.
+
+- **A project left checked out on a branch that is not its default.** The merge still targets the default (FR-005c). "Where this repo happens to be standing" is not an answer to "where does this feature belong".
+
+- **A project whose primary checkout is dirty.** Worktree creation is unaffected. The merge must advance the ref without touching that working tree, so the user's unstaged edits are neither committed nor disturbed (FR-005f).
+
+- **A project whose specs are at the repository root** — registered with no workflow, or under a method that writes at the root. Its spec folder and its repository root are the same directory, so `/Projects/<id>` is both the code mount and the spec path. That is one path to one place and is correct; what must not happen is a second mount reappearing to name the inner one.
 - **A project with no remote.** Must work fully locally. Merge happens; push is skipped with that said plainly, not reported as success.
 - **A project with an unborn HEAD.** `050` FR-005 guarantees an initial commit at registration; a repository that has lost it must fail with that named, not with a git error from three layers down.
 - **The spec store and the source live in one repository.** A single branch carries both. Specs stay jailed to the method-declared subdirectory (`050` FR-003); source is not (`050` FR-003a). One branch, two write paths, not to be conflated.
@@ -156,7 +164,9 @@ A user opens the feature-branch list and sees the branches that exist, organised
 
 - **FR-002d**: No data clone MUST be created for a project branch. Nothing about a standalone repository reads or writes BOS's `data/`, and the clone is the step that degraded to a full copy of an 8.5 GB data directory in the observed run.
 
-- **FR-002e**: A `bos/`-prefixed branch whose recorded scope is a project — created before this feature — MUST NOT be reclaimed and MUST be listed under its project. The reclamation guard MUST consult the recorded scope as well as the prefix, so correctness does not depend on every such branch having been renamed.
+- **FR-002e**: A `bos/`-prefixed branch whose recorded scope is a project — created before this feature — MUST NOT be reclaimed and MUST be listed under its project. The reclamation guard MUST consult the recorded scope as well as the prefix, so correctness does not depend on every such branch having been renamed. The two halves are satisfied in different repositories and must not be conflated: the guard protects BrowserOS's own ref (which is what reclamation can see), while the listing reads the **project's** refs, where that branch's commits actually are.
+
+- **FR-002f**: Provisioning a project workspace MUST NOT destroy uncommitted work in an existing one. Reuse MUST be judged on whether the worktree is a worktree, on the right branch, at the branch tip — and MUST NOT require any BrowserOS-specific artefact. Today's reuse check requires `node_modules`, which a project worktree never has, and its failure path is a forced worktree removal; inheriting it unchanged would delete the agent's work on the second call, not the hundredth.
 
 #### Delegation
 
@@ -166,17 +176,27 @@ A user opens the feature-branch list and sees the branches that exist, organised
 
 - **FR-003b**: No BrowserOS build or health gate MUST run for a project delegation, and the completion report MUST make **no claim about build state, preview or promote**. It reports commits and branch. A report inviting the user to "Promote to make it the base" for a change BrowserOS has no stake in is a false statement about the system's state.
 
-- **FR-003c**: The refusal text that steers an agent away from BrowserOS source MUST name the project path as a third outcome. It currently offers two — BOS source, or standalone content generation in a scratch directory — and a project is neither.
+- **FR-003c**: The refusal text that steers an agent away from BrowserOS source MUST name the project path as a third outcome. It currently offers two — BOS source, or standalone content generation in a scratch directory — and a project is neither. The developer delegation tool's own **description** MUST stop asserting that it edits BrowserOS source: that description is the model's decision surface, and a reference page it reads later cannot correct it.
+
+- **FR-003d**: A project delegation MUST commit the agent's work to the feature branch when the run ends, and MUST say so when it could not. Removing the build MUST NOT remove the commit: today the commit of a delegation's edits happens *inside* the BrowserOS build, and the harness only stages. Work that is staged and uncommitted is destroyed by the next worktree teardown — so "no build" implemented literally means every project delegation silently discards itself. A failure to commit MUST be reported as "your changes may not be committed", never as a completed run.
+
+- **FR-003e**: Uncommitted work in a project workspace MUST survive a Supervisor restart. BrowserOS worktrees are safety-committed before they are reclaimed at boot; a project worktree is registered in a different repository and is invisible to that pass.
 
 #### The VFS surface
 
 - **FR-004**: A registered project MUST be reachable through the ordinary `file_*` tools at **`/Projects/<id>`**, rooted at the **repository root**, branch-coupled and writable on a feature branch exactly as every other branch-coupled store is.
 
-- **FR-004a**: `/Projects/<id>` MUST be the **only** mount for a project. `/Specs/<id>` MUST be retired for projects, and `/Specs` MUST mean a spec store BrowserOS owns (`bos-system-specs`, `user-specs`, `item-*`). A project's specs are addressed at `/Projects/<id>/<repoOffset>`. Two VFS paths resolving to the same bytes is the failure this subsystem has been burned by most, and an alias is that shape.
+- **FR-004a**: `/Projects/<id>` MUST be the **only** mount for a project. `/Specs/<id>` MUST be retired for projects, and `/Specs` MUST mean a spec store BrowserOS owns (`bos-system-specs`, `user-specs`, `item-*`). A project's specs are addressed at `/Projects/<id>/<repoOffset>`, where that offset is whatever the method declared — **including the repository root itself**, which is what a project registered with no workflow (or with a root-rooted method) actually has. Two VFS paths resolving to the same bytes is the failure this subsystem has been burned by most, and an alias is that shape.
 
 - **FR-004b**: The retired `/Specs/<project-id>` prefix MUST be **explicitly refused**, with a message naming the replacement path. Unregistering the mount is not sufficient and is actively harmful — see `050` FR-003c and the matching edge case.
 
 - **FR-004c**: Every consumer that addresses a store by VFS path MUST resolve it through **one** function from the store to its mount prefix and offset. Composing `/Specs/${id}` by hand is what makes a mount change into a scattered edit, and a missed site into a silent decoy write.
+
+- **FR-004d**: `/Projects/<id>` MUST present the repository as it is. Dot-prefixed entries (`.gitignore`, `.github/`, `.eslintrc`) are project source and MUST be listed; the spec-store listing filter that hides them MUST NOT be inherited.
+
+- **FR-004e**: BOS MUST NOT commit a project's working tree as a side effect of mounting, reading, or recovering. The spec-store crash-recovery sweep commits whatever it finds uncommitted, and is kept off a user's source today only because a project's spec folder is a subdirectory; mounting the repository root removes that protection while keeping the sweep. `050` FR-003b makes BOS a contributor to a repository it does not own — committing the user's unstaged edits under a BOS chore message is the clearest possible breach of that.
+
+- **FR-004f**: Deregistering a project MUST remove **both** of its mounts. A mount left resolvable after deregistration reads as still registered — the same rule `/Specs` already follows, applied to the prefix this feature adds.
 
 #### Finishing
 
@@ -184,7 +204,15 @@ A user opens the feature-branch list and sees the branches that exist, organised
 
 - **FR-005a**: Discarding a project branch MUST remove that project's branch and worktree, and nothing of BrowserOS's.
 
-- **FR-005b**: A merge that succeeds but cannot push MUST report that, naming the cause. Reporting success for a half-finished operation is the specific failure the Supervisor's promote path already has history with.
+- **FR-005b**: The outcome of a merge MUST distinguish **merged and pushed**, **merged with no remote configured**, and **merged but the push failed** — the last naming its cause. Two of those three read as success today, because "nothing to push" and "pushed" are the same empty answer. Reporting success for a half-finished operation is the specific failure the Supervisor's promote path already has history with. A merge of a branch that does not exist MUST be refused by name, not answered with success.
+
+- **FR-005c**: The merge target MUST be the project's **default** branch, determined from the repository (what its remote calls default, else a conventional name that exists), and MUST NOT be "whatever the project's checkout happens to be on". The existing coupled-repo merge reads the current checkout and falls back to the default only when there is none — correct for a repository BOS controls, wrong for one it merely contributes to. A user who left their project on a topic branch must not find a feature merged into it.
+
+- **FR-005d**: A merge MUST push to the project's configured remote regardless of any auto-push preference. That preference governs *unattended* pushes; choosing Merge is a request to deliver the work, and `050` FR-001a recorded a credential precisely so BOS could. As written against today's mechanism this requirement is the whole of the push: every repository `050` registers is recorded with auto-push off, so a merge would push nothing and report nothing.
+
+- **FR-005e**: Merging MUST be refused while a run is active on that branch, naming the run. Merging out from under a delegation produces exactly the half-delivered state FR-005b exists to prevent, and a refusal the user can retry is better than a branch and a pointer removed beneath a running agent.
+
+- **FR-005f**: A merge MUST NOT commit the user's unrelated working-tree changes as a side effect. Where the project's primary checkout is dirty, the merge MUST advance the ref without touching that working tree.
 
 #### Starting work
 
@@ -196,13 +224,15 @@ A user opens the feature-branch list and sees the branches that exist, organised
 
 - **FR-006c**: Eliciting a branch at the point of a write MUST continue to work. FR-006 is an additional entry point, not a replacement, and MUST route to the same create-and-activate pair — a second branch-creation path is the duplication this product has been burned by most.
 
+- **FR-006d**: The branch MUST exist in the project's repository at that moment, not at first delegation. BrowserOS's branches are created lazily because the Supervisor owns BrowserOS's git and the ref appears with the worktree; a project ref costs a worktree with no clone, no port and no build, and the branch list is derived from refs — so a lazily-created project branch is invisible to the list, to the Repositories page, and to a second conversation. A failure to create it MUST be reported, because unlike the BrowserOS case there is no later step that makes it true.
+
 #### The branch list
 
 - **FR-007**: The feature-branch list MUST contain only branches that **actually exist in a repository**. A branch merged or discarded MUST disappear from it.
 
 - **FR-007a**: A conversation's recorded active branch MUST be **cleared when that branch is merged or discarded**. This is the root cause of the stale list: the declared-name merge scans every conversation file and resurrects every branch any conversation ever targeted, forever. Filtering the list at read time would leave the stale pointer in place and the next reader to consult it wrong.
 
-- **FR-007b**: The declared-but-not-yet-materialised case MUST keep working. Under the Supervisor a BrowserOS branch has no git ref until a delegation provisions it, and dropping declared names entirely would make a just-activated branch unselectable from a second conversation.
+- **FR-007b**: The declared-but-not-yet-materialised case MUST keep working **for BrowserOS branches**, which is the only place it is real: under the Supervisor a BrowserOS branch has no git ref until a delegation provisions it, and dropping declared names entirely would make a just-activated branch unselectable from a second conversation. A project branch has a ref from the moment it is created (FR-006d), so it is never in that state — and a declared project name appearing anyway MUST be grouped by its recorded scope rather than silently dropped or silently filed under BrowserOS.
 
 - **FR-007c**: The list MUST be **grouped by the repository each branch belongs to** — BrowserOS, each marketplace, each project — with each group named. A flat list cannot distinguish `prj/x` in one project from `prj/x` in another, and that distinction decides where a write lands.
 
@@ -214,7 +244,9 @@ A user opens the feature-branch list and sees the branches that exist, organised
 
 - **FR-008a**: An agent MUST NOT need to supply a credential to push to a repository BOS registered. The observed workaround put a live GitLab PAT into a tool-call argument, where it is persisted in the conversation file.
 
-- **FR-008b**: The credential-resolution policy MUST exist once. It is currently hand-copied across git tool modules, and the copies already disagree with the one correct implementation.
+- **FR-008b**: The credential-resolution policy MUST exist once **per process**. It is currently hand-copied across four git tool modules, and all four copies carry the same defect — they ask for a credential by remote name with no provider, which makes the provider-wide OAuth branch unreachable by construction. The Supervisor's own copy is a deliberate, documented duplicate (it cannot import BOS's code at all) and stays; what MUST NOT persist is four copies on one side of that boundary. Any requirement to the contrary would be unimplementable, and claiming it is worse than naming the seam.
+
+- **FR-008c**: A push performed by the Supervisor MUST refresh an expiring OAuth credential, as BOS's own path already does. The Supervisor's credential reader does not, and its refresh-aware wrapper is wired to exactly one call site; a GitLab token lives about two hours, so the merge-time push would fail intermittently in precisely the deployment FR-008 exists for — and intermittently is the hardest way to find it.
 
 #### The model and the documentation
 
@@ -253,8 +285,11 @@ A user opens the feature-branch list and sees the branches that exist, organised
 - **SC-006**: A project branch still exists after a Supervisor restart and reconciliation, including one carrying the legacy `bos/` prefix with a project scope recorded.
 - **SC-007**: The feature-branch list contains no branch that does not exist in a repository, is grouped by repository, and still offers a BrowserOS branch that has been activated but not yet materialised.
 - **SC-008**: No project branch appears in the top toolbar's version control.
-- **SC-009**: Merging a project branch merges into that project's default branch and leaves BrowserOS's base commit unchanged.
-- **SC-010**: A push to a project registered by `050` succeeds with no credential passed by the agent, for a remote recorded with provider-wide OAuth.
+- **SC-009**: Merging a project branch merges into that project's default branch — asserted against a project deliberately left checked out on a different branch — and leaves BrowserOS's base commit unchanged.
+- **SC-009a**: A merge reports which of the three push outcomes occurred, asserted for all three: a project with an OAuth remote, a project with no remote, and a project whose remote rejects the push.
+- **SC-010**: A push to a project registered by `050` succeeds with no credential passed by the agent, for a remote recorded with provider-wide OAuth — including when the stored token is within its refresh window at the moment of the merge.
+- **SC-010a**: A delegation's work is a commit on the project's branch when the run ends — asserted by reading the branch ref, not the worktree — and is still there after the workspace is torn down and re-provisioned, and after a Supervisor restart.
+- **SC-010b**: Listing `/Projects/<id>` includes the repository's dot-prefixed entries, and mounting a project with a dirty working tree produces no commit in it.
 - **SC-011**: The whole of the observed run is reproducible end to end — register a project, start a branch from Build Studio, delegate, write code, verify with the project's own commands, merge — without any step writing outside that project's repository.
 - **SC-012**: `npm run test:unit` green; `npm run test:supervisor` green; `npx tsc --noEmit` and `npm run lint` clean.
 
@@ -262,7 +297,9 @@ A user opens the feature-branch list and sees the branches that exist, organised
 
 - **The scope is already right.** `BranchScope` is declared at branch creation, persisted where the Supervisor can read it, and was recorded correctly in the observed failure. Nothing here re-derives or infers it; the work is to consult it where it is currently ignored.
 - **`050` is the contract, not a starting point.** FR-003a and SC-003 already say BOS develops in the whole repository and that development writes are not confined. This feature implements them; it does not renegotiate them.
-- **Every registered project is reached by symlink.** Registration always links the specs root at the store root inside the repository, so `repoOffset` (`050` FR-003d) is the only safe basis for any path — not an unusual configuration to be handled separately.
+- **Every registered project is reached by symlink.** Registration links the specs root at the store root the method declared, so `repoOffset` (`050` FR-003d) is the only safe basis for any path — never a path derived from the link. That offset is usually one segment inside the repository and is sometimes the repository root itself (no workflow bound, or a root-rooted method); both are ordinary, and FR-004a covers the second rather than treating it as a special case.
 - **A project's toolchain is the project's business.** Every project knows how to build and test itself, and the agent can read that from the project. BOS adding its own opinion would be a second mechanism for something each project already has exactly one of.
 - **Separating workspace from preview is a factoring, not a new path.** BrowserOS-scoped behaviour is unchanged in every respect; what is new is that the BrowserOS-specific half can be absent.
+
+  **With one correction that cost this spec a requirement.** Two steps sit inside the BrowserOS-specific half today without belonging to it: the **commit** of an agent's edits (inside the build) and the **safety commit** before a worktree is reclaimed (inside the BrowserOS boot reconciler). Neither is about building BrowserOS; both are about not losing work in a worktree. Taking the preview away takes them with it unless they are moved — which is FR-003d and FR-003e, and which is the general shape to watch for everywhere else in this feature: a step is only BrowserOS-specific if it is specific to BrowserOS, not if it happens to live in a BrowserOS-named function.
 - **The prefix does most of the exclusion work.** `prj/*` is invisible to BOS's preview restoration, toolbar listing, reclamation and feature-branch guard because none of them can name it. Requirements that would otherwise be exemptions become consequences — with FR-002e as the one deliberate exception, for branches that pre-date the prefix.
