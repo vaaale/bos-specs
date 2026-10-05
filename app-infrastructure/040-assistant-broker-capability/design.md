@@ -493,13 +493,20 @@ caps pattern (which is flat); the deviation is documented and scoped to `assista
   replay in one thread, but the implementer must not open a *second* concurrent
   subscription for the same run→child channel (that reintroduces the out-of-order
   hazard the buffer exists to avoid). Call out in the doc.
-- **Pre-existing `storage` drift (do NOT copy it).** `VALID_CAPS`
-  (`capabilities/route.ts`) and `AppsTab ALL_CAPABILITIES` both currently **omit
-  `storage`** even though `AppCapability` and `CAP_FOR_METHOD` include it — `storage` is
-  grantable at install (manifest/`installItem`) but not via the Settings toggle. `assistant`
-  **must be added to both** `VALID_CAPS` and `AppsTab` so the Settings toggle actually
-  works; do not replicate the `storage` gap. (Flagged for `bos-system-specs/discrepancies.md`;
-  not fixed here to keep blast radius minimal.)
+- **Pre-existing `storage` drift — CLOSED (was: do NOT copy it).** `VALID_CAPS`
+  (`capabilities/route.ts`) and `AppsTab ALL_CAPABILITIES` both **omitted `storage`**
+  even though `AppCapability` and `CAP_FOR_METHOD` included it — `storage` was
+  grantable at install (manifest/`installItem`) but not via the Settings toggle.
+  The second-order effect was worse than the missing checkbox: `PUT` filters the
+  requested set through `VALID_CAPS`, so granting ANY capability from Settings
+  silently **revoked** storage from an app that had it (found while granting
+  `assistant` to the Agentic Text Editor, whose documents, settings and
+  custom-style registry all live there).
+  Fixed: `VALID_CAPS` is now derived from `APP_CAPABILITIES` in `src/os/types.ts`
+  instead of being re-typed, and `AppsTab` has a `storage` row. Pinned by
+  `tests/apps/app-capabilities-route.test.ts`. A hand-written capability list is
+  the pattern not to reintroduce: a stale copy does not reject a grant, it takes
+  the capability away.
 - **SDK surface growth.** Adding `window.__bos.assistant.*` grows the SDK; it must stay
   small and dependency-free (design-heuristic for the SDK). The push listener
   (`__bos_event`) is new plumbing in the SDK; keep it minimal.
