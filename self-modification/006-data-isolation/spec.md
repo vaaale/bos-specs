@@ -33,6 +33,7 @@ The first-run wizard and Settings let the user pick the method; only probe-compa
 
 - Where atomic rename-over-existing is not guaranteed, writes still replace the file; only crash-atomicity degrades to best-effort.
 - Orphaned clones left by a crash MUST be reclaimable (GC).
+- On a cross-mount layout (the canonical data dir and the clone root sit under different mounts of the same filesystem, so a same-filesystem `link(2)` between them still fails with EXDEV), the probe MUST report the same hardlink/reflink availability as the clone layer — when `BOS_CLONE_SOURCE` is set to a same-mount view of the data dir, the probe measures through that view, not through `dataDir()`.
 
 ## Requirements *(mandatory)*
 
