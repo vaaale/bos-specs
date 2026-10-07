@@ -12,7 +12,7 @@
 
 Independent test: a unit test on `parseToolArgs`'s invalid-JSON path asserts the error contains BOTH the `not valid JSON` signal AND the split/re-call guidance, and that the raw echo is preserved.
 
-- [ ] T101: **Write the failing test first.** Create `src/lib/mcp/args.test.ts` with a test that calls `parseToolArgs('<an invalid JSON string>')` (e.g. a truncated object string) and asserts: (a) the returned `error` contains `not valid JSON`; (b) it contains the recovery guidance to **split the argument set across multiple `mcp_tool_call` invocations** (or shorten a long value) and re-call; (c) the raw input is still echoed. Run it and confirm it FAILS on the current code (no hint present).
+- [ ] T101: **Write the failing test first.** Create `tests/mcp/args.test.ts` with a test that calls `parseToolArgs('<an invalid JSON string>')` (e.g. a truncated object string) and asserts: (a) the returned `error` contains `not valid JSON`; (b) it contains the recovery guidance to **split the argument set across multiple `mcp_tool_call` invocations** (or shorten a long value) and re-call; (c) the raw input is still echoed. Run it and confirm it FAILS on the current code (no hint present).
 - [ ] T102: Implement the fix in `src/lib/mcp/args.ts` — append a short, actionable recovery hint to the invalid-JSON `return` (line 20), preserving the existing `args is not valid JSON: ${raw}` text and the raw echo. Do NOT change the return shape or any non-invalid-JSON path.
 - [ ] T103: Re-run the test — confirm it now PASSES.
 
@@ -32,7 +32,7 @@ Independent test: `docs/dev/mcp/mcp.md`'s Gateway section states the `args`-as-J
 ## Coverage & Regression (P1)
 
 - [ ] T401: Ensure ≥60% line AND branch coverage on every modified file. `args.test.ts` MUST cover all `parseToolArgs` branches: invalid JSON (hint), valid object string (parsed), empty/`""`/`null` (`{}`), array JSON string (`must be a JSON object`), and non-string/non-object (`must be a JSON object string`). Add targeted tests for any uncovered branch.
-- [ ] T402: Run the full affected test suite and confirm green. Run typecheck. Confirm the modified files are a subset of the plan's file list (only `src/lib/mcp/args.ts`, `src/lib/assistant/tools/server/mcp.ts`, `src/lib/mcp/args.test.ts`, `docs/dev/mcp/mcp.md`).
+- [ ] T402: Run the full affected test suite and confirm green. Run typecheck. Confirm the modified files are a subset of the plan's file list (only `src/lib/mcp/args.ts`, `src/lib/assistant/tools/server/mcp.ts`, `tests/mcp/args.test.ts`, `docs/dev/mcp/mcp.md`).
 
 ## Notes
 
