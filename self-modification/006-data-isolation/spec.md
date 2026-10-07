@@ -65,6 +65,7 @@ The first-run wizard and Settings let the user pick the method; only probe-compa
 - **SC-002**: Isolation works on a copy-only filesystem (no CoW/hardlinks required).
 - **SC-003**: Only probe-compatible isolation methods are selectable in Settings.
 - **SC-004**: `active` runs with zero clone/overlay overhead when nothing is being previewed.
+- **SC-005**: The isolation methods offered in Settings are exactly the methods the clone layer will actually use on that deployment — on a `BOS_CLONE_SOURCE` single-mount view (e.g. the bastion layout), a hardlink-capable pair reports `hardlink` as selectable rather than silently falling back to `copy` while the UI shows it disabled.
 
 ## Notes
 
