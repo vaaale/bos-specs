@@ -70,3 +70,14 @@ The Developer may modify ONLY these files:
 2. `src/lib/assistant/tools/server/mcp.ts`
 3. `tests/mcp/args.test.ts` (new)
 4. `docs/dev/mcp/mcp.md`
+5. `tests/assistant/mcp-server-list-allowlist.test.ts` (existing; one stale assertion updated)
+
+### Scope note — cross-file consequence (added 2026-10-07 during `implement`)
+
+FR-001 mandates *appending* a recovery hint to the existing `args is not valid JSON: ${raw}` string. A pre-existing spec-048 test in `tests/assistant/mcp-server-list-allowlist.test.ts` asserts that exact old string by equality:
+
+```ts
+expect(raw).toBe("Error: args is not valid JSON: {not json");
+```
+
+That assertion is invalidated by the mandated behavior change — a **stale expectation, not a defect** (its intent, "malformed `args` produces the documented `not valid JSON` error", still holds; only the exact-match form is outdated). It MUST be updated to a prefix + hint-containment assertion, or the suite stays red; there is no way to keep it green while changing the error string at all. It is the only repo-wide reference to the exact string (verified by grep). File #5 is therefore a necessary consequence of FR-001, not scope creep — it is a test file for the *existing* MCP gateway, not a new `src/` subsystem (FR-015a unchanged).

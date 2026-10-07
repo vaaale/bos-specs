@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-07
 
-**Status**: Draft
+**Status**: Implemented on preview (`bos/self-heal-0060`) — pending user Promote. Self-heal case EHS-0060.
 
 **App Target**: bos-core
 
@@ -115,7 +115,7 @@ The MCP developer doc (`docs/dev/mcp/mcp.md`, Gateway section) describes the age
 - **SC-002**: The `mcp_tool_call` `args` parameter description, as exposed to the agent, contains size/complexity fragility + split-across-calls guidance while preserving the original contract wording.
 - **SC-003**: Every non-invalid-JSON `parseToolArgs` path is behaviorally unchanged: valid object string → parsed object; empty/`null` → `{}`; array string → `must be a JSON object` error; non-string/non-object → `must be a JSON object string` error.
 - **SC-004**: `docs/dev/mcp/mcp.md`'s Gateway section describes the `args`-as-JSON-string contract and the split remedy.
-- **SC-005**: The actually-modified files are a subset of the plan's file list (verified at converge): `src/lib/mcp/args.ts`, `src/lib/assistant/tools/server/mcp.ts`, `tests/mcp/args.test.ts` (new), and `docs/dev/mcp/mcp.md`.
+- **SC-005**: The actually-modified files are a subset of the plan's file list (verified at converge): `src/lib/mcp/args.ts`, `src/lib/assistant/tools/server/mcp.ts`, `tests/mcp/args.test.ts` (new), `docs/dev/mcp/mcp.md`, and `tests/assistant/mcp-server-list-allowlist.test.ts` (one stale exact-equality assertion updated to a prefix + hint-containment assertion, as a necessary consequence of FR-001).
 
 ## Assumptions & Dependencies
 
