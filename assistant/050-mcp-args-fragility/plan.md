@@ -50,10 +50,12 @@ No `research.md` / `data-model.md` / `contracts/` — the change is a two-string
 src/
 ├── lib/
 │   ├── mcp/
-│   │   ├── args.ts              # MODIFY: append recovery hint to invalid-JSON return (line 20)
-│   │   └── args.test.ts         # NEW: unit tests — invalid-JSON hint + preserved paths
+│   │   └── args.ts              # MODIFY: append recovery hint to invalid-JSON return (line 20)
 │   └── assistant/tools/server/
 │       └── mcp.ts               # MODIFY: extend mcp_tool_call `args` param description
+tests/
+└── mcp/
+    └── args.test.ts             # NEW: unit tests — invalid-JSON hint + preserved paths (Playwright unit runner)
 docs/
 └── dev/mcp/mcp.md               # MODIFY: document args-as-JSON-string contract + split remedy
 ```
@@ -66,5 +68,5 @@ The Developer may modify ONLY these files:
 
 1. `src/lib/mcp/args.ts`
 2. `src/lib/assistant/tools/server/mcp.ts`
-3. `src/lib/mcp/args.test.ts` (new)
+3. `tests/mcp/args.test.ts` (new)
 4. `docs/dev/mcp/mcp.md`
