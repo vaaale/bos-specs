@@ -115,11 +115,11 @@ The MCP developer doc (`docs/dev/mcp/mcp.md`, Gateway section) describes the age
 - **SC-002**: The `mcp_tool_call` `args` parameter description, as exposed to the agent, contains size/complexity fragility + split-across-calls guidance while preserving the original contract wording.
 - **SC-003**: Every non-invalid-JSON `parseToolArgs` path is behaviorally unchanged: valid object string → parsed object; empty/`null` → `{}`; array string → `must be a JSON object` error; non-string/non-object → `must be a JSON object string` error.
 - **SC-004**: `docs/dev/mcp/mcp.md`'s Gateway section describes the `args`-as-JSON-string contract and the split remedy.
-- **SC-005**: The actually-modified files are a subset of the plan's file list (verified at converge): `src/lib/mcp/args.ts`, `src/lib/assistant/tools/server/mcp.ts`, `src/lib/mcp/args.test.ts` (new), and `docs/dev/mcp/mcp.md`.
+- **SC-005**: The actually-modified files are a subset of the plan's file list (verified at converge): `src/lib/mcp/args.ts`, `src/lib/assistant/tools/server/mcp.ts`, `tests/mcp/args.test.ts` (new), and `docs/dev/mcp/mcp.md`.
 
 ## Assumptions & Dependencies
 
 - Builds on `014-mcp-tool-gateway` (the gateway and the agent-facing `mcp_tool_call`). This feature closes the non-actionable-error + missing-guidance gap the diagnostic (EHS-0060) found; it does not re-spec the gateway.
 - The `args`-as-JSON-string design is retained per `014`'s stated rationale; only the description/error text and the developer doc change. No change to the gateway's schema-validation path (`src/lib/mcp/gateway.ts`) or to the MCP client.
-- A unit test for `parseToolArgs` does not currently exist (it is pure and self-described as unit-testable); this feature adds `src/lib/mcp/args.test.ts` to lock the new hint and the preserved paths.
+- A unit test for `parseToolArgs` does not currently exist (it is pure and self-described as unit-testable); this feature adds `tests/mcp/args.test.ts` (colocated with the other MCP unit tests under the Playwright unit runner) to lock the new hint and the preserved paths.
 - Scope boundaries: no Supervisor, build-config, or `src/lib/self-heal/**` change; no hard payload cap; the fix is prose in the error string + parameter description + docs only.
