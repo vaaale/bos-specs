@@ -23,7 +23,7 @@ The shared chat stack (Assistant app, Build Studio, any embedder of the chat com
 **Decisions locked in during triage (see issue #57 thread):**
 - The injected message is delivered as a **plain `user` message at the next turn boundary** — no synthetic text wrapper. This matches the industry steering convention (GitHub Copilot SDK, OpenAI mid-turn steering, pi-llm-agent, Claude Code/Cursor).
 - Delivery is **next-turn-boundary** (no mid-generation abort in v1).
-- A distinct **"injected (mid-run)" UI tag** is required so the message reads as additional info, not a new task.
+- A distinct **"Steering" UI tag** is required so the message reads as additional info, not a new task.
 - **Cross-window** steering is required (an injection reaches a conversation running in another window).
 - A **finish notification** for background conversations is required.
 
@@ -41,7 +41,7 @@ While an agent is generating a long answer or running a tool chain, the user typ
 
 **Acceptance Scenarios**:
 
-1. **Given** a run is streaming a long answer, **When** I type "try searching for X instead" and press Enter, **Then** the message renders immediately and is tagged "injected (mid-run)", and **Then** the agent's next model turn incorporates it and the run does not restart.
+1. **Given** a run is streaming a long answer, **When** I type "try searching for X instead" and press Enter, **Then** the message renders immediately and is tagged "Steering", and **Then** the agent's next model turn incorporates it and the run does not restart.
 2. **Given** no run is active, **When** I type a message and press Enter, **Then** it behaves exactly as today — a fresh run is started (the steer path is a no-op fallback to normal send).
 3. **Given** a run is active and two steering messages are sent within the same step window, **When** the next model turn is reached, **Then** both messages are appended in arrival order and the turn sees both before continuing.
 4. **Given** a run is active and I send a steering message **while a long tool call is executing**, **When** the tool call settles and the next model turn begins, **Then** the steering message is present in the transcript at that boundary (never inserted mid-tool-call).
@@ -106,7 +106,7 @@ The user has conversation 1 running in one window (or tab) and opens it in anoth
 - **FR-006**: When `mode: "steer"` is sent but the conversation is idle (no active run), the system MUST fall back to starting a normal run (graceful no-op of the steer path).
 - **FR-007**: A plain send (no `mode`) into an active run MUST continue to return `409`, and `editOfMessageId` (edit-resubmit) MUST continue to auto-cancel + restart. The `mode` field MUST be orthogonal to `editOfMessageId`.
 - **FR-008**: On each injection, the system MUST emit an `injected_message` run event (carrying the message) so all attached viewers render it live.
-- **FR-009**: Injected mid-run messages MUST be rendered in the transcript with a distinct **"injected (mid-run)" tag** so they read as additional information, not a new task.
+- **FR-009**: Injected mid-run messages MUST be rendered in the transcript with a distinct **"Steering" tag** so they read as additional information, not a new task.
 - **FR-010**: If a run finishes before the next model turn drains the inbox, pending injected messages MUST be persisted to the transcript as normal queued user messages (not dropped).
 
 **Concurrent-conversation visibility (P2)**
@@ -122,7 +122,7 @@ The user has conversation 1 running in one window (or tab) and opens it in anoth
 ### Key Entities
 
 - **Run (per-conversation)**: the existing server-owned execution. Gains a **per-run inbox** (ordered queue of pending injected messages) and continues to own the monotonic run event log (now including `injected_message` events).
-- **Injected (steering) message**: a persisted `user` message with a distinguishing "injected (mid-run)" marker, enqueued to a run's inbox and drained at the next turn boundary.
+- **Injected (steering) message**: a persisted `user` message with a distinguishing marker that renders a "Steering" tag in the transcript, enqueued to a run's inbox and drained at the next turn boundary.
 - **Conversation "running" state**: a derived/live indicator (from active-run status) surfaced per conversation in the list, cleared on `run_finished`.
 
 ---
