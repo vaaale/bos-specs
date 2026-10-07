@@ -99,7 +99,7 @@ Add one variant to `RunEventInput`:
 
 ### 5. Injected-message marker (`messages.ts` + transcript render)
 
-Add `injected?: boolean` to `ChatMessage`. The loop sets it when persisting a drained injection, so a **fresh conversation reload** (which reads the persisted transcript, not the event log) still renders the "injected (mid-run)" tag. Live viewers render the tag from the `injected_message` event. One rendering path: message has `injected === true` → distinct tag (FR-009).
+Add `injected?: boolean` to `ChatMessage`. The loop sets it when persisting a drained injection, so a **fresh conversation reload** (which reads the persisted transcript, not the event log) still renders the "Steering" tag. Live viewers render the tag from the `injected_message` event. One rendering path: message has `injected === true` → distinct tag (FR-009).
 
 ### 6. Composer stays enabled (`ChatInputV2`)
 
