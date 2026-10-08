@@ -25,3 +25,35 @@
   the unit suite, `tsc --noEmit` and `npm run lint` only. The worktree has no hydrating
   dev server of its own and `:3000` serves a different branch, so the acceptance
   scenarios were not exercised end-to-end in a browser.
+
+## 041-settings-cleanup (implementation pass, 2026-10-08)
+
+- **Deviation from tasks.md "Tests: No automated test files are requested"** — added
+  `tests/config/settings-module-order.test.ts` (5 tests). US3 is a real behaviour change
+  (the sidebar comparator), and AGENTS.md §1.1 makes a test for a behaviour change
+  non-negotiable regardless of what the spec requests. The test pins the *properties*
+  (sorted-ness, `system-tools` absence, `run-command` survival, the namespace tie-break)
+  rather than a pinned title list, so it survives modules being added — which is SC-005.
+  Verified red: restoring the old comparator + registration fails 3 of the 5.
+  `tests/config/` is a new directory; `tests/` already carries dirs beyond AGENTS.md §3's
+  enumerated list (`components`, `os`, `integrations`), so this follows the convention.
+- **FR-004 is vacuous in this worktree** — `data/config/system-tools.json` does not exist
+  here (`data/` is gitignored and empty on a fresh checkout). Nothing was deleted and no
+  migration/cleanup code was added, so ADR-3 holds for installs where the file *does*
+  exist; it simply had nothing to leave in place locally.
+- **Docs touched beyond plan.md's six source files** (T015 explicitly authorises this):
+  `docs/dev/architecture-overview.md` listed `system-tools` as a live config namespace
+  (now false); `docs/dev/configuration/configuration-system.md` documented `order` as the
+  thing that positions a tab and told the "Adding a tab" recipe to pick one (now inert —
+  both corrected, with the `order` column kept as historical reference);
+  `docs/usage/settings/overview.md`'s tab table was in arbitrary order and is now A→Z to
+  match the sidebar, with the "Assistant" row renamed **Agents** (the registry's actual
+  title). `docs/dev/run-command/run-command.md`'s "Replaces the old unsandboxed `runBash`
+  tool" and `docs/dev/assistant/actions-and-tools.md`'s "Knowledge bases" index-block
+  mention were both left as-is: the first is accurate history, the second describes
+  `buildKbIndexBlock`, which FR-009 preserves.
+- **SC-001/SC-002 not verified in a browser** — no hydrating dev server on this branch
+  (see the 052 note above). The sidebar order was instead verified by calling
+  `listConfigSchemas()` through the unit runner, which is the exact array `GET /api/config`
+  returns: 21 modules, A→Z, no System Tools. `POST /api/system/bash` → 404 follows from
+  the route file's deletion.
