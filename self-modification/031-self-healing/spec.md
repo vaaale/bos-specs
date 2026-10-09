@@ -219,6 +219,7 @@ A Self-Heal run that gets stuck (e.g. the agent repeatedly calling the same fail
 - **FR-009**: For scope class `a` (environmental/transient), the system MUST close the case with status `env-only` and MUST NOT make any durable change. An optional user-facing suggestion MAY be included in the case record.
 
 - **FR-010**: For scope class `b` (agent misuse / skill gap), the system MUST propose a specific skill patch or memory lesson as part of the diagnostics report. Application of the proposed change MUST be consent-gated: the user approves the specific edit before it is applied.
+  - A skill is a DIRECTORY, not a single file, so a proposed skill patch MAY target any file bundled with it (a `references/` doc, a `scripts/` file, a template) and not only the SKILL.md body. The proposed edit MAY name that file by its path inside the skill (an optional `file` field, e.g. `references/design.md`); when it does not, application MUST resolve the anchor across the whole skill and MUST apply it only when exactly one file contains it — an anchor present in several files MUST be refused as ambiguous, naming the candidates, rather than guessed at.
 
 - **FR-011**: For scope class `c` (workflow/data gap), the system MUST propose a specific workflow definition edit. Application MUST be consent-gated.
 
