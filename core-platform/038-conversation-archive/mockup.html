@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en" style="color-scheme: dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Conversation Archive — UI Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background:
+      radial-gradient(1200px 700px at 78% -10%, rgba(120,90,255,0.10), transparent 60%),
+      radial-gradient(900px 600px at 10% 110%, rgba(56,189,248,0.06), transparent 55%),
+      #0b0d13;
+    color: #fff;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); background-clip: content-box; }
+  .lucide { stroke-width: 1.75; }
+  /* subtle entrance for the dropdown menu */
+  @keyframes pop { from { opacity: 0; transform: translateY(-3px) scale(0.98); } to { opacity: 1; transform: none; } }
+  .menu-pop { animation: pop 90ms ease-out; }
+</style>
+</head>
+<body>
+  <div class="flex min-h-full flex-col items-center gap-5 p-6">
+
+    <!-- Mockup header / scenario hint (NOT part of the app) -->
+    <div class="w-full max-w-[880px]">
+      <div class="flex items-center gap-2">
+        <span class="rounded bg-violet-500/30 px-2 py-0.5 text-[11px] font-semibold text-violet-200">UI MOCKUP</span>
+        <h1 class="text-sm font-semibold text-white/90">Conversation Archive — Assistant app</h1>
+      </div>
+      <p class="mt-1.5 max-w-[640px] text-xs leading-relaxed text-white/45">
+        Click any row’s <b class="text-white/70">⋯</b> menu to see the <b class="text-white/70">Archive</b> /
+        <b class="text-white/70">Unarchive</b> affordance. Click a conversation to open it — archived ones open
+        <b class="text-white/70">read-only</b>. The <b class="text-white/70">Archived</b> section is
+        <b class="text-white/70">collapsed by default</b> (archived chats stay out of the way, not visible at rest) —
+        click its header to expand it. This is a static visual proxy of the real Assistant window, not live code.
+      </p>
+    </div>
+
+    <!-- The Assistant window -->
+    <div class="flex h-[640px] w-[880px] flex-col overflow-hidden rounded-xl border border-white/10 bg-[#15171e] shadow-2xl select-none">
+      <!-- Titlebar (window chrome) -->
+      <div class="flex shrink-0 items-center gap-3 border-b border-white/10 bg-white/[0.03] px-3 py-2">
+        <div class="flex items-center gap-2">
+          <span class="h-3 w-3 rounded-full" style="background:#ff5f57"></span>
+          <span class="h-3 w-3 rounded-full" style="background:#febc2e"></span>
+          <span class="h-3 w-3 rounded-full" style="background:#28c840"></span>
+        </div>
+        <div class="flex flex-1 items-center justify-center gap-1.5 text-xs font-medium text-white/70">
+          <i data-lucide="bot" class="h-3.5 w-3.5 text-violet-300"></i>
+          Assistant
+        </div>
+        <div class="w-[64px]"></div>
+      </div>
+
+      <!-- Body: panel + chat -->
+      <div class="flex min-h-0 flex-1">
+        <!-- Conversation panel (matches ConversationPanel.tsx) -->
+        <aside class="flex w-[252px] shrink-0 flex-col border-r border-white/10 bg-white/[0.02] select-none">
+          <!-- Header: Chats + new -->
+          <div class="flex items-center justify-between px-2 py-2">
+            <span class="text-xs font-semibold uppercase tracking-wide text-white/40">Chats</span>
+            <button title="New conversation"
+              class="rounded p-1 text-white/60 hover:bg-white/10 hover:text-white">
+              <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+            </button>
+          </div>
+
+          <!-- Scrollable list -->
+          <div class="min-h-0 flex-1 space-y-2 overflow-auto px-1.5 pb-3">
+
+            <!-- Agent bucket: Assistant -->
+            <div>
+              <div class="flex items-center justify-between px-1 py-0.5">
+                <span class="text-[10px] font-semibold uppercase tracking-wide text-white/35">Assistant</span>
+                <button title="New Assistant conversation"
+                  class="rounded p-0.5 text-white/40 hover:bg-white/10 hover:text-white">
+                  <i data-lucide="plus" class="h-3 w-3"></i>
+                </button>
+              </div>
+              <div id="defaultList" class="space-y-0.5"></div>
+            </div>
+
+            <!-- Collapsible Archived section — CLOSED by default: rows hidden at rest (FR-008) -->
+            <div class="border-t border-white/10 pt-1.5">
+              <button id="archToggle" type="button" data-act="toggle-arch"
+                class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-wide text-white/45 hover:bg-white/5 hover:text-white/70"
+                title="Click to expand / collapse archived conversations">
+                <i data-lucide="chevron-right" id="archChevron" class="h-3 w-3 shrink-0 text-white/40 transition-transform"></i>
+                <i data-lucide="archive" class="h-3 w-3 shrink-0"></i>
+                Archived
+                <span id="archCount" class="rounded bg-white/10 px-1 text-[9px] font-medium text-white/50">0</span>
+              </button>
+              <div id="archivedList" class="hidden space-y-0.5"></div>
+            </div>
+
+          </div>
+        </aside>
+
+        <!-- Chat surface -->
+        <main id="chat" class="flex min-h-0 flex-1 flex-col"></main>
+      </div>
+    </div>
+
+    <!-- Footnote -->
+    <p class="text-[11px] text-white/30">
+      Style: dark-only opacity palette, <code class="font-mono text-white/40">text-xs</code> density, lucide icons — per BOS style guide.
+    </p>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="pointer-events-none fixed bottom-6 left-1/2 z-[300000] -translate-x-1/2 opacity-0 transition-opacity"></div>
+
+<script>
+  // ── Mock data ────────────────────────────────────────────────────────────
+  let convs = [
+    { id: "c1", title: "Design the onboarding flow", agent: "Assistant", archived: false, msgs: [
+      { role: "user", text: "Can you sketch the onboarding flow for new users?" },
+      { role: "agent", text: "Sure — I'd start with a 3-step checklist: connect a provider, pick an agent, send a first message. Want me to mock each step?" },
+      { role: "user", text: "Yes, and keep it skippable." },
+      { role: "agent", text: "Done. Each step has a “Skip for now” affordance and the checklist is persistent across sessions." },
+    ]},
+    { id: "c2", title: "Fix the login bug", agent: "Assistant", archived: false, msgs: [
+      { role: "user", text: "Login fails with a 401 after token refresh." },
+      { role: "agent", text: "Looks like the refresh races the in-flight call. I'll queue outgoing requests while a refresh is pending." },
+    ]},
+    { id: "c3", title: "Draft launch email", agent: "Assistant", archived: false, msgs: [
+      { role: "user", text: "Draft a short launch email for the new dock." },
+      { role: "agent", text: "Here's a tight 3-paragraph draft with one CTA. Want a more playful tone?" },
+    ]},
+    { id: "c4", title: "Summarize meeting notes", agent: "Assistant", archived: false, msgs: [
+      { role: "user", text: "Summarize these notes into action items." },
+      { role: "agent", text: "Four action items extracted, each with an owner and due date." },
+    ]},
+
+    // Archived
+    { id: "a1", title: "Old deploy runbook", agent: "Assistant", archived: true, msgs: [
+      { role: "user", text: "Walk me through the deploy runbook." },
+      { role: "agent", text: "Step 1: build + lint. Step 2: tag the release. Step 3: roll out to canary, watch error rate, then full." },
+      { role: "user", text: "Perfect, archive this once we're done." },
+      { role: "agent", text: "Noted. This thread is safe to archive whenever — nothing will be deleted." },
+    ]},
+    { id: "a2", title: "Q1 planning brainstorm", agent: "Assistant", archived: true, msgs: [
+      { role: "user", text: "Brainstorm 5 bets for Q1." },
+      { role: "agent", text: "1) Archive & declutter. 2) Cross-app conversation state. 3) Faster cold start. 4) Event bus tooling. 5) Onboarding polish." },
+    ]},
+  ];
+
+  let activeId = "a1";      // first paint: an archived conversation, opened read-only
+  let openMenu = "c1";      // first paint: kebab open on a default-list row → shows “Archive”
+  let archOpen = false;     // Archived section CLOSED by default — archived chats are not visible at rest
+
+  const $ = (id) => document.getElementById(id);
+
+  // ── Row rendering ────────────────────────────────────────────────────────
+  function rowHTML(c) {
+    const active = c.id === activeId;
+    const menuOpen = c.id === openMenu;
+    const menu = c.archived
+      ? menu(c.id, [
+          ["pencil", "Rename", "noop"],
+          ["archive-restore", "Unarchive", "unarchive"],
+          ["trash-2", "Delete", "delete"],
+        ])
+      : menu(c.id, [
+          ["pencil", "Rename", "noop"],
+          ["archive", "Archive", "archive"],
+          ["trash-2", "Delete", "delete"],
+        ]);
+    return `
+      <div class="group relative flex items-center gap-1.5 rounded px-2 py-1.5 text-xs ${
+        active ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"
+      }">
+        <i data-lucide="message-square" class="h-3 w-3 shrink-0 text-white/40"></i>
+        <button data-act="open" data-id="${c.id}" class="flex-1 truncate text-left" title="${c.title}">${c.title}</button>
+        <button data-act="menu" data-id="${c.id}" title="More"
+          class="rounded p-0.5 text-white/40 hover:bg-white/10 hover:text-white ${menuOpen ? "" : "opacity-0 group-hover:opacity-100"}">
+          <i data-lucide="more-vertical" class="h-3.5 w-3.5"></i>
+        </button>
+        ${menuOpen ? menu : ""}
+      </div>`;
+  }
+
+  function menu(id, items) {
+    return `
+      <div class="menu-pop absolute right-1.5 top-full z-50 mt-1 w-40 rounded-lg border border-white/10 bg-[#15171e] p-1 shadow-2xl">
+        ${items.map(([icon, label, act]) => `
+          <button data-act="${act}" data-id="${id}"
+            class="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-white/70 hover:bg-white/10 hover:text-white">
+            <i data-lucide="${icon}" class="h-3.5 w-3.5 opacity-70"></i>${label}
+          </button>
+        `).join("")}
+      </div>`;
+  }
+
+  // ── Chat surface ─────────────────────────────────────────────────────────
+  function bubbles(msgs) {
+    return msgs.map((m) => m.role === "user"
+      ? `<div class="flex justify-end">
+           <div class="max-w-[75%] rounded-xl rounded-br-sm bg-white/10 px-3 py-2 text-sm text-white/90">${m.text}</div>
+         </div>`
+      : `<div class="flex items-start gap-2">
+           <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-violet-500/30">
+             <i data-lucide="bot" class="h-3.5 w-3.5 text-violet-200"></i>
+           </span>
+           <div class="max-w-[75%] rounded-xl rounded-tl-sm bg-white/[0.06] px-3 py-2 text-sm text-white/85">${m.text}</div>
+         </div>`
+    ).join("");
+  }
+
+  function chatHTML() {
+    const c = convs.find((x) => x.id === activeId);
+    if (!c) return `<div class="flex flex-1 items-center justify-center text-xs text-white/40">No conversation selected</div>`;
+    const readOnly = c.archived;
+
+    const banner = readOnly ? `
+      <div class="flex shrink-0 items-center gap-2 border-b border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+        <i data-lucide="archive" class="h-3.5 w-3.5 shrink-0"></i>
+        <span class="flex-1">This conversation is <b>archived</b> and read-only. Nothing has been deleted.</span>
+        <button data-act="unarchive" data-id="${c.id}"
+          class="shrink-0 rounded bg-amber-400/20 px-2 py-1 font-medium text-amber-50 hover:bg-amber-400/30">
+          Unarchive to continue
+        </button>
+      </div>` : "";
+
+    const composer = readOnly ? `
+      <div class="flex shrink-0 items-center gap-2 border-t border-white/10 bg-white/[0.02] px-3 py-2.5">
+        <div class="flex flex-1 items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/30">
+          <i data-lucide="lock" class="h-3.5 w-3.5"></i>
+          Unarchive this conversation to send a message
+        </div>
+      </div>`
+    : `
+      <div class="flex shrink-0 items-end gap-2 border-t border-white/10 bg-white/[0.02] px-3 py-2.5">
+        <textarea rows="1" placeholder="Message ${c.title}…"
+          class="flex-1 resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 outline-none placeholder:text-white/30 focus:border-white/30"></textarea>
+        <button title="Send" class="rounded-lg bg-white/10 p-2 text-white/80 hover:bg-white/20">
+          <i data-lucide="arrow-up" class="h-4 w-4"></i>
+        </button>
+      </div>`;
+
+    return `
+      <div class="flex shrink-0 items-center gap-2 border-b border-white/10 px-3 py-2">
+        <i data-lucide="message-square" class="h-3.5 w-3.5 text-white/40"></i>
+        <span class="text-xs font-medium text-white/80">${c.title}</span>
+        ${readOnly
+          ? `<span class="ml-auto flex items-center gap-1 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/50"><i data-lucide="lock" class="h-3 w-3"></i>Read-only</span>`
+          : `<span class="ml-auto flex items-center gap-1 rounded bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-200"><i data-lucide="check" class="h-3 w-3"></i>Active</span>`}
+      </div>
+      ${banner}
+      <div class="min-h-0 flex-1 space-y-3 overflow-auto p-4 select-text">${bubbles(c.msgs)}</div>
+      ${composer}`;
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  function render() {
+    const active = convs.filter((c) => !c.archived);
+    const archived = convs.filter((c) => c.archived);
+    $("defaultList").innerHTML = active.map(rowHTML).join("");
+
+    // Archived section: collapsible, CLOSED by default. Rows render only when open.
+    const archList = $("archivedList");
+    archList.classList.toggle("hidden", !archOpen);
+    archList.innerHTML = archOpen
+      ? (archived.length
+          ? archived.map(rowHTML).join("")
+          : `<div class="px-2 py-1.5 text-[11px] text-white/30">Nothing archived yet.</div>`)
+      : "";
+    $("archCount").textContent = String(archived.length);
+
+    // Chevron: points right when closed, rotates to down when open.
+    const chev = $("archChevron");
+    if (chev) chev.classList.toggle("rotate-90", archOpen);
+
+    $("chat").innerHTML = chatHTML();
+    try { lucide.createIcons(); } catch (e) {}
+  }
+
+  // ── Toast ────────────────────────────────────────────────────────────────
+  let toastTimer;
+  function toast(msg, icon = "check") {
+    const t = $("toast");
+    t.innerHTML = `<div class="flex items-center gap-2 rounded-lg border border-white/10 bg-[#15171e] px-3 py-2 text-xs text-white/80 shadow-2xl">
+        <i data-lucide="${icon}" class="h-3.5 w-3.5 text-emerald-300"></i>${msg}</div>`;
+    t.classList.remove("opacity-0");
+    try { lucide.createIcons(); } catch (e) {}
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.add("opacity-0"), 2200);
+  }
+
+  // ── Events (delegated) ───────────────────────────────────────────────────
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-act]");
+    // click outside a menu closes it
+    if (!el || !el.closest(".menu-pop") && (!el.dataset.act || el.dataset.act !== "menu")) {
+      if (openMenu && (!el || (el.dataset.act !== "menu"))) openMenu = null;
+    }
+    if (!el || !el.dataset.act) { if (openMenu) { openMenu = null; render(); } return; }
+
+    const act = el.dataset.act;
+    const id = el.dataset.id;
+    const c = convs.find((x) => x.id === id);
+
+    if (act === "open") { activeId = id; openMenu = null; render(); return; }
+
+    if (act === "menu") { openMenu = openMenu === id ? null : id; render(); return; }
+
+    if (act === "archive") {
+      if (!c) return; c.archived = true; openMenu = null;
+      toast(`“${c.title}” archived — find it under Archived`, "archive");
+      render(); return;
+    }
+    if (act === "unarchive") {
+      if (!c) return; c.archived = false; openMenu = null;
+      toast(`“${c.title}” restored to your chats`, "archive-restore");
+      render(); return;
+    }
+    if (act === "delete") {
+      if (!c) return;
+      const name = c.title;
+      convs = convs.filter((x) => x.id !== id);
+      if (activeId === id) activeId = convs[0]?.id ?? null;
+      openMenu = null;
+      toast(`“${name}” deleted`, "trash-2");
+      render(); return;
+    }
+    if (act === "toggle-arch") { archOpen = !archOpen; openMenu = null; render(); return; }
+
+    // "noop" (Rename) — just close menu
+    openMenu = null; render();
+  });
+
+  render();
+</script>
+</body>
+</html>

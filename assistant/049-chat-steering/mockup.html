@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup — Chat Steering & Concurrent Conversations (#57)</title>
+<style>
+  :root{
+    --bg:#0e0f12; --panel:#15171c; --panel-2:#1b1e24; --line:#262a33;
+    --txt:#e7e9ee; --muted:#9aa1ad; --faint:#6b7280;
+    --accent:#5b8cff; --accent-soft:#1f2b45;
+    --running:#34d399; --running-soft:rgba(52,211,153,.15);
+    --inject:#f5b544; --inject-soft:rgba(245,181,68,.13); --inject-line:rgba(245,181,68,.4);
+    --user:#20262f; --ok:#34d399;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--txt);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  }
+  .bar{
+    display:flex; align-items:center; gap:12px; padding:10px 16px;
+    border-bottom:1px solid var(--line); background:var(--panel);
+    font-size:13px; color:var(--muted); flex-shrink:0;
+  }
+  .bar .title{color:var(--txt); font-weight:600}
+  .bar .badge{font-size:11px; color:var(--faint); border:1px solid var(--line); border-radius:999px; padding:2px 8px}
+  .bar .spacer{flex:1}
+  .layout{display:flex; flex:1; min-height:0}
+  /* ---- Conversation panel ---- */
+  .convs{width:280px; flex-shrink:0; border-right:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column}
+  .convs .head{padding:12px 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line)}
+  .convs .head h3{margin:0; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); font-weight:600}
+  .convs .new{font-size:12px; color:var(--accent); background:var(--accent-soft); border:1px solid transparent; border-radius:8px; padding:4px 10px; cursor:pointer}
+  .convs .list{overflow:auto; flex:1; min-height:0; padding:6px}
+  .conv{display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:9px; cursor:pointer; position:relative}
+  .conv:hover{background:var(--panel-2)}
+  .conv.active{background:var(--panel-2); box-shadow:inset 0 0 0 1px var(--line)}
+  .conv .name{font-size:13px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .conv .sub{font-size:11px; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1}
+  .conv .row{display:flex; align-items:center; gap:6px; flex:1; min-width:0}
+  .conv .time{font-size:11px; color:var(--faint); flex-shrink:0}
+  .dot{width:8px; height:8px; border-radius:50%; flex-shrink:0}
+  .dot.running{background:var(--running); box-shadow:0 0 0 0 var(--running); animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.5)}70%{box-shadow:0 0 0 6px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+  .dot.just-done{background:var(--ok)}
+  .conv .ring{font-size:10px; color:var(--faint); background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:1px 6px}
+  /* ---- Chat main ---- */
+  .chat{flex:1; display:flex; flex-direction:column; min-width:0; background:var(--bg)}
+  .chat .cbar{display:flex; align-items:center; gap:10px; padding:10px 18px; border-bottom:1px solid var(--line); flex-shrink:0}
+  .chat .cbar .cname{font-weight:600; font-size:14px}
+  .runpill{display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--running); background:var(--running-soft); border-radius:999px; padding:2px 9px}
+  .runpill .dot{width:6px;height:6px}
+  .transcript{flex:1; overflow:auto; min-height:0; padding:18px; display:flex; flex-direction:column; gap:14px}
+  .msg{display:flex; flex-direction:column; gap:4px; max-width:76%}
+  .msg.user{align-self:flex-end; align-items:flex-end}
+  .msg.agent{align-self:flex-start; align-items:flex-start}
+  .who{font-size:11px; color:var(--faint); display:flex; align-items:center; gap:6px}
+  .bubble{padding:10px 13px; border-radius:var(--radius); font-size:13.5px}
+  .msg.user .bubble{background:var(--user); border:1px solid var(--line); border-bottom-right-radius:4px}
+  .msg.agent .bubble{background:var(--panel-2); border:1px solid var(--line); border-bottom-left-radius:4px}
+  /* injected message */
+  .msg.inject .bubble{background:var(--inject-soft); border:1px solid var(--inject-line)}
+  .tag-inject{display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:600; letter-spacing:.02em; color:var(--inject); text-transform:none}
+  .tag-inject .i{width:11px;height:11px;border-radius:3px;background:var(--inject);color:#1a1405;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800}
+  /* streaming indicator */
+  .streaming{display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); padding:2px 2px 8px}
+  .streaming .bars{display:inline-flex; gap:3px; align-items:flex-end; height:12px}
+  .streaming .bars span{width:3px; background:var(--accent); border-radius:2px; animation:bar 1.1s infinite ease-in-out}
+  .streaming .bars span:nth-child(1){height:6px; animation-delay:0s}
+  .streaming .bars span:nth-child(2){height:12px; animation-delay:.15s}
+  .streaming .bars span:nth-child(3){height:8px; animation-delay:.3s}
+  @keyframes bar{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+  /* ---- Composer ---- */
+  .composer{flex-shrink:0; border-top:1px solid var(--line); background:var(--panel); padding:12px 18px}
+  .compose-box{background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius); padding:10px 12px}
+  .compose-box.running{border-color:rgba(91,140,255,.45)}
+  .hint{display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--muted); margin-bottom:8px}
+  .hint b{color:var(--accent); font-weight:600}
+  .hint .i{width:13px;height:13px;border-radius:4px;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+  textarea{width:100%; resize:none; background:transparent; border:none; outline:none; color:var(--txt); font:inherit; min-height:34px}
+  textarea::placeholder{color:var(--faint)}
+  .compose-actions{display:flex; align-items:center; margin-top:8px}
+  .compose-actions .left{flex:1; display:flex; align-items:center; gap:8px; font-size:11px; color:var(--faint)}
+  .send{font-size:12.5px; font-weight:600; color:#fff; background:var(--accent); border:none; border-radius:8px; padding:6px 16px; cursor:pointer}
+  .send.steer{background:linear-gradient(90deg,var(--accent),#7aa0ff); box-shadow:0 0 0 1px rgba(91,140,255,.35)}
+  /* ---- Toast ---- */
+  .toast{position:fixed; right:18px; bottom:18px; width:300px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 12px 34px rgba(0,0,0,.5); overflow:hidden; z-index:20}
+  .toast .t-head{display:flex; align-items:center; gap:9px; padding:11px 13px; border-bottom:1px solid var(--line); font-size:13px; font-weight:600}
+  .toast .t-head .ic{width:20px;height:20px;border-radius:6px;background:var(--running-soft);color:var(--ok);display:flex;align-items:center;justify-content:center;font-size:13px}
+  .toast .t-body{padding:11px 13px; font-size:12.5px; color:var(--muted)}
+  .toast .t-body b{color:var(--txt)}
+  .toast .t-foot{display:flex; gap:8px; padding:0 13px 12px}
+  .toast .t-foot .go{font-size:12px; color:var(--accent); background:var(--accent-soft); border:none; border-radius:8px; padding:5px 12px; cursor:pointer; font-weight:600}
+  .toast .t-foot .x{font-size:12px; color:var(--faint); background:none; border:none; padding:5px 8px; cursor:pointer}
+  /* annotation strip */
+  .anno{display:flex; gap:8px; flex-wrap:wrap; padding:8px 16px; border-top:1px solid var(--line); background:var(--panel); flex-shrink:0}
+  .anno span{font-size:11px; color:var(--muted); background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:3px 10px}
+  .anno span b{color:var(--txt)}
+</style>
+</head>
+<body>
+  <!-- window chrome -->
+  <div class="bar">
+    <span class="title">Assistant</span>
+    <span class="badge">Chat Steering &amp; Concurrent Conversations — issue #57</span>
+    <span class="spacer"></span>
+    <span class="badge">State: 2 conversations running concurrently</span>
+  </div>
+
+  <div class="layout">
+    <!-- Conversation panel with live running indicators -->
+    <div class="convs">
+      <div class="head">
+        <h3>Conversations</h3>
+        <button class="new">＋ New</button>
+      </div>
+      <div class="list">
+        <div class="conv active">
+          <div class="row">
+            <span class="dot running" title="running"></span>
+            <span class="name">Deep research: quantum error correction</span>
+          </div>
+          <span class="time">now</span>
+        </div>
+        <div class="conv">
+          <div class="row">
+            <span class="dot running" title="running"></span>
+            <span class="name">Refactor the scheduler daemon</span>
+          </div>
+          <span class="time">now</span>
+        </div>
+        <div class="conv">
+          <div class="row">
+            <span class="dot just-done" title="just finished"></span>
+            <span class="name">Draft launch email</span>
+          </div>
+          <span class="ring">1</span>
+        </div>
+        <div class="conv">
+          <div class="row">
+            <span class="name">Summarize last week's standups</span>
+          </div>
+          <span class="time">2h</span>
+        </div>
+        <div class="conv">
+          <div class="row">
+            <span class="name">Plan the offsite agenda</span>
+          </div>
+          <span class="time">yesterday</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat main surface -->
+    <div class="chat">
+      <div class="cbar">
+        <span class="cname">Deep research: quantum error correction</span>
+        <span class="runpill"><span class="dot running"></span> running</span>
+      </div>
+
+      <div class="transcript">
+        <div class="msg user">
+          <span class="who">You</span>
+          <div class="bubble">Research the state of the art in quantum error correction — surface the leading approaches and their trade-offs.</div>
+        </div>
+
+        <div class="msg agent">
+          <span class="who">Assistant</span>
+          <div class="bubble">I'll start by mapping the major families — surface codes, LDPC codes, and concatenated schemes — then compare overhead, error thresholds, and hardware assumptions. Searching the literature first…</div>
+        </div>
+
+        <div class="streaming"><span class="bars"><span></span><span></span><span></span></span> Assistant is researching… step 3 of ~6</div>
+
+        <!-- THE injected mid-run message -->
+        <div class="msg user inject">
+          <span class="who"><span class="tag-inject"><span class="i">↪</span> Steering</span> You</span>
+          <div class="bubble">Try searching for recent surface-code results instead of the older concatenated-code papers.</div>
+        </div>
+
+        <div class="streaming"><span class="bars"><span></span><span></span><span></span></span> Folded into the run — next step will re-focus on surface codes (no restart)</div>
+      </div>
+
+      <!-- Composer stays enabled during the run -->
+      <div class="composer">
+        <div class="compose-box running">
+          <div class="hint"><span class="i">↪</span> Run in progress — send to <b>steer the active task</b> (delivered at the next step, shown with the <b>Steering</b> tag)</div>
+          <textarea placeholder="Type to add information to the running conversation…"></textarea>
+          <div class="compose-actions">
+            <div class="left">Attachments · Voice</div>
+            <button class="send steer">Send ↵</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Background-run finish notification (a different, non-viewed conversation completed) -->
+  <div class="toast">
+    <div class="t-head"><span class="ic">✓</span> Background run finished</div>
+    <div class="t-body"><b>Refactor the scheduler daemon</b> completed 2 tool steps and is ready to review.</div>
+    <div class="t-foot"><button class="go">Open</button><button class="x">Dismiss</button></div>
+  </div>
+
+  <!-- What this screen demonstrates -->
+  <div class="anno">
+    <span><b>P1</b> Composer enabled mid-run + "Steering" tag</span>
+    <span><b>P2</b> Live running dots in the list + finish notification</span>
+    <span><b>P3</b> Inbox is server-side → the same works from another window</span>
+  </div>
+</body>
+</html>

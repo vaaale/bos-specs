@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Settings cleanup — mockup (041-settings-cleanup)</title>
+<style>
+  :root{
+    --bg:#0e0f13; --panel:#15171d; --panel-2:#1a1d25; --line:rgba(255,255,255,.08);
+    --text:#e7e9ee; --muted:rgba(255,255,255,.55); --faint:rgba(255,255,255,.38);
+    --violet:#8b7bff; --violet-dim:rgba(139,123,255,.16); --violet-line:rgba(139,123,255,.55);
+    --green:#4ade80; --green-dim:rgba(74,222,128,.12); --amber:#fbbf24; --amber-dim:rgba(251,191,36,.12);
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 600px at 20% -10%, #171a24 0%, var(--bg) 55%);
+    color:var(--text);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:28px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+
+  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
+  .head h1{font-size:20px;margin:0 0 2px;font-weight:600;letter-spacing:.2px}
+  .head .sub{color:var(--muted);font-size:12.5px}
+  .badge{font-size:11px;color:var(--faint);border:1px solid var(--line);padding:5px 10px;border-radius:999px;white-space:nowrap}
+
+  /* change legend */
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;padding:6px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel)}
+  .chip .dot{width:8px;height:8px;border-radius:50%}
+  .chip.rem{border-color:rgba(251,191,36,.4)} .chip.rem .dot{background:var(--amber)}
+  .chip.srt{border-color:rgba(139,123,255,.4)} .chip.srt .dot{background:var(--violet)}
+  .chip.ok{border-color:rgba(74,222,128,.4)} .chip.ok .dot{background:var(--green)}
+
+  /* window chrome */
+  .win{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.45);
+    display:flex;flex-direction:column;min-height:520px;
+  }
+  .winbar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:rgba(0,0,0,.18)}
+  .traffic{display:flex;gap:6px}
+  .traffic i{width:11px;height:11px;border-radius:50%;display:block}
+  .traffic i:nth-child(1){background:#ff5f57}.traffic i:nth-child(2){background:#febc2e}.traffic i:nth-child(3){background:#28c840}
+  .winbar .title{margin-left:8px;font-size:12.5px;color:var(--muted)}
+  .winbar .crumb{margin-left:auto;font-size:11.5px;color:var(--faint)}
+
+  .winbody{display:flex;min-height:0;flex:1}
+
+  /* sidebar */
+  .side{width:280px;border-right:1px solid var(--line);padding:14px 10px;overflow:auto;background:var(--panel-2)}
+  .side .sec{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);padding:6px 10px 8px}
+  .nav{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+  .nav li{
+    position:relative;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;
+    color:var(--muted);cursor:default;font-size:13px;border:1px solid transparent;
+  }
+  .nav li:hover{background:rgba(255,255,255,.03)}
+  .nav li.active{background:var(--violet-dim);color:#fff;border-color:var(--violet-line)}
+  .nav .mk{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:0 0 auto}
+  .nav li.active .mk{background:var(--violet)}
+  .nav li .idx{position:absolute;right:9px;font-size:10px;color:var(--faint)}
+  .nav li.active .idx{color:rgba(255,255,255,.6)}
+
+  /* removed marker overlay for the sidebar */
+  .removed-note{
+    margin:2px 10px 8px;font-size:11px;color:var(--amber);background:var(--amber-dim);
+    border:1px dashed rgba(251,191,36,.45);border-radius:8px;padding:7px 10px;line-height:1.45;
+  }
+
+  /* content pane */
+  .content{min-width:0;flex:1;padding:22px 26px;overflow:auto}
+  .content h2{margin:0 0 2px;font-size:16px;font-weight:600}
+  .content .desc{color:var(--muted);font-size:12.5px;margin-bottom:18px;max-width:52ch}
+
+  /* sub-tabs (agent editor) */
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding:0 2px;margin-bottom:18px}
+  .tab{padding:9px 14px;font-size:12.5px;color:var(--muted);border-bottom:1.5px solid transparent;position:relative}
+  .tab.active{color:#fff;border-bottom-color:var(--violet)}
+  .tab.gone{
+    color:var(--amber);opacity:.85;
+  }
+  .tab.gone::after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:1.5px;background:repeating-linear-gradient(90deg,var(--amber) 0 4px,transparent 4px 8px);opacity:.7}
+  .tab .x{margin-left:5px}
+  .removed-tab-badge{font-size:9.5px;color:var(--amber);border:1px solid rgba(251,191,36,.5);border-radius:999px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+
+  /* generic field blocks */
+  .fieldrow{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.14);margin-bottom:9px;max-width:560px}
+  .fieldrow .l{font-size:12.5px}
+  .fieldrow .l small{display:block;color:var(--faint);font-size:11px;margin-top:1px}
+  .toggle{width:38px;height:21px;border-radius:999px;background:var(--violet);position:relative;flex:0 0 auto}
+  .toggle::after{content:"";position:absolute;top:2px;right:2px;width:17px;height:17px;border-radius:50%;background:#fff}
+  .toggle.off{background:rgba(255,255,255,.16)}
+  .toggle.off::after{left:2px;right:auto}
+  .kebab{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:9px;max-width:600px}
+  .kbcard{border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:rgba(0,0,0,.14)}
+  .kbcard .t{font-size:12.5px;margin-bottom:3px}
+  .kbcard .d{font-size:11px;color:var(--faint)}
+  .kbcard .chk{color:var(--violet);margin-right:6px}
+
+  .callout{max-width:600px;border:1px solid var(--line);border-left:3px solid var(--violet);background:rgba(139,123,255,.07);border-radius:8px;padding:11px 13px;font-size:12px;color:var(--muted);margin-bottom:14px}
+  .callout b{color:var(--text)}
+  .foot{margin-top:14px;color:var(--faint);font-size:11.5px;display:flex;gap:16px;flex-wrap:wrap}
+  .tag{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);padding:2px 7px;border-radius:999px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Settings — after the cleanup</h1>
+      <div class="sub">Feature 041 · branch <b>bos/041-settings-cleanup</b> · <span class="tag">mockup</span></div>
+    </div>
+    <div class="badge">Three self-contained changes</div>
+  </div>
+
+  <div class="legend">
+    <span class="chip rem"><span class="dot"></span>A — “System Tools” page removed (module gone from sidebar)</span>
+    <span class="chip rem"><span class="dot"></span>B — “Knowledge bases” agent tab removed</span>
+    <span class="chip srt"><span class="dot"></span>C — Sidebar modules now sorted A→Z by title</span>
+    <span class="chip ok"><span class="dot"></span>Command Execution + Knowledge Base item unchanged</span>
+  </div>
+
+  <div class="win">
+    <div class="winbar">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <span class="title">Settings</span>
+      <span class="crumb">BrowserOS · Settings</span>
+    </div>
+
+    <div class="winbody">
+      <!-- ============ SIDEBAR (C: alphabetical) ============ -->
+      <aside class="side">
+        <div class="sec">Modules · sorted A→Z <span style="float:right">by title</span></div>
+        <ul class="nav">
+          <li><span class="mk"></span>AI Provider<span class="idx">1</span></li>
+          <li><span class="mk"></span>Agent Runs<span class="idx">2</span></li>
+          <li class="active"><span class="mk"></span>Agents<span class="idx">3</span></li>
+          <li><span class="mk"></span>Appearance<span class="idx">4</span></li>
+          <li><span class="mk"></span>Apps<span class="idx">5</span></li>
+          <li><span class="mk"></span>Browser Automation<span class="idx">6</span></li>
+          <li><span class="mk"></span>Build Studio<span class="idx">7</span></li>
+          <li><span class="mk"></span>Command Execution<span class="idx">8</span></li>
+          <li><span class="mk"></span>Context Compaction<span class="idx">9</span></li>
+          <li><span class="mk"></span>Data Isolation<span class="idx">10</span></li>
+          <li><span class="mk"></span>Dev Harness<span class="idx">11</span></li>
+          <li><span class="mk"></span>Integrations<span class="idx">12</span></li>
+          <li><span class="mk"></span>Logs<span class="idx">13</span></li>
+          <li><span class="mk"></span>MCP Servers<span class="idx">14</span></li>
+          <li><span class="mk"></span>Plugins<span class="idx">15</span></li>
+          <li><span class="mk"></span>Repositories<span class="idx">16</span></li>
+          <li><span class="mk"></span>Self Improvement<span class="idx">17</span></li>
+          <li><span class="mk"></span>Skills<span class="idx">18</span></li>
+          <li><span class="mk"></span>Tools<span class="idx">19</span></li>
+          <li><span class="mk"></span>Versions<span class="idx">20</span></li>
+          <li><span class="mk"></span>Voice<span class="idx">21</span></li>
+        </ul>
+        <div class="removed-note">
+          <b>“System Tools” no longer appears here.</b> It sat between
+          Self Improvement → … in the old <code>order</code> list. Its module is
+          deleted, so the sidebar simply has one fewer entry — nothing to replace it.
+        </div>
+      </aside>
+
+      <!-- ============ CONTENT (B: agent tabs) ============ -->
+      <main class="content">
+        <h2>Agents</h2>
+        <div class="desc">The assistant’s agents and the shared default prompt they can inherit. Select an agent to edit its capabilities.</div>
+
+        <div class="callout">
+          <b>Change B</b> — the per-agent editor used to have a fifth tab,
+          <b>“Knowledge bases.”</b> It is removed. The Knowledge Base item and its
+          <code>kb_search</code>/<code>kb_retrieve</code> tools are unaffected; only this
+          Settings affordance goes away. The remaining tabs behave exactly as before.
+        </div>
+
+        <div class="tabs">
+          <span class="tab active">Instructions</span>
+          <span class="tab">Skills</span>
+          <span class="tab">Tools</span>
+          <span class="tab">MCP</span>
+          <span class="tab gone">Knowledge bases<span class="x">✕</span><span class="removed-tab-badge">removed</span></span>
+        </div>
+
+        <!-- representative Instructions content -->
+        <div class="fieldrow">
+          <div class="l">Name<small>main</small></div>
+          <div class="l" style="text-align:right;color:var(--muted)">Assistant</div>
+        </div>
+        <div class="fieldrow">
+          <div class="l">Include default prompt<small>Prepends the shared default prompt to this agent’s system prompt.</small></div>
+          <div class="toggle"></div>
+        </div>
+        <div style="font-size:11px;color:var(--faint);margin:4px 2px 12px">System prompt</div>
+        <div class="fieldrow" style="align-items:flex-start;max-width:none">
+          <div class="l" style="white-space:pre-wrap;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.6">You are the main assistant. Answer concisely and prefer\naction over description when a tool is available…</div>
+        </div>
+
+        <div style="margin-top:18px;font-size:11px;color:var(--faint);margin-bottom:10px">Skills (unchanged)</div>
+        <div class="kebab">
+          <div class="kbcard"><div class="t"><span class="chk">☑</span>GitLab triage</div><div class="d">Work a GitLab issue end to end.</div></div>
+          <div class="kbcard"><div class="t"><span class="chk">☑</span>Spec Kit Driver</div><div class="d">Run the spec-kit pipeline.</div></div>
+          <div class="kbcard"><div class="t"><span class="chk">☐</span>UI Designer</div><div class="d">Craft BOS UI surfaces.</div></div>
+          <div class="kbcard"><div class="t"><span class="chk">☑</span>BMAD Driver</div><div class="d">Route work through BMAD.</div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span><b>Unchanged by design:</b> Command Execution page (real <code>run_command</code>) · Knowledge Base item + MCP tools · per-agent <code>kbs</code> allowlist data model · persisted <code>system-tools.json</code> (left inert).</span>
+    <span style="margin-left:auto"><b>Edge case:</b> a module with no title order field or a plugin panel both sort by title → namespace, interleaved with the built-ins.</span>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Appearance — Mockup (040)</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #15171e;
+    --border: rgba(255,255,255,0.10);
+    --border-hi: rgba(255,255,255,0.30);
+    --text: rgba(255,255,255,0.85);
+    --text-dim: rgba(255,255,255,0.50);
+    --text-faint: rgba(255,255,255,0.40);
+    --accent: #5b8cff;
+    --ok: #28c840;
+    --warn: #febc2e;
+    --danger: #ff5f57;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  /* The "desktop" — wallpaper shows through translucent windows */
+  #desktop {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg,#0f2027 0%,#203a43 50%,#2c5364 100%);
+    background-size: cover; background-position: center;
+    transition: background 0.2s ease;
+  }
+  #desktop.is-image { background-repeat: no-repeat; }
+
+  /* A sample content window over the wallpaper (shows legibility floor) */
+  .sample-window {
+    position: absolute; left: 48px; bottom: 40px; width: 268px;
+    border-radius: 12px; border: 1px solid var(--border);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+    overflow: hidden;
+    background: rgba(21,23,30,0.95);
+  }
+  .sample-window .titlebar {
+    height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px;
+    border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.05);
+    font-size: 11px; color: var(--text-dim);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .sample-window .body { padding: 14px 16px; font-size: 12px; line-height: 1.6; color: var(--text); }
+  .sample-window .body b { font-weight: 600; }
+
+  /* The Settings window (the Appearance tab) */
+  .settings {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: min(760px, calc(100vw - 40px)); max-height: calc(100vh - 80px);
+    border-radius: 14px; border: 1px solid var(--border-hi);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column; overflow: hidden;
+    background: rgba(21,23,30,0.95);
+  }
+  .settings .titlebar {
+    height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 14px;
+    border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.04);
+  }
+  .settings .titlebar .title { flex: 1; text-align: center; font-size: 12px; font-weight: 500; color: var(--text-dim); }
+  .settings .body { min-height: 0; flex: 1; overflow: auto; padding: 20px 22px; }
+
+  .section-label {
+    margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  .group { margin-bottom: 22px; }
+  .group:last-child { margin-bottom: 0; }
+
+  /* Wallpaper grid */
+  .wall-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px;
+  }
+  .wall {
+    position: relative; height: 64px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); overflow: hidden; transition: border-color .15s;
+  }
+  .wall:hover { border-color: var(--border-hi); }
+  .wall.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.30); }
+  .wall .name { position: absolute; left: 8px; bottom: 5px; font-size: 11px; font-weight: 500; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  .wall .check { position: absolute; right: 6px; top: 6px; background: rgba(0,0,0,.6); border-radius: 999px; padding: 2px; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .input {
+    flex: 1; min-width: 0; height: 30px; padding: 0 10px; font-size: 12px;
+    border-radius: 6px; border: 1px solid var(--border); background: rgba(0,0,0,0.30); color: var(--text);
+    outline: none;
+  }
+  .input:focus { border-color: var(--border-hi); }
+  .btn {
+    height: 30px; padding: 0 12px; font-size: 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: rgba(255,255,255,0.10); color: var(--text);
+  }
+  .btn:hover { background: rgba(255,255,255,0.20); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #06101f; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+
+  /* Upload drop zone */
+  .dropzone {
+    margin-top: 12px; border: 1px dashed var(--border-hi); border-radius: 10px;
+    padding: 18px; text-align: center; cursor: pointer; transition: background .15s, border-color .15s;
+    background: rgba(0,0,0,0.18);
+  }
+  .dropzone:hover, .dropzone.drag { background: rgba(91,140,255,0.08); border-color: var(--accent); }
+  .dropzone .dz-title { font-size: 13px; font-weight: 500; }
+  .dropzone .dz-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .dropzone img { max-height: 84px; border-radius: 8px; margin-bottom: 8px; display: block; }
+
+  .field-err { color: var(--danger); font-size: 11px; margin-top: 8px; display: none; }
+  .field-err.show { display: block; }
+
+  /* Radio fit */
+  .fit { display: flex; gap: 16px; font-size: 12px; color: rgba(255,255,255,0.70); }
+  .fit label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  /* Sliders */
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; flex: 1; height: 4px; border-radius: 999px;
+    background: rgba(255,255,255,0.15); outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #0b0d12; box-shadow: 0 0 0 1px var(--accent);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #0b0d12;
+  }
+  input[type=range]:disabled { opacity: .35; cursor: not-allowed; }
+  .val { min-width: 44px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+  /* Toggle */
+  .toggle { position: relative; width: 38px; height: 22px; flex-shrink: 0; cursor: pointer; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .track {
+    position: absolute; inset: 0; border-radius: 999px; background: rgba(255,255,255,0.15); transition: background .15s;
+  }
+  .toggle .thumb {
+    position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: transform .15s;
+  }
+  .toggle input:checked + .track { background: var(--accent); }
+  .toggle input:checked + .track + .thumb { transform: translateX(16px); }
+
+  .sub { display: none; }
+  .sub.show { display: block; margin-top: 12px; padding-left: 6px; }
+  .hint { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
+
+  /* Live preview panel in the tab */
+  .preview {
+    margin-top: 4px; height: 120px; border-radius: 10px; border: 1px solid var(--border);
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0)),
+      var(--preview-bg, linear-gradient(135deg,#0f2027,#2c5364));
+    display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
+  }
+  .preview .card {
+    padding: 14px 22px; border-radius: 10px; font-size: 12px; color: var(--text);
+    background: rgba(21,23,30,0.95); border: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+  <div id="desktop"></div>
+
+  <!-- Sample content window: demonstrates the readability floor over the wallpaper -->
+  <div class="sample-window" id="sampleWindow">
+    <div class="titlebar">
+      <span class="dot" style="background:var(--danger)"></span>
+      <span class="dot" style="background:var(--warn)"></span>
+      <span class="dot" style="background:var(--ok)"></span>
+      <span style="margin-left:6px">Files</span>
+    </div>
+    <div class="body">
+      <b>Documents</b><br/>
+      spec.md<br/>plan.md<br/>tasks.md<br/>
+      <span class="hint" style="margin-top:10px">A window over the wallpaper — its chrome follows the sliders below.</span>
+    </div>
+  </div>
+
+  <!-- Settings → Appearance -->
+  <div class="settings" id="settingsWindow">
+    <div class="titlebar">
+      <span class="dot" style="background:var(--danger)"></span>
+      <span class="dot" style="background:var(--warn)"></span>
+      <span class="dot" style="background:var(--ok)"></span>
+      <span class="title">Settings — Appearance</span>
+      <span style="width:30px"></span>
+    </div>
+    <div class="body">
+      <!-- Wallpaper -->
+      <div class="group">
+        <h3 class="section-label">Wallpaper</h3>
+        <div class="wall-grid" id="wallGrid"></div>
+        <div class="row">
+          <input class="input" id="urlInput" placeholder="Image URL or VFS path (/Pictures/bg.png)" />
+          <button class="btn" id="useImageBtn">Use image</button>
+        </div>
+
+        <!-- NEW: Upload -->
+        <div class="dropzone" id="dropzone">
+          <div class="dz-title">Upload image</div>
+          <div class="dz-sub">Click to browse, or drag &amp; drop an image (PNG / JPEG / WebP)</div>
+          <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp" hidden />
+        </div>
+        <div class="field-err" id="uploadErr"></div>
+
+        <div class="row">
+          <span style="font-size:12px;color:rgba(255,255,255,0.70)">Fit:</span>
+          <div class="fit">
+            <label><input type="radio" name="fit" value="cover" checked /> cover</label>
+            <label><input type="radio" name="fit" value="contain" /> contain</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- NEW: Transparency -->
+      <div class="group">
+        <h3 class="section-label">UI transparency</h3>
+        <div class="slider-row">
+          <input type="range" id="opacity" min="0" max="100" value="100" />
+          <span class="val" id="opacityVal">100%</span>
+        </div>
+        <div class="hint">How see-through the window &amp; panel chrome is over the wallpaper. 100% = fully opaque (default). A readability floor keeps text legible.</div>
+      </div>
+
+      <!-- NEW: Frosted glass -->
+      <div class="group">
+        <h3 class="section-label">Frosted glass</h3>
+        <div class="slider-row">
+          <label class="toggle">
+            <input type="checkbox" id="frosted" />
+            <span class="track"></span>
+            <span class="thumb"></span>
+          </label>
+          <span style="font-size:12px;color:var(--text-dim)">Blur the wallpaper behind the chrome</span>
+        </div>
+        <div class="sub" id="blurSub">
+          <div class="slider-row">
+            <input type="range" id="blur" min="0" max="24" value="12" />
+            <span class="val" id="blurVal">12px</span>
+          </div>
+        </div>
+        <div class="hint">Composes with transparency: transparency shows the wallpaper through the chrome, the blur decides if it looks sharp or frosted.</div>
+      </div>
+
+      <!-- Live preview -->
+      <div class="group">
+        <h3 class="section-label">Live preview</h3>
+        <div class="preview" id="preview">
+          <div class="card" id="previewCard">Window chrome</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ---- State ----
+  const WALLPAPERS = [
+    { id: "aurora",   name: "Aurora",   css: "linear-gradient(135deg,#0f2027 0%,#203a43 50%,#2c5364 100%)" },
+    { id: "dusk",     name: "Dusk",     css: "linear-gradient(135deg,#41295a 0%,#2f0743 100%)" },
+    { id: "sunset",   name: "Sunset",   css: "linear-gradient(135deg,#ff512f 0%,#dd2476 100%)" },
+    { id: "ocean",    name: "Ocean",    css: "linear-gradient(135deg,#2193b0 0%,#6dd5ed 100%)" },
+    { id: "forest",   name: "Forest",   css: "linear-gradient(135deg,#134e5e 0%,#71b280 100%)" },
+    { id: "graphite", name: "Graphite", css: "linear-gradient(135deg,#1f1c2c 0%,#928dab 100%)" },
+    { id: "mono",     name: "Mono",     css: "#0b0d12" },
+  ];
+  const state = {
+    wallpaper: "aurora",   // preset id or object URL of an uploaded image
+    uploadedUrl: null,
+    fit: "cover",
+    opacity: 100,          // 0..100, 100 = opaque
+    frosted: false,
+    blur: 12,              // px
+  };
+  const READABILITY_FLOOR = 0.45; // min effective chrome alpha (illustrative)
+
+  const $ = (s) => document.querySelector(s);
+  const desktop = $("#desktop");
+  const settingsWin = $("#settingsWindow");
+  const sampleWin = $("#sampleWindow");
+  const preview = $("#preview");
+  const previewCard = $("#previewCard");
+  const wallGrid = $("#wallGrid");
+
+  // Build wallpaper grid
+  WALLPAPERS.forEach((w) => {
+    const el = document.createElement("div");
+    el.className = "wall" + (w.id === state.wallpaper ? " active" : "");
+    el.style.background = w.css;
+    el.dataset.id = w.id;
+    el.innerHTML = `<span class="name">${w.name}</span>${w.id===state.wallpaper?'<span class="check">✓</span>':''}`;
+    el.onclick = () => { state.wallpaper = w.id; state.uploadedUrl = null; render(); };
+    wallGrid.appendChild(el);
+  });
+
+  function wallpaperCss() {
+    if (state.uploadedUrl) return `url("${state.uploadedUrl}")`;
+    const p = WALLPAPERS.find((w) => w.id === state.wallpaper);
+    return (p ? p.css : WALLPAPERS[0].css);
+  }
+  function currentWallpaperColor() {
+    // for the preview panel background, use the same css value
+    return wallpaperCss();
+  }
+  function effectiveAlpha() {
+    // opacity slider 100..0 -> chrome alpha 1.0..floor
+    const t = state.opacity / 100;            // 1 = opaque, 0 = fully see-through
+    return READABILITY_FLOOR + (1 - READABILITY_FLOOR) * t;
+  }
+
+  function render() {
+    // Desktop wallpaper
+    const wp = wallpaperCss();
+    if (state.uploadedUrl) {
+      desktop.style.background = `url("${state.uploadedUrl}") center / ${state.fit} no-repeat`;
+    } else {
+      desktop.style.background = wp;
+      desktop.style.backgroundSize = state.fit === "contain" ? "contain" : "cover";
+    }
+
+    const alpha = effectiveAlpha();
+    const bg = `rgba(21,23,30,${alpha.toFixed(3)})`;
+    const bf = state.frosted ? `blur(${state.blur}px)` : "none";
+
+    // Settings window chrome + sample window chrome + preview card all follow
+    [settingsWin, sampleWin, previewCard].forEach((el) => {
+      el.style.background = bg;
+      el.style.backdropFilter = bf;
+      el.style.webkitBackdropFilter = bf;
+    });
+
+    // Preview panel background = current wallpaper; card reflects chrome
+    preview.style.setProperty("--preview-bg", "transparent");
+    preview.style.background = wp;
+    preview.style.backgroundSize = state.fit === "contain" ? "contain" : "cover";
+
+    // Wallpaper grid active state
+    [...wallGrid.children].forEach((c) => {
+      const active = c.dataset.id === state.wallpaper && !state.uploadedUrl;
+      c.classList.toggle("active", active);
+      const check = c.querySelector(".check");
+      if (active && !check) c.insertAdjacentHTML("beforeend", '<span class="check">✓</span>');
+      if (!active && check) check.remove();
+    });
+
+    // Value labels
+    $("#opacityVal").textContent = state.opacity + "%";
+    $("#blurVal").textContent = state.blur + "px";
+    $("#blurSub").classList.toggle("show", state.frosted);
+    $("#blur").disabled = !state.frosted;
+  }
+
+  // ---- Controls ----
+  $("#opacity").addEventListener("input", (e) => { state.opacity = +e.target.value; render(); });
+  $("#frosted").addEventListener("change", (e) => { state.frosted = e.target.checked; render(); });
+  $("#blur").addEventListener("input", (e) => { state.blur = +e.target.value; render(); });
+  document.querySelectorAll('input[name=fit]').forEach((r) =>
+    r.addEventListener("change", (e) => { state.fit = e.target.value; render(); }));
+  $("#useImageBtn").addEventListener("click", () => {
+    const v = $("#urlInput").value.trim();
+    if (v) { state.wallpaper = v; state.uploadedUrl = null; $("#urlInput").value = ""; render(); }
+  });
+
+  // ---- Upload (file picker + drag/drop) ----
+  const dz = $("#dropzone");
+  const fileInput = $("#fileInput");
+  const MAX_MB = 10;
+  const ALLOWED = ["image/png", "image/jpeg", "image/webp"];
+
+  function reject(msg) {
+    const e = $("#uploadErr");
+    e.textContent = msg; e.classList.add("show");
+    setTimeout(() => e.classList.remove("show"), 3500);
+  }
+  function handleFile(file) {
+    if (!file) return;
+    if (!ALLOWED.includes(file.type)) return reject("Only PNG, JPEG, or WebP images are supported.");
+    if (file.size > MAX_MB * 1024 * 1024) return reject(`File is too large (max ${MAX_MB} MB).`);
+    const url = URL.createObjectURL(file);
+    state.uploadedUrl = url;
+    state.wallpaper = "/Pictures/wallpapers/" + file.name;
+    render();
+  }
+  dz.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
+  ["dragenter","dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
+  ["dragleave","drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
+  dz.addEventListener("drop", (e) => handleFile(e.dataTransfer.files[0]));
+
+  render();
+</script>
+</body>
+</html>
