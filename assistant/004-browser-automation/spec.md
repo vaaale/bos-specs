@@ -8,6 +8,8 @@
 
 **Revised**: 2026-10-10 (storage state — a captured session loaded into the isolated profile; branch `bos/browser-storage-state`)
 
+**Revised**: 2026-10-10 (user agent — a configurable UA, for sites that refuse the headless token; branch `bos/browser-user-agent`)
+
 **Status**: Implemented
 
 **Input**: "Make the assistant able to DRIVE a real, stateful browser — open a URL, click around, take screenshots — one live browser per conversation, held open across tool calls. Use cases: screenshot BOS for documentation, scrape content, perform actions by driving a browser instead of APIs."
@@ -89,6 +91,12 @@ consent, and limits; the capability is off by default.
    MUST NOT browse signed out, because the agent would then report a
    logged-out page as the content.
 
+5. **Given** a site that refuses automated browsers (an immediate 403 block
+   page, not a solvable interstitial), **When** the user sets a User-Agent,
+   **Then** the browser presents that string instead of the headless token —
+   and the user has been told, in the docs, that this steps around the site's
+   stated decision and to check its terms.
+
 ### User Story 4 - Page content cannot hijack the agent (Priority: P2)
 
 Content read from automated pages is treated as untrusted data, never as
@@ -156,8 +164,8 @@ instructions.
 - **FR-010**: A `browser-automation` config namespace MUST render a Settings tab
   (and auto-expose to the assistant) with at least: enabled (default off),
   allowed/blocked origins, headless (default true), isolated profile (default
-  true), storage state path (default empty), consent policy, downloads (default
-  false), and limits. Policy is resolved per call — changes apply to the next
+  true), storage state path (default empty), user agent (default empty),
+  consent policy, downloads (default false), and limits. Policy is resolved per call — changes apply to the next
   session with no restart.
 - **FR-011**: Screenshots (and any file the browser saves) MUST land in the VFS
   (`/Screenshots`), MUST be reported by VFS path (host paths — absolute or
@@ -190,6 +198,26 @@ instructions.
     VFS (inside it, the `file_*` tools could read the session back out and the
     agent could exfiltrate it).
   - BOS MUST NOT write, refresh, or transmit the file; it is read-only input.
+- **FR-014**: The browser's User-Agent MUST be configurable (`--user-agent`),
+  defaulting to empty = Chromium's own. Headless Chromium advertises itself
+  (`HeadlessChrome/<v>`), and a site fronted by a WAF that refuses automated
+  clients answers that token with a flat 403 before the origin sees the
+  request — so a valid, signed-in session still yields a block page, which the
+  agent would otherwise report as the content.
+  - The value MUST be passed as a DISCRETE argv entry, never through the
+    command-line splitter: every real UA contains spaces, and splitting one
+    leaves the browser claiming to be `Mozilla/5.0` with the remaining
+    fragments read as flags.
+  - Blank/whitespace MUST be indistinguishable from unset (no empty flag).
+  - It is independent of the profile mode — it applies to isolated and
+    persistent sessions alike.
+  - This setting changes only how the browser IDENTIFIES itself. It grants no
+    access: content the user has no subscription to stays unavailable, and a
+    storage state (FR-013) only ever carries accounts they already hold. The
+    user-facing documentation MUST say that overriding the token steps around a
+    site's stated decision not to serve automated clients, and that the user
+    should check that site's terms. BOS MUST NOT go further than a UA string —
+    no fingerprint spoofing, no challenge solving, no proxy rotation.
 
 ### Key Entities
 
@@ -227,6 +255,9 @@ instructions.
   sign-in renders as the signed-in user; with a storage state that cannot take
   effect, no browser starts and the reason names what to fix — there is no
   configuration in which BOS silently returns the logged-out page.
+- **SC-007**: On a site that 403s the headless token, setting the User-Agent is
+  the only change needed to reach the page; the configured string arrives as a
+  single argv value, and leaving it empty reproduces today's behaviour exactly.
 
 ## Notes
 
@@ -249,6 +280,7 @@ instructions.
 - Dev docs: `docs/dev/automation/browser-automation.md`. Tests:
   `tests/assistant/browser-session.test.ts`, `tests/assistant/browser-tools.test.ts`,
   `tests/assistant/playwright-probe.test.ts`, `tests/agent/browser-tools-backfill.test.ts`,
-  `tests/assistant/browser-automation-storage-state.test.ts`.
+  `tests/assistant/browser-automation-storage-state.test.ts`,
+  `tests/assistant/browser-automation-user-agent.test.ts`.
 - v1 prose remains in git history; original migration source was
   `spec/automation/browser-automation.md`.
