@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<title>Repositories — UI Mockup (050)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { background: #0f1117; }
+  .panel { background: #15171e; }
+</style>
+</head>
+<body class="text-xs text-white/90">
+
+<!-- ── state switcher (mockup chrome only, not part of the design) ───────── -->
+<div class="sticky top-0 z-50 flex flex-wrap items-center gap-1 border-b border-white/10 bg-black/60 px-3 py-2 backdrop-blur">
+  <span class="mr-2 text-[10px] uppercase tracking-wide text-white/30">Mockup states</span>
+  <button data-view="main"   class="vbtn rounded bg-white/15 px-2 py-1 text-xs">Populated</button>
+  <button data-view="empty"  class="vbtn rounded px-2 py-1 text-xs text-white/70 hover:bg-white/10">Empty</button>
+  <button data-view="add"    class="vbtn rounded px-2 py-1 text-xs text-white/70 hover:bg-white/10">Add repository</button>
+  <button data-view="remove" class="vbtn rounded px-2 py-1 text-xs text-white/70 hover:bg-white/10">Remove — forget vs delete</button>
+</div>
+
+<div class="mx-auto my-4 w-[980px] max-w-[96vw] overflow-hidden rounded-lg border border-white/10 panel">
+
+  <!-- ── Settings chrome: sidebar + pane (style guide §4 Sidebar) ────────── -->
+  <div class="flex h-[760px]">
+    <nav class="w-44 shrink-0 overflow-auto border-r border-white/10 bg-white/[0.02] p-2">
+      <h2 class="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white/40">Settings</h2>
+      <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Agent</button>
+      <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Build Studio</button>
+      <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Plugins</button>
+      <button class="mt-0.5 block w-full truncate rounded bg-white/15 px-2 py-1.5 text-left text-xs text-white">Repositories</button>
+      <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Services</button>
+      <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Skills</button>
+    </nav>
+
+    <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+
+      <!-- header -->
+      <div class="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
+        <div class="min-w-0">
+          <h3 class="text-[13px] font-semibold">Repositories</h3>
+          <p class="mt-0.5 text-[11px] text-white/40">Every git repository BrowserOS knows about — its kind, its branch, and whether it has work that has not been saved or pushed.</p>
+        </div>
+        <button id="addBtn" class="inline-flex shrink-0 items-center gap-1.5 rounded bg-violet-500/80 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-violet-500">
+          <i data-lucide="plus" class="h-3 w-3"></i> Add repository
+        </button>
+      </div>
+
+      <!-- ══ VIEW: populated ═════════════════════════════════════════════ -->
+      <section data-view-panel="main" class="flex-1 space-y-4 overflow-auto p-4">
+
+        <!-- BOS's own -->
+        <div>
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-white/50">BrowserOS</h3>
+          <div class="space-y-2">
+
+            <!-- system specs: read-only -->
+            <div class="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <i data-lucide="lock" class="h-3.5 w-3.5 text-white/40"></i>
+                    <span class="text-[13px] font-medium">bos-system-specs</span>
+                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">BOS specs</span>
+                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/40">read-only</span>
+                  </div>
+                  <div class="mt-1 truncate text-[11px] text-white/40">/Specs/bos-system-specs · main</div>
+                  <div class="mt-1 text-[10px] text-white/30">The specifications BrowserOS ships with. Not editable, and cannot be removed.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- user specs: dirty + unpushed -->
+            <div class="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <i data-lucide="git-branch" class="h-3.5 w-3.5 text-white/40"></i>
+                    <span class="text-[13px] font-medium">user-specs</span>
+                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Your BOS specs</span>
+                    <span class="inline-flex items-center gap-1 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] text-amber-100">
+                      <i data-lucide="pencil" class="h-2.5 w-2.5"></i> 4 uncommitted
+                    </span>
+                    <span class="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-200">
+                      <i data-lucide="arrow-up" class="h-2.5 w-2.5"></i> 2 unpushed
+                    </span>
+                  </div>
+                  <div class="mt-1 truncate text-[11px] text-white/40">/Specs/user-specs · bos/spec-method-packs</div>
+                  <div class="mt-1 text-[10px] text-white/30">One workflow governs the whole store · <span class="text-white/50">spec-kit</span></div>
+                </div>
+                <div class="flex shrink-0 flex-wrap justify-end gap-1.5">
+                  <button class="inline-flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] font-medium hover:bg-white/20"><i data-lucide="download" class="h-2.5 w-2.5"></i> Pull</button>
+                  <button class="inline-flex items-center gap-1 rounded bg-sky-500/20 px-2 py-1 text-[11px] font-medium hover:bg-sky-500/30"><i data-lucide="send" class="h-2.5 w-2.5"></i> Push</button>
+                  <button class="rounded p-1.5 hover:bg-white/10"><i data-lucide="more-horizontal" class="h-3.5 w-3.5"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- marketplaces -->
+        <div>
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-white/50">Marketplaces</h3>
+          <div class="space-y-2">
+            <div class="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <i data-lucide="store" class="h-3.5 w-3.5 text-white/40"></i>
+                    <span class="text-[13px] font-medium">user-apps</span>
+                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Marketplace</span>
+                    <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-200">clean</span>
+                  </div>
+                  <div class="mt-1 truncate text-[11px] text-white/40">data/user-apps · bos/spec-method-packs</div>
+                  <div class="mt-1 text-[10px] text-white/30">32 items · each item binds its own workflow</div>
+                </div>
+                <div class="flex shrink-0 flex-wrap justify-end gap-1.5">
+                  <button class="inline-flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] font-medium hover:bg-white/20"><i data-lucide="download" class="h-2.5 w-2.5"></i> Pull</button>
+                  <button class="inline-flex items-center gap-1 rounded bg-sky-500/20 px-2 py-1 text-[11px] font-medium hover:bg-sky-500/30"><i data-lucide="send" class="h-2.5 w-2.5"></i> Push</button>
+                  <button class="rounded p-1.5 hover:bg-white/10"><i data-lucide="more-horizontal" class="h-3.5 w-3.5"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- projects -->
+        <div>
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-white/50">Projects</h3>
+          <div class="space-y-2">
+
+            <!-- healthy project repo -->
+            <div class="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <i data-lucide="folder-git-2" class="h-3.5 w-3.5 text-white/40"></i>
+                    <span class="text-[13px] font-medium">invoice-parser</span>
+                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Project</span>
+                    <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-200">clean</span>
+                  </div>
+                  <div class="mt-1 truncate text-[11px] text-white/40">~/code/invoice-parser · bos/add-ocr</div>
+                  <div class="mt-1 text-[10px] text-white/30">Specs in <span class="text-white/50">openspec/</span> · workflow <span class="text-white/50">openspec:spec-driven</span></div>
+                </div>
+                <div class="flex shrink-0 flex-wrap justify-end gap-1.5">
+                  <button class="inline-flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] font-medium hover:bg-white/20"><i data-lucide="download" class="h-2.5 w-2.5"></i> Pull</button>
+                  <button class="inline-flex items-center gap-1 rounded bg-sky-500/20 px-2 py-1 text-[11px] font-medium hover:bg-sky-500/30"><i data-lucide="send" class="h-2.5 w-2.5"></i> Push</button>
+                  <button class="rounded p-1.5 hover:bg-white/10"><i data-lucide="more-horizontal" class="h-3.5 w-3.5"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- method not installed: still lists, carries the reason (045 FR-016) -->
+            <div class="rounded-lg border border-amber-400/20 bg-white/[0.03] p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <i data-lucide="folder-git-2" class="h-3.5 w-3.5 text-white/40"></i>
+                    <span class="text-[13px] font-medium">telemetry-pipeline</span>
+                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Project</span>
+                    <span class="rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] text-amber-100">workflow not installed</span>
+                  </div>
+                  <div class="mt-1 truncate text-[11px] text-white/40">~/code/telemetry-pipeline · main</div>
+                  <div class="mt-2 flex items-center gap-2 rounded border border-amber-400/20 bg-amber-400/10 px-2 py-1.5 text-[11px] text-amber-100">
+                    <i data-lucide="alert-triangle" class="h-3 w-3 shrink-0"></i>
+                    <span class="flex-1">Bound to <b>bmad:enterprise</b>, which is not installed. Its content is intact — install the pack to read it.</span>
+                    <button class="shrink-0 rounded bg-amber-400/20 px-2 py-1 text-[11px] font-medium hover:bg-amber-400/30">Open Marketplace</button>
+                  </div>
+                </div>
+                <div class="flex shrink-0 gap-1.5">
+                  <button class="rounded p-1.5 hover:bg-white/10"><i data-lucide="more-horizontal" class="h-3.5 w-3.5"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- remotes, expanded on one card -->
+            <div class="rounded-lg border border-white/10 bg-white/[0.03]">
+              <div class="flex items-start justify-between gap-3 border-b border-white/10 p-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <i data-lucide="folder-git-2" class="h-3.5 w-3.5 text-white/40"></i>
+                    <span class="text-[13px] font-medium">design-tokens</span>
+                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Project</span>
+                    <span class="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-200"><i data-lucide="arrow-up" class="h-2.5 w-2.5"></i> 1 unpushed</span>
+                  </div>
+                  <div class="mt-1 truncate text-[11px] text-white/40">~/code/design-tokens · bos/tokens-v2</div>
+                </div>
+                <div class="flex shrink-0 gap-1.5">
+                  <button class="rounded p-1.5 hover:bg-white/10"><i data-lucide="chevron-up" class="h-3.5 w-3.5"></i></button>
+                </div>
+              </div>
+              <div class="space-y-2 p-3">
+                <div class="flex items-center justify-between gap-2 text-[10px] uppercase tracking-wide text-white/40">
+                  <span>Remotes</span>
+                  <button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] normal-case text-white/70 hover:bg-white/10"><i data-lucide="plus" class="h-2.5 w-2.5"></i> Add remote</button>
+                </div>
+                <div class="rounded border border-white/10 bg-black/20 p-2.5">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-[12px] font-medium">origin</span>
+                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">GitHub</span>
+                    <span class="inline-flex items-center gap-1 text-[10px] text-emerald-300"><i data-lucide="check" class="h-2.5 w-2.5"></i> connected</span>
+                  </div>
+                  <div class="mt-1 truncate text-[11px] text-white/40">git@github.com:alex/design-tokens.git</div>
+                  <div class="mt-1 text-[10px] text-white/30">Last pulled 12 minutes ago · branch: main</div>
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    <button class="inline-flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] font-medium hover:bg-white/20"><i data-lucide="wifi" class="h-2.5 w-2.5"></i> Test</button>
+                    <button class="inline-flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] font-medium hover:bg-white/20"><i data-lucide="download" class="h-2.5 w-2.5"></i> Pull</button>
+                    <button class="inline-flex items-center gap-1 rounded bg-sky-500/20 px-2 py-1 text-[11px] font-medium hover:bg-sky-500/30"><i data-lucide="send" class="h-2.5 w-2.5"></i> Push</button>
+                    <button class="rounded bg-white/10 px-2 py-1 text-[11px] font-medium hover:bg-white/20">Edit</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ VIEW: empty ═════════════════════════════════════════════════ -->
+      <section data-view-panel="empty" class="hidden flex-1 overflow-auto p-4">
+        <div>
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-white/50">BrowserOS</h3>
+          <div class="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-[11px] text-white/40">bos-system-specs · user-specs · user-apps</div>
+        </div>
+        <div class="mt-4">
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-white/50">Projects</h3>
+          <div class="rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-8 text-center">
+            <i data-lucide="folder-git-2" class="mx-auto h-6 w-6 text-white/20"></i>
+            <p class="mt-2 text-xs text-white/60">No projects yet</p>
+            <p class="mx-auto mt-1 max-w-[420px] text-[11px] text-white/40">
+              Add a repository to work on something that is not BrowserOS itself — an app, a service, anything with a git repo.
+              BrowserOS writes its specs into a folder the workflow chooses, and every change lands on a feature branch.
+            </p>
+            <button class="mt-3 inline-flex items-center gap-1.5 rounded bg-violet-500/80 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-violet-500">
+              <i data-lucide="plus" class="h-3 w-3"></i> Add repository
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ VIEW: add (modal over the populated list) ═══════════════════ -->
+      <section data-view-panel="add" class="relative hidden flex-1 overflow-hidden">
+        <div class="pointer-events-none absolute inset-0 space-y-2 p-4 opacity-40">
+          <div class="h-16 rounded-lg border border-white/10 bg-white/[0.03]"></div>
+          <div class="h-16 rounded-lg border border-white/10 bg-white/[0.03]"></div>
+        </div>
+        <div class="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div class="w-[460px] max-w-[92vw] rounded-2xl border border-white/10 bg-[#15171e] p-6 text-sm shadow-2xl">
+            <h4 class="text-[13px] font-semibold">Add repository</h4>
+
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <button class="rounded border border-white/30 bg-white/10 p-3 text-left">
+                <div class="flex items-center gap-1.5 text-xs font-medium"><i data-lucide="git-merge" class="h-3.5 w-3.5"></i> Clone existing</div>
+                <p class="mt-1 text-[11px] text-white/40">From a git URL you already have.</p>
+              </button>
+              <button class="rounded border border-white/10 bg-black/30 p-3 text-left hover:bg-white/5">
+                <div class="flex items-center gap-1.5 text-xs font-medium"><i data-lucide="file-plus-2" class="h-3.5 w-3.5"></i> Create new</div>
+                <p class="mt-1 text-[11px] text-white/40">Start an empty repository here.</p>
+              </button>
+            </div>
+
+            <div class="mt-4 space-y-2.5">
+              <div class="grid grid-cols-[140px_1fr] items-center gap-2">
+                <label class="text-xs text-white/60">Repository URL</label>
+                <input value="git@github.com:alex/invoice-parser.git" class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30" />
+              </div>
+              <div class="grid grid-cols-[140px_1fr] items-center gap-2">
+                <label class="text-xs text-white/60">Kind</label>
+                <select class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30">
+                  <option>Project — the repo is one project</option>
+                  <option>Marketplace — many items, each its own project</option>
+                </select>
+              </div>
+              <div class="grid grid-cols-[140px_1fr] items-center gap-2">
+                <label class="text-xs text-white/60">Workflow</label>
+                <select class="rounded border border-white/10 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-white/30">
+                  <option>Detected: openspec:spec-driven</option>
+                  <option>spec-kit</option>
+                  <option>bmad:enterprise</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-3 flex items-start gap-2 rounded border border-white/10 bg-black/20 px-2.5 py-2 text-[11px] text-white/50">
+              <i data-lucide="info" class="mt-0.5 h-3 w-3 shrink-0 text-white/40"></i>
+              <span>This repository already contains an <b class="text-white/70">openspec/</b> folder, so OpenSpec was detected. Specs are written there; the rest of the repository is left alone, and every change lands on a feature branch.</span>
+            </div>
+
+            <div class="mt-5 flex justify-end gap-2">
+              <button class="rounded bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20">Cancel</button>
+              <button class="rounded bg-violet-500/80 px-3 py-1.5 text-xs font-medium hover:bg-violet-500">Clone and add</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ VIEW: remove ════════════════════════════════════════════════ -->
+      <section data-view-panel="remove" class="relative hidden flex-1 overflow-hidden">
+        <div class="pointer-events-none absolute inset-0 space-y-2 p-4 opacity-40">
+          <div class="h-16 rounded-lg border border-white/10 bg-white/[0.03]"></div>
+        </div>
+        <div class="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div class="w-[460px] max-w-[92vw] rounded-2xl border border-white/10 bg-[#15171e] p-6 text-sm shadow-2xl">
+            <h4 class="text-[13px] font-semibold">Remove “invoice-parser”</h4>
+            <p class="mt-1 text-[11px] text-white/50">These are different. Choose deliberately.</p>
+
+            <div class="mt-4 space-y-2">
+              <button class="w-full rounded border border-white/30 bg-white/10 p-3 text-left">
+                <div class="flex items-center gap-1.5 text-xs font-medium"><i data-lucide="eye-off" class="h-3.5 w-3.5"></i> Forget it</div>
+                <p class="mt-1 text-[11px] text-white/40">BrowserOS stops tracking it. <b class="text-white/70">The files stay on disk</b> exactly where they are.</p>
+              </button>
+              <button class="w-full rounded border border-rose-500/30 bg-rose-500/10 p-3 text-left hover:bg-rose-500/15">
+                <div class="flex items-center gap-1.5 text-xs font-medium text-rose-200"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Delete it</div>
+                <p class="mt-1 text-[11px] text-rose-200/70">Removes the working copy from disk. <b>1 unpushed commit would be lost.</b></p>
+              </button>
+            </div>
+
+            <div class="mt-3 flex items-start gap-2 rounded border border-amber-400/20 bg-amber-400/10 px-2.5 py-2 text-[11px] text-amber-100">
+              <i data-lucide="alert-triangle" class="mt-0.5 h-3 w-3 shrink-0"></i>
+              <span>This repository has <b>1 commit that is not on any remote</b>. Push it first if you want to keep that work.</span>
+            </div>
+
+            <div class="mt-5 flex justify-end gap-2">
+              <button class="rounded bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20">Cancel</button>
+              <button class="rounded bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20">Forget</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+  const btns = document.querySelectorAll(".vbtn");
+  btns.forEach((b) => b.addEventListener("click", () => {
+    btns.forEach((x) => { x.className = "vbtn rounded px-2 py-1 text-xs text-white/70 hover:bg-white/10"; });
+    b.className = "vbtn rounded bg-white/15 px-2 py-1 text-xs";
+    const v = b.dataset.view;
+    document.querySelectorAll("[data-view-panel]").forEach((p) => {
+      p.classList.toggle("hidden", p.dataset.viewPanel !== v);
+      if (p.dataset.viewPanel === v) p.classList.add("flex-1");
+    });
+  }));
+  document.getElementById("addBtn").addEventListener("click", () => {
+    document.querySelector('.vbtn[data-view="add"]').click();
+  });
+</script>
+</body>
+</html>

@@ -10,6 +10,8 @@
 
 **Input**: User description: "A self-healing mechanism that detects errors/failures in BOS, autonomously diagnoses whether they represent genuine gaps (vs. agent misuse or environmental issues), and drives the full fix pipeline (specify → implement → preview) without stopping at step boundaries. The user is notified when a fix is ready for review. The mechanism extends the existing Conversation Reviewer agent into a Diagnostician, integrates with the Build Studio pipeline, the 005 self-modification preview system, and the 034 event system."
 
+**Scope-Add (2026-09-08)**: Extends the mechanism with (1) a **platform headless-agent transcription** — one durable markdown file per run for every headless run, stored in the canonical data dir and surfaced via a read API; (2) a **platform abort** capability for in-flight headless runs; and (3) a **Self-Heal stuck-run detector + Stop/Start** in the BS Self-Heal case view (new `stopped` case state). Transcription and abort are platform capabilities; stuck-detection + Stop/Start are self-heal-specific consumers of them. Motivated by an observed stuck self-heal run that looped on the wrong tool — see Edge Cases (the `file_grep` incident).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Explicit problem report drives an autonomous fix (Priority: P1)
@@ -128,6 +130,58 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 ---
 
+### User Story 8 - Every headless agent run produces a durable transcription (Priority: P1)
+
+A headless agent run — any run that does not belong to a user's live chat conversation (the Diagnostician, scheduled jobs, Telegram routing, workflow steps, and any `type:"claude"` run) — produces a durable markdown transcription. One file per run. This is a **platform capability, not a self-heal feature**: it closes the observability gap where headless runs today emit nothing the user can inspect after the fact.
+
+**Why this priority**: The self-heal pipeline runs for hours and, before this, the user could not see what the agent was doing once a run left the chat UI. Transcription is the foundation the Self-Heal UI (US9) and the stuck detector (US10) build on. Making it a platform capability means every other headless consumer (scheduler, Telegram, workflows) gets it for free.
+
+**Independent Test**: Trigger any headless local run (e.g. the Diagnostician on a test case) and any headless CLI run. Verify: after the run ends, a markdown file exists at `data/agent-transcripts/<agentId>/<runId>.md` containing the task input, the full message sequence, and every tool call + result; and the file is NOT present under `/Documents/Chats` and NOT visible in the Chats app.
+
+**Acceptance Scenarios**:
+
+1. **Given** a headless `type:"local"` run completes (via `runLocalHeadless`), **When** the run ends, **Then** a transcription file is written to `data/agent-transcripts/<agentId>/<runId>.md` capturing the agent id, run id, start/end timestamps, the task input, the assistant message sequence (with reasoning where the provider supplies it), and every tool call (name + input) and tool result (name + result + ok/error).
+2. **Given** a headless `type:"claude"` run completes (via `runClaudeAgent`, e.g. the Developer), **When** the run ends, **Then** a transcription file is written the same way, capturing the CLI run's streamed transcript (task, model turns, tool calls + results, final text).
+3. **Given** a headless run is aborted (killed) before it completes, **When** the abort takes effect, **Then** a partial transcription of what executed before the abort is still written, marked `aborted`.
+4. **Given** the platform transcription setting is disabled, **When** a headless run completes, **Then** no transcription file is written (but the run itself is unaffected).
+
+---
+
+### User Story 9 - The Self-Heal case view shows what the agent is doing (Priority: P1)
+
+In the BS Self-Heal case-detail view, the user can open and read each linked headless run's transcription: the Diagnostician run and (for class e/d-bis) the slow-path pipeline run, each as its own viewable document. This is the observability surface the user asked for — "I want to see what the agent is doing."
+
+**Why this priority**: Transcription (US8) is worthless to the user unless it is reachable. The Self-Heal page is the natural home — the case already links to its runs.
+
+**Independent Test**: Run a self-heal case to completion. Open the BS Self-Heal page → the case → the transcription surface. Verify: the Diagnostician run and the pipeline run each appear as a distinct, viewable transcription showing the tool calls and text.
+
+**Acceptance Scenarios**:
+
+1. **Given** a self-heal case has completed its Diagnostician run, **When** the user opens the case detail in the BS Self-Heal page, **Then** the Diagnostician run's transcription is listed and viewable.
+2. **Given** a class e/d-bis case has run the slow path, **When** the user opens the case detail, **Then** the pipeline run's transcription is listed separately from the Diagnostician's, each viewable.
+3. **Given** a case's run is in flight, **When** the user opens the transcription, **Then** the run's transcript is visible up to the present (the file is appended as the run progresses, not only on completion).
+
+---
+
+### User Story 10 - A stuck Self-Heal run can be detected, stopped, and restarted (Priority: P1)
+
+A Self-Heal run that gets stuck (e.g. the agent repeatedly calling the same failing/absent tool with no progress) is detected deterministically, surfaced, and the user can **Stop** it (kill the run) and **Start** it (restart the run) from the BS Self-Heal page. This is the human escape hatch for the incident that motivated this scope-add: a self-heal run that looped on `file_search` while the correct fix was `file_grep`.
+
+**Why this priority**: Without it, a stuck run burns the cost cap and time with no way out but to kill BOS. The Stop/Start pair gives the user control over the autonomous loop — the same control the rest of the mechanism deliberately withholds (no auto-promote, no auto-retry).
+
+**Independent Test**: Reproduce the canonical incident — a self-heal run whose agent repeatedly issues the same `(tool, normalized-input)` call (e.g. `file_search` for content a grep would have matched) with no progress. Verify: the run is flagged stuck, the BS Self-Heal page shows the stuck indicator, Stop kills the run (case → `stopped`, partial transcript written), Start (Play) re-launches a fresh run of the same case from the last committed artifact.
+
+**Acceptance Scenarios**:
+
+1. **Given** a self-heal run repeats the same `(tool, normalizedInput)` call a configurable number of times (default 5) with no intervening progress, **When** the stuck detector runs, **Then** the run is flagged stuck and the case records the stuck signature (the repeated call + count + run id).
+2. **Given** a self-heal run exceeds the agent's configured max steps, **When** the run ends, **Then** it is flagged stuck (max-steps exhaustion) and the case is transitioned to `stopped`.
+3. **Given** a self-heal case with status `diagnosing` or `bs-pipeline` (a run is in flight), **When** the user presses the **Stop** button in that case's row in the BS Self-Heal case list, **Then** the run is aborted via the platform abort capability, the case transitions to `stopped`, and a partial transcription of what executed is written.
+4. **Given** a case in the `stopped` **or `failed`** state, **When** the user presses the **Start (Play)** button in that case's row in the BS Self-Heal case list, **Then** a fresh run of the same case is launched from the last committed artifact (the existing terminate-and-retrigger resume model) and the case transitions back to in-flight.
+5. **Given** a stuck self-heal run, **When** it is detected, **Then** it does NOT spawn a new self-heal case (the FR-025 re-entrancy guard is unchanged) — the only remedy is the human Stop/Start.
+6. **Given** any self-heal case (regardless of status), **When** the user presses the **Discard** button in that case's row in the BS Self-Heal case list, **Then** the case is deleted: if it has an in-flight run, the run is aborted first (FR-032); the case is removed from the index and its record file is deleted; the in-flight slot is released if the case held it; a `self_heal.case_discarded` event is emitted. The case's transcripts are NOT deleted (they are platform artifacts).
+
+---
+
 ### Edge Cases
 
 - **Decision in flight**: The BS conversation is interrupted mid-pipeline (user closes the window, BOS restarts, token limit) after the user confirmed a decision but before it was persisted to an artifact. The commit-before-advance rule (FR-015) prevents this: the agent MUST write the decision to the artifact before proceeding. On cold restart, the agent reads the artifacts and recovers all confirmed decisions. If a decision was confirmed but not yet written (agent was killed between acknowledgment and write), the case transitions to `failed` and the user is notified — the system does not silently guess what the user decided.
@@ -138,6 +192,9 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 - **Diagnostician's own run fails**: The re-entrancy guard (FR-025) prevents the failure from triggering a new self-heal case.
 - **Cost cap reached mid-pipeline**: The pipeline completes its current case (it's already in progress); NEW triggers are queued for the next day.
 - **The fix requires a change to the Supervisor**: The Diagnostician MUST classify this as unfixable-by-self-heal (the Supervisor is off-limits per 005 FR-001/FR-010) and emit a notification to the user instead.
+- **The `file_grep` incident (canonical stuck case)**: A self-heal run launched to implement a `file_grep` tool got stuck — its own agent, which lacked a working content-grep tool, looped on `file_search` (the wrong tool) trying to find content in a file, the very condition it was sent to fix. This is the motivating case for US10/FR-033–FR-035: the run is detected stuck (repeated `file_search` calls, no progress), the user Stops it, and Start relaunches it. The irony is resolved at the process level (detect + human Stop/Start), not by the mechanism re-triggering itself.
+- **Abort mid-run**: A headless run is aborted by the platform abort capability (or the user's Stop) before it completes. A partial transcription of what executed is written, marked `aborted`; no completion event fires; the self-heal case (if applicable) is in `stopped`.
+- **Transcription disabled**: With `agentRuns.transcriptions.enabled` false, a run completes normally but writes no transcription file; the Self-Heal UI shows "no transcription (disabled)" for that run rather than an error.
 
 ## Requirements *(mandatory)*
 
@@ -145,7 +202,7 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 - **FR-001**: The system MUST expose a `self_heal.request` tool (available to agents, apps, and the user) that accepts a problem description and optional context (conversation id, event id, tool name + error, file path) and creates a Healing Case, invoking the Diagnostician.
 
-- **FR-002**: The system MUST detect agent hard errors as a self-heal trigger. A hard error is a thrown exception from a tool call or agent run. The system MUST maintain an environmental allowlist (network errors, DNS failures, authentication errors, rate-limit responses, OOM kills, external service timeouts) and MUST NOT trigger for errors matching the allowlist.
+- **FR-002**: The system MUST detect agent hard errors as a self-heal trigger. A hard error is a thrown exception from a tool call or agent run (in practice, the agent loop converts all tool failures to in-band `Error: <tool>: …` strings — the trigger counts these). The system MUST maintain an environmental allowlist (network errors, DNS failures, authentication errors, rate-limit responses, OOM kills, external service timeouts) and MUST NOT trigger for errors matching the allowlist. The hard-error trigger MUST fire only when the count of non-environmental failures within the rolling window (`selfHeal.repeatedFailure.windowSec`, default 300s) reaches a configurable threshold (`selfHeal.hardError.minCount`, default **1** — a single failure fires; raising to 2 or 3 means a single failure is logged but does NOT create a case). Below the threshold, the failure MUST be logged at info level (never silent) but MUST NOT create a Healing Case. When both the hard-error and repeated-failure triggers are enabled, the hard-error threshold MUST NOT preempt the repeated-failure threshold: if `hardError.minCount < repeatedFailure.count`, a threshold-met repeated-failure streak MUST still be labeled `repeated-failure` (not `hard-error`), preserving the distinct trigger type for dedupe and audit.
 
 - **FR-003**: The system MUST detect repeated tool-call failures as a self-heal trigger: when a configurable count (default 3) of consecutive calls to the same tool or tool class fail with the same error signature within a configurable time window (default 300s), the mechanism MUST be invoked with the correlated pattern.
 
@@ -162,6 +219,7 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 - **FR-009**: For scope class `a` (environmental/transient), the system MUST close the case with status `env-only` and MUST NOT make any durable change. An optional user-facing suggestion MAY be included in the case record.
 
 - **FR-010**: For scope class `b` (agent misuse / skill gap), the system MUST propose a specific skill patch or memory lesson as part of the diagnostics report. Application of the proposed change MUST be consent-gated: the user approves the specific edit before it is applied.
+  - A skill is a DIRECTORY, not a single file, so a proposed skill patch MAY target any file bundled with it (a `references/` doc, a `scripts/` file, a template) and not only the SKILL.md body. The proposed edit MAY name that file by its path inside the skill (an optional `file` field, e.g. `references/design.md`); when it does not, application MUST resolve the anchor across the whole skill and MUST apply it only when exactly one file contains it — an anchor present in several files MUST be refused as ambiguous, naming the candidates, rather than guessed at.
 
 - **FR-011**: For scope class `c` (workflow/data gap), the system MUST propose a specific workflow definition edit. Application MUST be consent-gated.
 
@@ -183,7 +241,7 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 - **FR-017**: When a fix is complete and its preview (or `app_build` result) passes health checks and the test suite, the system MUST emit a `self_heal.fix_ready` event containing: the case id, the preview branch name (class e) or app id (class d-bis), a summary of the fix, and a link to the preview. The user MUST be able to act on this event (promote or discard).
 
-- **FR-018**: The system MUST maintain a Healing Case record for each self-heal invocation. The case MUST track: id, trigger type, failure signature, status (state machine: `new → diagnosed → [scope-class-specific states] → terminal`), diagnostics report path, scope class, ownership, proposed surface, linked preview/app id, and a timeline of state transitions with timestamps.
+- **FR-018**: The system MUST maintain a Healing Case record for each self-heal invocation. The case MUST track: id, trigger type, failure signature, status (state machine: `new → diagnosed → [scope-class-specific states] → terminal`; plus a `stopped` state reachable from any in-flight scope-class state and returned to that state by Start; plus `preview-ready → resolved` (user promoted the fix) and `preview-ready → dismissed` (user discarded the fix, via the existing Edge Case "User discards a preview" path)), diagnostics report path, scope class, ownership, proposed surface, linked preview/app id, and a timeline of state transitions with timestamps.
 
 - **FR-019**: The system MUST deduplicate triggers by failure signature within a configurable time window (`selfHeal.dedupeWindowSec`, default 86400s). A signature that already has an open or recently-closed case MUST NOT create a new case; the duplicate MUST be logged and linked to the original. The failure signature (dedupe key) MUST be computed **before** diagnosis, using deterministic logic only (no LLM call): `(tool_name, error_category, normalized_message_hash)` where `error_category` is a coarse bucket assigned from the exception type, HTTP status code, or message pattern (e.g., `timeout`, `not_found`, `permission_denied`, `type_mismatch`, `auth`, `unhandled_exception`), and `normalized_message_hash` is a SHA-256 hash of the error message after stripping variable tokens (IDs, UUIDs, timestamps, quoted strings, numeric values). For the explicit trigger (`self_heal.request`), the dedupe window MUST be shorter (default 3600s) and the key relaxed to `(tool_name, "explicit", description_hash)`, reflecting that a user re-firing the same report is likely intentional. When a trigger is suppressed by dedupe, the system MUST emit a `self_heal.dedupe_suppressed` event (info level) referencing the original case id — the suppression is logged, never silent.
 
@@ -191,7 +249,7 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 - **FR-021**: The Diagnostician MUST be schedulable for periodic execution via `selfHeal.diagnostician.scheduled` (boolean) and `selfHeal.diagnostician.idleThresholdSec` (number, default 300). When scheduled, it MUST run both Mode 1 (behavioral review of conversations idle past the threshold) and Mode 2 (gap detection over the pending failure/event queue) in a single pass.
 
-- **FR-022**: The Build Studio app MUST include a "Self-Heal" content page (accessible from the main BS navigation, alongside the git-merge page) that displays: (a) a list of all Healing Cases with their current status and scope class; (b) a detail view for each case showing the full diagnostics report, the proposed change, and the state-transition timeline; (c) consent controls for class b/c patches (approve specific edit / dismiss); (d) for class e/d-bis cases, a link to the preview and the current build status; (e) for suspended cases, the pending question and an answer input.
+- **FR-022**: The Build Studio app MUST include a "Self-Heal" content page (accessible from the main BS navigation, alongside the git-merge page) that displays: (a) a list of all Healing Cases with their current status and scope class; (b) a detail view for each case showing the full diagnostics report, the proposed change, and the state-transition timeline; (c) consent controls for class b/c patches (approve specific edit / dismiss); (d) for class e/d-bis cases, a link to the preview and the current build status; (e) for suspended cases, the pending question and an answer input; (f) for each of the case's linked headless runs, a viewable transcription (FR-031); (g) in the case list, per-row Stop (for `diagnosing`/`bs-pipeline` cases) and Start (for `stopped` cases) controls, plus an amber stuck indicator (⚠ icon + tooltip) for any case with a `stuckSignature` (FR-034); the case-detail view MAY additionally show these controls as a secondary location; (h) in the case list, a per-row **Discard** button (trash icon) visible for all cases, which deletes the case record (FR-036).
 
 - **FR-023**: The self-heal mechanism MUST NOT modify the Supervisor (per 005 FR-001/FR-010) or the base version. All code fixes MUST land on feature branches as previews (class e) or as `app_build` results (class d-bis).
 
@@ -199,11 +257,31 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 - **FR-025**: The Diagnostician's own execution MUST be excluded from the trigger set (re-entrancy guard). A failing Diagnostician run MUST NOT create a new self-heal case.
 
-- **FR-026**: The system MUST emit lifecycle events for all case state transitions via the 034 event system: `self_heal.case_created`, `self_heal.case_escalated`, `self_heal.decision_needed`, `self_heal.decision_resolved`, `self_heal.fix_ready`, `self_heal.abandoned`. These events MUST be queryable and provide a complete audit trail.
+- **FR-026**: The system MUST emit lifecycle events for all case state transitions via the 034 event system: `self_heal.case_created`, `self_heal.case_escalated`, `self_heal.decision_needed`, `self_heal.decision_resolved`, `self_heal.fix_ready`, `self_heal.fix_promoted`, `self_heal.fix_discarded`, `self_heal.abandoned`, `self_heal.run_stuck`, `self_heal.run_aborted`, `self_heal.run_restarted`, `self_heal.case_discarded`. These events MUST be queryable and provide a complete audit trail.
 
-- **FR-027**: A `selfHeal` configuration namespace MUST exist in Settings, exposing: global enabled toggle, per-trigger toggles, Diagnostician scheduling (enabled + idle threshold), autonomous implement toggle, TDD required toggle, TDD target coverage (percentage), cost cap (tokens/day), dedupe window (seconds), and suspended timeout (days, for the HITL node).
+- **FR-027**: A `selfHeal` configuration namespace MUST exist in Settings, exposing: global enabled toggle, per-trigger toggles, hard-error minimum count (`hardError.minCount`, default 1), repeated-failure count (`repeatedFailure.count`, default 3), Diagnostician scheduling (enabled + idle threshold), autonomous implement toggle, TDD required toggle, TDD target coverage (percentage), cost cap (tokens/day), dedupe window (seconds), suspended timeout (days, for the HITL node), and stuck-detector settings (`stuckDetector.enabled`, default true; `stuckDetector.repeatCalls`, default 5). In addition, a platform `agentRuns` configuration namespace MUST expose `agentRuns.transcriptions.enabled` (default true), governing whether headless runs write transcription files (FR-029/FR-030).
 
 - **FR-028**: The diagnostics report file MUST be written to `/Documents/BOS Improvements/` (the same directory as Mode 1 reports) with a filename derived from the case id. The report format is markdown with YAML frontmatter.
+
+- **FR-029**: The system MUST record a durable markdown transcription for **every headless agent run**. A headless run is a run that does not belong to a user's live chat conversation — i.e. runs executed via `runLocalHeadless` (`type:"local"` agents) and via `runClaudeAgent` (`type:"claude"` agents). The transcription MUST capture: the agent id/name, the run id, start and end timestamps, the task input, the assistant message sequence (including provider reasoning where available), and every tool call (name + input), tool result (name + result + ok/error), and the final text. The system MUST write **ONE transcription file per run** (never per case, never per conversation).
+
+- **FR-030**: Transcriptions MUST be stored in the canonical data directory at `data/agent-transcripts/<agentId>/<runId>.md` and MUST NOT be written to `/Documents/Chats` or any normal-conversation store. A run's transcription MUST NOT appear in the Chats app, be scanned by the Diagnostician's idle-conversation review, or be operated on by memory curation. A read-only API MUST expose a transcription by run id, and MUST support listing runs for an agent and for a self-heal case. Transcription is a **platform capability**: it MUST apply to all headless run callers (self-heal, scheduler, Telegram, workflow steps, the subagent delegate route), not only self-heal.
+
+- **FR-031**: The BS Self-Heal case-detail view (FR-022) MUST surface each of the case's linked headless run transcriptions — the Diagnostician run and (for class e/d-bis) the slow-path pipeline run — as distinct, viewable documents. The transcription MUST be rendered as a **conversation**: assistant text turns via the BOS markdown renderer (`ChatMarkdown`), tool calls via the standard `ToolCallCard` component (collapsible, with syntax-highlighted args and results, MCP-UI support, and ok/error/cancelled status), and reasoning via a collapsible block — matching the visual language of the live Assistant/Build Studio chat. The transcription of an in-flight run MUST be viewable up to the present (the file is appended as the run progresses, not only on completion).
+
+- **FR-032**: The system MUST expose a **platform abort capability**, `abortHeadlessRun(runId)`, that terminates an in-flight headless run by signaling the run's AbortController and marking the run `aborted`. This MUST be available to any caller (not only self-heal) and MUST cause a partial transcription of what executed to be written.
+
+- **FR-033**: The system MUST **deterministically** detect a stuck self-heal run. A run is stuck when EITHER (a) it issues the same `(tool, normalizedInput)` call a configurable number of times (`selfHeal.stuckDetector.repeatCalls`, default 5) with no intervening progress (no new distinct tool call and no final text), OR (b) it exceeds the agent's configured max steps. Detection MUST be deterministic (no LLM call) and MUST record the stuck signature (repeated call, count, run id) on the case and emit `self_heal.run_stuck`.
+
+- **FR-034**: For any self-heal case, the BS Self-Heal **case list** MUST expose per-row run controls: (a) a **Stop** button (amber, visible when the case's status is `diagnosing` or `bs-pipeline`) that calls the platform abort (FR-032) for that case's in-flight run and transitions the case to the `stopped` state (emitting `self_heal.run_aborted`); and (b) a **Start (Play)** button (green, visible when the case's status is `stopped` **or `failed`**) that re-launches a fresh run of the same case from the last committed artifact — reusing the existing terminate-and-retrigger resume model (Clarification Q5/A5) — and transitions the case back to in-flight (emitting `self_heal.run_restarted`). The case list MUST also show an amber **stuck indicator** (a ⚠ icon with a tooltip showing the stuck reason, e.g. "repeated file_search ×5") for any case whose `stuckSignature` is set. Stop MUST kill the run (not resume it in place); Start MUST begin a new run. The case-detail view MAY additionally expose the same controls as a secondary location for convenience.
+
+- **FR-035**: A stuck self-heal run MUST NOT create a new self-heal case. The FR-025 re-entrancy guard is UNCHANGED — the mechanism's own runs remain excluded from the trigger set. The human escape hatch for a stuck run is the Stop control (FR-034) and the `stopped` state, from which the user may Start a fresh run or dismiss the case.
+
+- **FR-037**: In addition to the markdown transcription (FR-029), the system MUST write a **structured JSON companion** at `data/agent-transcripts/<agentId>/<runId>.json` for every headless run. The JSON is an ordered array of entries: `{type:"task_input", text}`, `{type:"assistant_text", text}`, `{type:"reasoning", text}`, `{type:"tool_call", callId, name, args, status, result?, progress?}`. The write path is the same as the markdown (per-turn append, config-gated by `agentRuns.transcriptions.enabled`). The read API (`/api/agent-transcripts?runId`) MUST return the structured JSON by default (`?format=json`), with the markdown available via `?format=md`. The structured JSON is the data source for the FR-031 conversation rendering; the markdown remains the human-readable/auditable artifact.
+
+- **FR-036**: The BS Self-Heal case list MUST expose a per-row **Discard** button (a trash/× icon, visible for all cases regardless of status). Pressing it MUST delete the case: if the case has an in-flight run, the run is aborted first via the platform abort (FR-032); the case is removed from the case store's index and its record file is deleted; the in-flight mutual-exclusion slot is released if the case held it. The case's transcripts are NOT deleted (they are platform artifacts owned by the run layer, not the case). A `self_heal.case_discarded` event MUST be emitted (info level) carrying the case id, status at discard time, and the trigger type, for audit. The discard is irreversible — there is no undo.
+
+- **FR-038**: The self-heal mechanism MUST close a `preview-ready` case when the user resolves the fix. Two mechanisms: (a) **app-side notification** — after a successful promote or discard from the Topbar version controls or the Settings → Versions tab, the app MUST call a self-heal server action (`POST /api/self-heal?op=branch-settled`) carrying the branch name and the outcome (`promoted` or `discarded`); the server finds all `preview-ready` cases whose linked branch matches and transitions them: `promoted` → `resolved` (emitting `self_heal.fix_promoted`), `discarded` → `dismissed` (emitting `self_heal.fix_discarded`). (b) **boot-reconcile backstop** — on BOS boot (the existing `reconcileInFlightCases` path, which runs after every promote because promote restarts the base process), the system MUST sweep all `preview-ready` cases: for each, if the linked branch no longer exists in the Supervisor's branch list, check whether the case's `fixCommit` (the branch head SHA recorded at `completeFix` time) is an ancestor of the base branch (via BOS's git layer). If it is an ancestor → `resolved` (promoted); if not → `dismissed` (discarded). This backstop covers the case where the browser was closed (the app-side notification never fired). The `fixCommit` field MUST be recorded on the case at `completeFix` time (the head SHA of the feature branch). A `resolved` case is terminal. The BS Self-Heal case list MUST show a distinct `resolved` status chip (green, distinct from the amber `suspended`, red `failed`, and neutral `stopped`).
 
 ### Key Entities
 
@@ -220,6 +298,10 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 - **Fast Spine**: The deterministic, fast-path coordinator (trigger → dedupe → cost-cap → case store → Diagnostician → scope-class routing → resolve/escalate) that completes in minutes and ends without waiting for the slow path. Implemented as a 034 core headless handler + server-only case store + hook plugin + async `runSubAgent` — NOT a 002 workflow.
 
 - **Slow Path**: The autonomous Build Studio pipeline (specify → implement → preview) that runs over hours/days for class e/d-bis fixes.
+
+- **Headless Run**: Any agent run that does not belong to a user's live chat conversation — a `type:"local"` run via `runLocalHeadless` or a `type:"claude"` run via `runClaudeAgent`. Identified by a run id of the form `headless-<agentId>-<timestamp>`. The unit of transcription (FR-029) and of the platform abort capability (FR-032).
+
+- **Transcription**: A durable markdown file recording one headless run — the task input, the assistant message sequence, every tool call and result, and the final text. One file per run, at `data/agent-transcripts/<agentId>/<runId>.md`. Surfaced via a read-only API (FR-030), never in the normal-conversation store.
 
 ### Success Criteria *(mandatory)*
 
@@ -244,6 +326,14 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 - **SC-009**: The BS Self-Heal page displays all active cases with their current status, and the user can approve a class-b skill patch, answer a suspended question, or link to a preview — all from that page.
 
 - **SC-010**: No self-heal fix is ever promoted without an explicit user action. The system emits `fix_ready`; only the user promotes.
+
+- **SC-011**: Every headless run (local and CLI) that completes with transcriptions enabled produces exactly one transcription file at `data/agent-transcripts/<agentId>/<runId>.md`; no headless transcript appears under `/Documents/Chats` or in the Chats app.
+
+- **SC-012**: A self-heal case's BS Self-Heal page exposes its Diagnostician and (for e/d-bis) pipeline run transcriptions as distinct, viewable documents, including a live (appended) view of an in-flight run.
+
+- **SC-013**: A self-heal run that repeats the same tool call 5 times with no progress is flagged stuck within one detection pass; the user can Stop it (run aborted, case → `stopped`, partial transcript written) and Start it (fresh run launched, case → in-flight) from the BS Self-Heal page.
+
+- **SC-014**: A stuck self-heal run never creates a new self-heal case (FR-025/FR-035 hold).
 
 ## Clarifications
 
@@ -272,6 +362,20 @@ During the autonomous Build Studio pipeline, the Diagnostician (or the BS agent)
 
 **Q8 (analyze, 2026-09-07)**: Do both Diagnostician modes use the same report format?
 **A8**: **Yes — markdown for both modes** (user directive). Mode 2's `submit_diagnostics_report` is already markdown (YAML frontmatter + narrative). Mode 1's existing `submit_review_report` changes its output from JSON to markdown; this is non-destructive because nothing reads the JSON reports programmatically (they are write-only human artifacts in `/Documents/BOS Improvements/`), and the Mode-1 page-count recompute integrity gate is preserved.
+
+### Session 2026-09-08 (scope-add: headless transcription + stuck-run Stop/Start)
+
+**Q9**: Should transcription be a self-heal feature or a platform capability for all headless agents?
+**A9**: **Platform capability.** Every headless run (Diagnostician, scheduler jobs, Telegram routing, workflow steps, and `type:"claude"` runs) gets a durable transcription. Self-heal is the first *consumer* (it surfaces them in the case view), but the mechanism lives in the agent-execution layer so all callers benefit.
+
+**Q10**: Where are transcripts stored, and why not with normal conversations?
+**A10**: In the canonical data dir, `data/agent-transcripts/<agentId>/<runId>.md` — one file per run, keyed by the run's existing run id. NOT in `/Documents/Chats`: that store is what the Chats app renders, what the Diagnostician's idle-review scans, and what memory curation operates on; machine runs would pollute all three. Transcripts are surfaced to the user via a read-only API + UI (the Self-Heal case view), not the Files/Chats apps.
+
+**Q11**: What are the Stop/Start semantics for a stuck self-heal run?
+**A11**: **Stop kills the run; Start (Play) restarts it.** Stop calls the platform abort (`abortHeadlessRun`) on the run's AbortController → the run is terminated and the case transitions to a new `stopped` state (partial transcript written). Start launches a FRESH run of the same case from the last committed artifact, reusing the existing terminate-and-retrigger resume model (Q5/A5) — it does not resume the aborted run in place. This maps onto machinery that already exists rather than inventing a pause primitive.
+
+**Q12**: Does a stuck self-heal run trigger a new self-heal run (auto-remedy)?
+**A12**: **No — explicitly dropped.** A stuck run MUST NOT self-trigger (the FR-025 re-entrancy guard is unchanged; a self-trigger here risks unbounded recursion). The human escape hatch is the Stop/Start pair instead. This was the user's original item 4, withdrawn after seeing it conflicts with FR-025.
 
 ## Assumptions
 

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Files — Multi-Selection & Drag-and-Drop (mockup)</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#0a0b0e;color:#dfe3ea;padding:28px;display:flex;flex-direction:column;gap:18px}
+  h1{font-size:17px;color:#fff}
+  .cap{font-size:12px;color:#8a93a3;max-width:880px}
+  .row2{display:flex;gap:18px;flex-wrap:wrap}
+  .mock{border:1px solid #1e232c;border-radius:14px;background:#0f1218;flex:1 1 460px;min-width:430px;overflow:hidden}
+  .mtop{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid #1a1f27;background:#0c0f14}
+  .dots{display:flex;gap:5px}.dots i{width:9px;height:9px;border-radius:50%;background:#2a313c;display:block}
+  .mtitle{font-size:12px;color:#9aa3b2;font-weight:600}
+  .mtag{margin-left:auto;font-size:10px;font-weight:700;color:#0a0b0e;background:#5b8cff;border-radius:5px;padding:3px 7px;letter-spacing:.3px}
+  .list{padding:10px 12px 14px;display:flex;flex-direction:column;gap:3px}
+  /* Q3=B: rows are width-capped and left-aligned (≈65% of the list width), so a persistent
+     empty region (right of the rows + below the last row) is always the marquee-start zone. */
+  .row{display:flex;align-items:center;gap:10px;height:37px;padding:0 12px;border-radius:8px;cursor:default;
+       width:65%;margin-left:0;position:relative}
+  .row .nm{font-size:13px;color:#dfe3ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .sz{margin-left:auto;font-size:11px;color:#6b7382;white-space:nowrap}
+  .row .ic{font-size:15px;width:18px;text-align:center}
+  .row.sel{background:#1c2740;box-shadow:inset 0 0 0 1px #33507f}
+  .row.sel .nm{color:#cfe0ff}
+  .row.drop{background:#132a1c;box-shadow:inset 0 0 0 1.5px #2f7d4f}
+  .row.drop .nm{color:#bff0d0}
+  .chip{font-size:8.5px;font-weight:800;letter-spacing:.4px;color:#0a0b0e;background:#3fae6a;border-radius:4px;padding:2px 5px;margin-left:8px}
+  .chip.copy{background:#c98a2b;color:#1a1206}
+  .chip.moved{background:#5b8cff;color:#071019}
+  .empty{width:100%;height:26px;border-radius:8px}
+  .marquee{position:absolute;border:1.5px solid #5b8cff;background:rgba(91,140,255,.14);border-radius:6px;pointer-events:none}
+  .menu{position:absolute;right:14px;top:52px;width:230px;background:#141922;border:1px solid #232a35;border-radius:11px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.55);z-index:5}
+  .mhead{font-size:10px;font-weight:700;color:#7f8a9c;padding:6px 10px 7px;letter-spacing:.3px;border-bottom:1px solid #1d242f;margin-bottom:4px}
+  .mi{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;font-size:12.5px;color:#cdd3dd;cursor:default}
+  .mi .k{margin-left:auto;font-size:10px;color:#5f6878}
+  .mi .g{width:16px;text-align:center;font-size:13px}
+  .mi.on{background:#1b2534;box-shadow:inset 0 0 0 1px #2c3c56}
+  .mi.dis{opacity:.4}
+  .mi.dis .k{color:#4a5260}
+  .msep{height:1px;background:#1d242f;margin:5px 4px}
+  .ghost{position:absolute;left:52px;top:150px;display:flex;align-items:center;gap:8px;padding:7px 11px;background:#1a2130;border:1px solid #33507f;border-radius:9px;box-shadow:0 8px 22px rgba(0,0,0,.5);font-size:12px;color:#cfe0ff;z-index:6}
+  .ghost .cnt{width:26px;height:26px;border-radius:7px;background:#2a3a5c;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#cfe0ff}
+  .ghost .op{margin-left:4px;font-size:9.5px;font-weight:800;color:#0a0b0e;background:#5b8cff;border-radius:4px;padding:2px 5px}
+  .cap2{font-size:11px;color:#8a93a3;padding:0 4px 10px;max-width:820px}
+  .win2{display:flex;gap:18px;flex-wrap:wrap;align-items:stretch}
+  .win{border:1px solid #1e232c;border-radius:12px;background:#0f1218;flex:1 1 300px;overflow:hidden}
+  .win .mtop{padding:9px 12px}
+  .win .row{width:100%}
+  .win .list{padding:8px 10px 12px;gap:2px}
+  .lbl{font-size:10px;font-weight:800;color:#0a0b0e;background:#33507f;color:#cfe0ff;border-radius:5px;padding:2px 6px;margin-left:8px}
+</style>
+</head>
+<body>
+  <h1>Files — multi-selection &amp; drag-and-drop (static mockup)</h1>
+  <p class="cap">Illustration only — <b>not</b> a working prototype. Shows the confirmed surface: the <b>row list</b> (Q1=B, rows width-capped &amp; left-aligned so the empty region is the marquee zone, Q3=B) and the <b>full context menu</b> (Q2=A) acting on the whole selection, plus cross-window drag-and-drop between two Files instances. Colors/shapes are approximate, not final.</p>
+
+  <div class="row2">
+    <!-- ============ A. Multi-select: Shift-range + marquee ============ -->
+    <div class="mock">
+      <div class="mtop"><span class="dots"><i></i><i></i><i></i></span><span class="mtitle">Files — /Documents</span><span class="mtag">A · SELECT</span></div>
+      <div class="list" style="position:relative">
+        <div class="row"><span class="ic">📁</span><span class="nm">Design</span><span class="sz">—</span></div>
+        <div class="row"><span class="ic">📁</span><span class="nm">Reports</span><span class="sz">—</span></div>
+        <div class="row sel"><span class="ic">📄</span><span class="nm">screenshot-2026-09-26.png</span><span class="sz">2.4 MB</span></div>
+        <div class="row sel"><span class="ic">📄</span><span class="nm">budget-draft.xlsx</span><span class="sz">88 KB</span></div>
+        <div class="row sel"><span class="ic">📄</span><span class="nm">meeting-notes.md</span><span class="sz">12 KB</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">archive-2025.zip</span><span class="sz">11 MB</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">todo.txt</span><span class="sz">3 KB</span></div>
+        <div class="row"><span class="ic">📁</span><span class="nm">Photos</span><span class="sz">—</span></div>
+        <!-- the width-capped rows leave a persistent empty region on the right; the
+             marquee is shown starting in that empty space (not anchored to a row) -->
+        <div class="marquee" style="left:40%;top:72px;width:34%;height:100px"></div>
+      </div>
+      <p class="cap2">Three items selected (Shift-click range). A <b>marquee</b> is being dragged from the <b>empty region right of the rows</b> to add more — rows whose boxes it intersects join the selection on release. Because rows are width-capped, this empty region is always present even for long names (see C).</p>
+    </div>
+
+    <!-- ============ B. Context menu — full menu, whole selection (Q2=A) ============ -->
+    <div class="mock">
+      <div class="mtop"><span class="dots"><i></i><i></i><i></i></span><span class="mtitle">Files — /Documents</span><span class="mtag">B · MENU</span></div>
+      <div class="list" style="position:relative">
+        <div class="row"><span class="ic">📁</span><span class="nm">Design</span><span class="sz">—</span></div>
+        <div class="row"><span class="ic">📁</span><span class="nm">Reports</span><span class="sz">—</span></div>
+        <div class="row sel"><span class="ic">📄</span><span class="nm">screenshot-2026-09-26.png</span><span class="sz">2.4 MB</span></div>
+        <div class="row sel"><span class="ic">📄</span><span class="nm">budget-draft.xlsx</span><span class="sz">88 KB</span></div>
+        <div class="row sel"><span class="ic">📄</span><span class="nm">meeting-notes.md</span><span class="sz">12 KB</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">archive-2025.zip</span><span class="sz">11 MB</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">todo.txt</span><span class="sz">3 KB</span></div>
+        <div class="row"><span class="ic">📁</span><span class="nm">Photos</span><span class="sz">—</span></div>
+        <div class="menu">
+          <div class="mhead">3 ITEMS SELECTED</div>
+          <div class="mi dis"><span class="g">▶</span>Open<span class="k">single item only</span></div>
+          <div class="mi dis"><span class="g">✎</span>Rename…<span class="k">single item only</span></div>
+          <div class="msep"></div>
+          <div class="mi on"><span class="g">⧉</span>Copy<span class="k">⌘C</span></div>
+          <div class="mi on"><span class="g">⇄</span>Move…<span class="k">⌘X</span></div>
+          <div class="mi on"><span class="g">⬇</span>Download<span class="k">3 files</span></div>
+          <div class="msep"></div>
+          <div class="mi on" style="color:#ff8f8f"><span class="g" style="color:#ff8f8f">🗑</span>Delete<span class="k">⌫</span></div>
+        </div>
+      </div>
+      <p class="cap2">Right-click with 3 selected opens the <b>full context menu</b> (Q2=A). Open &amp; Rename are single-only → greyed. Copy / Move / Download / Delete apply to <b>all 3</b> in one operation. With exactly one item selected every row is enabled and behaves as today (no regression).</p>
+    </div>
+  </div>
+
+  <p class="cap">Drag-and-drop — <b>within</b> the instance (move to a sibling folder / copy to the same folder) and <b>across</b> two separately-open Files windows. The drag ghost carries the whole selection (count badge). On drop: a different folder = <b>move</b>; the same folder = <b>copy</b> with a non-colliding name (e.g. <code>meeting-notes (1).md</code>). Both views then update without a manual refresh.</p>
+
+  <div class="win2">
+    <!-- ============ C. Marquee reachable with long names (FR-017 / Q3=B) ============ -->
+    <div class="win">
+      <div class="mtop"><span class="dots"><i></i><i></i><i></i></span><span class="mtitle">Files — /Documents</span><span class="lbl">C · LONG NAMES</span></div>
+      <div class="list" style="position:relative">
+        <div class="row"><span class="ic">📄</span><span class="nm">quarterly-financial-reporting-package-final-v2-updated.xlsx</span><span class="sz">1.2 MB</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">customer-feedback-synthesis-and-action-items-2026.pdf</span><span class="sz">820 KB</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">infrastructure-migration-runbook-rolling-deployment.md</span><span class="sz">44 KB</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">product-launch-checklist-and-ownership-matrix.docx</span><span class="sz">61 KB</span></div>
+        <div class="marquee" style="left:68%;top:14px;width:24%;height:140px"></div>
+        <div class="empty"></div>
+      </div>
+      <p class="cap2">Even with long, truncating names the rows stop at the cap, so the <b>empty region to the right</b> (and below the last row) is still there — the marquee (right) is always startable. Selects exactly the rows it crosses (SC-007).</p>
+    </div>
+
+    <!-- ============ D. Cross-window drag (instance A → B) ============ -->
+    <div class="win">
+      <div class="mtop"><span class="dots"><i></i><i></i><i></i></span><span class="mtitle">Files — /Documents</span><span class="lbl">D · SOURCE</span></div>
+      <div class="list">
+        <div class="row"><span class="ic">📁</span><span class="nm">Design</span><span class="sz">—</span></div>
+        <div class="row"><span class="ic">📁</span><span class="nm">Reports</span><span class="sz">—</span></div>
+        <div class="row sel"><span class="ic">📄</span><span class="nm">screenshot-2026-09-26.png</span><span class="sz">2.4 MB</span></div>
+        <div class="row sel"><span class="ic">📄</span><span class="nm">meeting-notes.md</span><span class="sz">12 KB</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">archive-2025.zip</span><span class="sz">11 MB</span></div>
+      </div>
+    </div>
+    <div class="win">
+      <div class="mtop"><span class="dots"><i></i><i></i><i></i></span><span class="mtitle">Files — /Documents/Reports</span><span class="lbl">D · TARGET</span></div>
+      <div class="list">
+        <div class="row"><span class="ic">📁</span><span class="nm">Q3</span><span class="sz">—</span></div>
+        <div class="row"><span class="ic">📁</span><span class="nm">Archive</span><span class="sz">—</span></div>
+        <div class="row"><span class="ic">📄</span><span class="nm">summary.md</span><span class="sz">9 KB</span></div>
+        <div class="row drop"><span class="ic">📄</span><span class="nm">meeting-notes.md</span><span class="chip moved">MOVED</span></div>
+        <div class="row drop"><span class="ic">📄</span><span class="nm">screenshot-2026-09-26.png</span><span class="chip moved">MOVED</span></div>
+      </div>
+      <p class="cap2">Two instances, one shared VFS. Dragged 2 items from the left window into this one → <b>moved</b> (different folder). This view now shows them; the source view drops them — <b>no manual refresh</b> on either.</p>
+    </div>
+  </div>
+
+  <p class="cap">Copy (same-folder) naming: dropping an item back into its own folder creates <code>name (1).ext</code>, <code>name (2).ext</code>, … — never an overwrite. The drag ghost (not shown separately) shows a count badge ("2 items") and a MOVE/COPY tag. An invalid drop (a file row, the item itself, a descendant of a dragged folder, or a destination that changed mid-drag) is a no-op — items return to origin. <b>Not</b> an invalid target: dropping onto the empty area of the <i>current</i> folder is a same-folder <b>copy</b>.</p>
+</body>
+</html>

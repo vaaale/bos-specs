@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GitLab Integration — UI Mockup (Webhook-Only)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0b0d12;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+  .state { display: none; }
+  .state.active { display: block; }
+  .switch-btn.active { background: rgba(139,92,246,.25); color: #fff; border-color: rgba(167,139,250,.5); }
+  .tl { width: 11px; height: 11px; border-radius: 9999px; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="mx-auto flex h-screen max-w-4xl flex-col p-3 sm:p-5">
+
+  <!-- ===================== SETTINGS WINDOW ===================== -->
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#15171e] shadow-2xl">
+
+    <!-- Titlebar -->
+    <div class="flex shrink-0 select-none items-center gap-2 border-b border-white/10 bg-white/5 px-3 py-2">
+      <span class="flex items-center gap-2">
+        <span class="tl" style="background:#ff5f57"></span>
+        <span class="tl" style="background:#febc2e"></span>
+        <span class="tl" style="background:#28c840"></span>
+      </span>
+      <span class="ml-2 flex items-center gap-1.5 text-xs font-medium text-white/80">
+        <i data-lucide="settings-2" class="size-3.5 text-white/50"></i> Settings
+      </span>
+    </div>
+
+    <div class="flex min-h-0 flex-1">
+      <!-- Sidebar -->
+      <nav class="w-44 shrink-0 overflow-auto border-r border-white/10 bg-white/[0.02] p-2">
+        <h2 class="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white/40">Settings</h2>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Assistant</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Agents</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Repositories</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs bg-white/15 text-white">Integrations</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Services</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">MCP Servers</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Tools</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Skills</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Appearance</button>
+        <button class="mt-0.5 block w-full truncate rounded px-2 py-1.5 text-left text-xs text-white/70 hover:bg-white/10">Logs</button>
+      </nav>
+
+      <!-- Main content -->
+      <div class="min-h-0 flex-1 overflow-auto p-4">
+
+        <!-- Breadcrumb -->
+        <nav aria-label="Breadcrumb" class="mb-3 flex items-center gap-1.5 text-[12px]">
+          <button type="button" class="text-white/60 transition-colors hover:text-white">Integrations</button>
+          <i data-lucide="chevron-right" class="size-3 text-white/30"></i>
+          <span class="font-medium text-white">GitLab</span>
+        </nav>
+
+        <!-- ===== MOCKUP STATE SWITCHER ===== -->
+        <div class="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/[0.04] px-3 py-2">
+          <span class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-violet-300/80">
+            <i data-lucide="flask-conical" class="size-3"></i> Mockup state
+          </span>
+          <div class="flex flex-wrap gap-1.5">
+            <button class="switch-btn rounded border border-white/15 px-2.5 py-1 text-[11px] text-white/70 transition-colors hover:bg-white/10" data-state="a">A · Webhook off</button>
+            <button class="switch-btn rounded border border-white/15 px-2.5 py-1 text-[11px] text-white/70 transition-colors hover:bg-white/10" data-state="b">B · Enabled, no token</button>
+            <button class="switch-btn active rounded border border-white/15 px-2.5 py-1 text-[11px] text-white/70 transition-colors hover:bg-white/10" data-state="c">C · Enabled, token (hero)</button>
+          </div>
+        </div>
+
+        <!-- ================= STATE A · WEBHOOK DISABLED ================= -->
+        <section id="state-a" class="state space-y-4">
+
+          <!-- Integration header -->
+          <div class="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.05] p-4">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" class="text-orange-400 shrink-0">
+              <path d="M15.545 6.423L10.374.377a.457.457 0 00-.851.178L8.258 6.423H7.742l.271-5.868a.457.457 0 00-.851-.178L.455 6.423A.55.55 0 00.5 6.9v.207a.55.55 0 00.385.524l3.717 1.177-2.046 6.14a.457.457 0 00.62.577L8 13.09l4.864 2.435a.457.457 0 00.62-.577l-2.046-6.14 3.717-1.177A.55.55 0 0015.5 7.107V.69a.55.55 0 00.045-.267z"/>
+            </svg>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-[13px] font-medium">GitLab</span>
+                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook</span>
+              </div>
+              <p class="mt-0.5 text-[11px] text-white/50">
+                Receives GitLab issue &amp; merge-request events and emits them to BOS handlers.
+                This is the webhook only — handling is a separate, toggleable step.
+              </p>
+            </div>
+          </div>
+
+          <!-- Webhook section (disabled) -->
+          <section class="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <div class="mb-3 flex items-center justify-between">
+              <h4 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                <i data-lucide="globe" class="size-3"></i> Webhooks
+                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-normal normal-case text-white/60">Disabled</span>
+              </h4>
+              <button class="inline-flex items-center gap-1.5 rounded bg-violet-500/80 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-violet-500">
+                <i data-lucide="zap" class="size-3"></i> Enable
+              </button>
+            </div>
+            <div class="space-y-3">
+              <div class="space-y-1 opacity-60">
+                <span class="block text-[11px] text-white/60">Receiver URL</span>
+                <div class="flex items-center gap-2">
+                  <code class="flex-1 truncate rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] text-white/50">
+                    https://&lt;bos-origin&gt;/api/integrations/webhooks/gitlab/webhooks
+                  </code>
+                  <button disabled class="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1 text-[11px] text-white/40 disabled:opacity-40">
+                    <i data-lucide="copy" class="size-3"></i> Copy
+                  </button>
+                </div>
+              </div>
+              <p class="text-[10px] leading-relaxed text-white/40">
+                When enabled, GitLab POSTs new issue &amp; merge-request events to this URL.
+                Enable the webhook, generate a secret token, then paste both into GitLab.
+              </p>
+            </div>
+          </section>
+        </section>
+
+        <!-- ================= STATE B · ENABLED, NO TOKEN ================= -->
+        <section id="state-b" class="state space-y-4">
+
+          <!-- Integration header -->
+          <div class="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.05] p-4">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" class="text-orange-400 shrink-0">
+              <path d="M15.545 6.423L10.374.377a.457.457 0 00-.851.178L8.258 6.423H7.742l.271-5.868a.457.457 0 00-.851-.178L.455 6.423A.55.55 0 00.5 6.9v.207a.55.55 0 00.385.524l3.717 1.177-2.046 6.14a.457.457 0 00.62.577L8 13.09l4.864 2.435a.457.457 0 00.62-.577l-2.046-6.14 3.717-1.177A.55.55 0 0015.5 7.107V.69a.55.55 0 00.045-.267z"/>
+            </svg>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-[13px] font-medium">GitLab</span>
+                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook</span>
+              </div>
+              <p class="mt-0.5 text-[11px] text-white/50">
+                Receives GitLab issue &amp; merge-request events and emits them to BOS handlers.
+                This is the webhook only — handling is a separate, toggleable step.
+              </p>
+            </div>
+          </div>
+
+          <!-- Webhook section (enabled, no token) -->
+          <section class="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <div class="mb-3 flex items-center justify-between">
+              <h4 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                <i data-lucide="globe" class="size-3"></i> Webhooks
+                <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-normal normal-case text-emerald-300">Enabled</span>
+              </h4>
+              <div class="flex items-center gap-2">
+                <button class="inline-flex items-center gap-1.5 rounded border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/80 transition-colors hover:bg-white/10">
+                  <i data-lucide="play" class="size-3"></i> Test
+                </button>
+                <button class="rounded border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/80 transition-colors hover:bg-white/10">
+                  Disable
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <!-- Receiver URL -->
+              <div class="space-y-1">
+                <span class="block text-[11px] text-white/60">Receiver URL</span>
+                <div class="flex items-center gap-2">
+                  <code class="flex-1 truncate rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] text-white/70">
+                    https://&lt;bos-origin&gt;/api/integrations/webhooks/gitlab/webhooks
+                  </code>
+                  <button class="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1 text-[11px] text-white/70 transition-colors hover:bg-white/10">
+                    <i data-lucide="copy" class="size-3"></i> Copy
+                  </button>
+                </div>
+                <span class="block text-[10px] text-white/40">
+                  Paste this into GitLab → <span class="font-mono">Project → Settings → Webhooks → URL</span>.
+                </span>
+              </div>
+
+              <!-- Token (empty state) -->
+              <div class="space-y-1">
+                <span class="block text-[11px] text-white/60">
+                  <i data-lucide="key-round" class="inline size-3 align-middle"></i> Secret token
+                </span>
+                <div class="flex items-center gap-2">
+                  <span class="flex-1 truncate rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] text-white/40">
+                    No token yet — required for GitLab to authenticate deliveries.
+                  </span>
+                  <button class="inline-flex items-center gap-1.5 rounded bg-violet-500/80 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-violet-500">
+                    <i data-lucide="key-round" class="size-3"></i> Generate token
+                  </button>
+                </div>
+                <p class="text-[10px] text-white/40">
+                  When set, BOS requires every incoming request to carry a matching
+                  <code class="mx-1 rounded bg-black/30 px-1">X-Gitlab-Token</code> header.
+                </p>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ================= STATE C · ENABLED + TOKEN (HERO) ================= -->
+        <section id="state-c" class="state active space-y-4">
+
+          <!-- Integration header -->
+          <div class="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.05] p-4">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" class="text-orange-400 shrink-0">
+              <path d="M15.545 6.423L10.374.377a.457.457 0 00-.851.178L8.258 6.423H7.742l.271-5.868a.457.457 0 00-.851-.178L.455 6.423A.55.55 0 00.5 6.9v.207a.55.55 0 00.385.524l3.717 1.177-2.046 6.14a.457.457 0 00.62.577L8 13.09l4.864 2.435a.457.457 0 00.62-.577l-2.046-6.14 3.717-1.177A.55.55 0 0015.5 7.107V.69a.55.55 0 00.045-.267z"/>
+            </svg>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-[13px] font-medium">GitLab</span>
+                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50">Webhook</span>
+              </div>
+              <p class="mt-0.5 text-[11px] text-white/50">
+                Receives GitLab issue &amp; merge-request events and emits them to BOS handlers.
+                This is the webhook only — handling is a separate, toggleable step.
+              </p>
+            </div>
+          </div>
+
+          <!-- Webhook section (enabled + token) -->
+          <section class="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <div class="mb-3 flex items-center justify-between">
+              <h4 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                <i data-lucide="globe" class="size-3"></i> Webhooks
+                <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-normal normal-case text-emerald-300">Enabled</span>
+                <span class="inline-flex items-center gap-1 rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-normal normal-case text-violet-300">
+                  <i data-lucide="shield-check" class="size-2.5"></i> Secret set
+                </span>
+              </h4>
+              <div class="flex items-center gap-2">
+                <button class="inline-flex items-center gap-1.5 rounded border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/80 transition-colors hover:bg-white/10">
+                  <i data-lucide="play" class="size-3"></i> Test
+                </button>
+                <button class="rounded border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/80 transition-colors hover:bg-white/10">
+                  Disable
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <!-- Receiver URL -->
+              <div class="space-y-1">
+                <span class="block text-[11px] text-white/60">Receiver URL</span>
+                <div class="flex items-center gap-2">
+                  <code class="flex-1 truncate rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] text-white/70">
+                    https://&lt;bos-origin&gt;/api/integrations/webhooks/gitlab/webhooks
+                  </code>
+                  <button class="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1 text-[11px] text-white/70 transition-colors hover:bg-white/10">
+                    <i data-lucide="copy" class="size-3"></i> Copy
+                  </button>
+                </div>
+                <span class="block text-[10px] text-white/40">
+                  Paste this into GitLab → <span class="font-mono">Project → Settings → Webhooks → URL</span>.
+                </span>
+              </div>
+
+              <!-- Freshly generated token — shown ONCE -->
+              <div class="rounded border border-amber-400/30 bg-amber-500/10 p-2 text-[11px]">
+                <div class="mb-1 flex items-center gap-2 font-medium text-amber-200">
+                  <i data-lucide="key-round" class="size-3"></i> New secret token (visible once)
+                </div>
+                <div class="flex items-center gap-2">
+                  <code class="flex-1 truncate rounded border border-amber-400/20 bg-black/30 px-2 py-1 font-mono text-amber-100">
+                    glab_wh_0f3a9c2e71b84d6fae12
+                  </code>
+                  <button class="inline-flex items-center gap-1 rounded border border-amber-400/30 px-2 py-1 text-amber-200 transition-colors hover:bg-amber-500/10">
+                    <i data-lucide="copy" class="size-3"></i> Copy
+                  </button>
+                </div>
+                <p class="mt-1 text-[10px] text-amber-200/70">
+                  Copy this now — it will not be shown again. Paste it into GitLab →
+                  <span class="font-mono">Webhooks → Secret token</span>. The previous secret still verifies during the rotation window.
+                </p>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex flex-wrap items-center gap-2 pt-1">
+                <button class="inline-flex items-center gap-1.5 rounded border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/80 transition-colors hover:bg-white/10">
+                  <i data-lucide="key-round" class="size-3"></i> Rotate token
+                </button>
+                <button class="inline-flex items-center gap-1.5 rounded border border-red-400/40 px-2.5 py-1 text-[11px] font-medium text-red-300 transition-colors hover:bg-red-500/15">
+                  <i data-lucide="trash-2" class="size-3"></i> Delete
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Labels reference -->
+          <section class="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <h4 class="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+              <i data-lucide="tag" class="size-3"></i> Labels
+            </h4>
+            <div class="space-y-2">
+              <div>
+                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Classification (issue type — additive)</span>
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  <span class="rounded border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-200">Bug</span>
+                  <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Feature</span>
+                  <span class="rounded border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-200">Improvement</span>
+                </div>
+              </div>
+              <div>
+                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Work stages (one active)</span>
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Triage</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Analyzing</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Verifying</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Mockup</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Design</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Plan</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Tasks</span>
+                  <span class="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60">Implementing</span>
+                </div>
+              </div>
+              <div>
+                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Human-waiting (a comment here drives it)</span>
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  <span class="rounded border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-200">Fix Proposed</span>
+                  <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Spec Drafted&nbsp;→&nbsp;approve: branch + spec</span>
+                  <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Design Complete</span>
+                  <span class="rounded border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-200">Needs Review&nbsp;→&nbsp;promote</span>
+                </div>
+                <p class="mt-1 text-[9px] leading-relaxed text-white/35">
+                  In a human-waiting state, a GitLab comment is approval (advance) or feedback (revise, stay). Two gates: approve the deliverable → <code class="font-mono">Design Complete</code>; approve the design → implementation → <code class="font-mono">Needs Review</code> (you promote).
+                </p>
+              </div>
+              <div>
+                <span class="block text-[10px] font-medium uppercase tracking-wide text-white/40">Side states</span>
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  <span class="rounded border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">Needs Input</span>
+                  <span class="rounded border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-200">Failed</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ================= WORKFLOW CONFIGURATION (persistent) ================= -->
+        <div class="mt-1 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+          <h4 class="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+            <i data-lucide="bot" class="size-3"></i> Workflow
+            <span class="text-[10px] font-normal normal-case text-white/30">who acts on a new issue</span>
+          </h4>
+          <div class="space-y-3">
+            <!-- Agent picker -->
+            <div class="space-y-1">
+              <span class="block text-[11px] text-white/60">Agent that handles new issues</span>
+              <div class="flex items-center gap-2">
+                <div class="flex-1">
+                  <select class="w-full rounded border border-white/15 bg-black/20 px-2 py-1.5 text-[11px] text-white/80">
+                    <option>Gitlab Issue Agent</option>
+                    <option>Research Agent</option>
+                    <option>Build Studio</option>
+                  </select>
+                </div>
+                <button class="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1.5 text-[11px] text-white/70 transition-colors hover:bg-white/10">
+                  <i data-lucide="settings-2" class="size-3"></i> Manage
+                </button>
+              </div>
+              <p class="text-[10px] leading-relaxed text-white/40">
+                A normal agent (Settings → Agents). Its <span class="text-white/60">skill</span> defines the pipeline —
+                classify (<code class="font-mono text-[10px]">Bug</code> / <code class="font-mono text-[10px]">Feature</code> / <code class="font-mono text-[10px]">Improvement</code>) → run the
+                matching workflow → apply status labels → end at <code class="font-mono text-[10px]">Needs Review</code>. The agent
+                performs all GitLab operations via its configured
+                <span class="text-white/60">GitLab MCP server</span> (no credential is stored in BOS).
+              </p>
+            </div>
+
+            <!-- Handler toggle pointer -->
+            <div class="flex items-start gap-2 rounded border border-white/10 bg-black/10 p-2.5 text-[11px] text-white/60">
+              <i data-lucide="bell-ring" class="mt-0.5 size-3.5 shrink-0 text-white/40"></i>
+              <span class="leading-relaxed">
+                A built-in
+                <code class="mx-1 rounded bg-black/30 px-1 font-mono text-white/70">gitlab-issue-triage</code>
+                handler is
+                <span class="text-emerald-300/90">enabled by default</span> — it forwards each new issue to the agent above.
+                Toggle it in the Events handler configuration to stop auto-processing, or point another consumer
+                (e.g. the Workflow app) at the <code class="mx-1 rounded bg-black/30 px-1 font-mono text-white/70">gitlab.issue.opened</code> event instead.
+                <button class="ml-1 inline-flex items-center gap-1 text-white/80 underline decoration-white/20 underline-offset-2 hover:text-white">
+                  Open Events
+                  <i data-lucide="arrow-up-right" class="size-2.5"></i>
+                </button>
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /main -->
+    </div>
+  </div><!-- /window -->
+
+  <!-- Mockup caption -->
+  <div class="mt-3 px-1 text-[11px] text-white/30">
+    UI mockup · Settings → Integrations → GitLab (webhook-only, no OAuth, no MCP status) — not the shipped UI. The state switcher above is a mockup-only control.
+  </div>
+</div>
+
+<script>
+  const btns = document.querySelectorAll(".switch-btn");
+  btns.forEach((b) =>
+    b.addEventListener("click", () => {
+      const target = b.dataset.state;
+      document.querySelectorAll(".state").forEach((s) => s.classList.remove("active"));
+      document.getElementById("state-" + target).classList.add("active");
+      btns.forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      lucide.createIcons();
+    })
+  );
+  lucide.createIcons();
+</script>
+</body>
+</html>

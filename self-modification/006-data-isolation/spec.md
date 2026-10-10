@@ -33,6 +33,7 @@ The first-run wizard and Settings let the user pick the method; only probe-compa
 
 - Where atomic rename-over-existing is not guaranteed, writes still replace the file; only crash-atomicity degrades to best-effort.
 - Orphaned clones left by a crash MUST be reclaimable (GC).
+- On a cross-mount layout (the canonical data dir and the clone root sit under different mounts of the same filesystem, so a same-filesystem `link(2)` between them still fails with EXDEV), the probe MUST report the same hardlink/reflink availability as the clone layer — when `BOS_CLONE_SOURCE` is set to a same-mount view of the data dir, the probe measures through that view, not through `dataDir()`.
 
 ## Requirements *(mandatory)*
 
@@ -46,6 +47,7 @@ The first-run wizard and Settings let the user pick the method; only probe-compa
 - **FR-006**: A `datafs` config namespace MUST expose the isolation method (only compatible methods selectable; incompatible shown disabled with a reason), a capability read-out, and a re-probe action; the first-run wizard MUST let the user choose (defaulting to the best compatible option).
 - **FR-007**: Promote is **code-only** — DataFS supports discarding a clone, never merging it back (promote-and-merge is out of scope); `active` with no preview in progress uses base directly with zero clone overhead.
 - **FR-008**: On-disk `data/` schema changes MUST be backward-compatible; clones/overlays are local artifacts and MUST NOT be shipped; orphaned clones MUST be garbage-collectable.
+- **FR-009**: The capability probe MUST measure every capability (reflink, hardlink, filesystem type) against the exact source→clone-root pair the clone layer will use — the source being `dataDir()` unless `BOS_CLONE_SOURCE` names a same-mount view of that same directory. The probe and the Supervisor's clone layer MUST agree on the source path (both read `BOS_CLONE_SOURCE`) so the method set reported to Settings matches what a clone can actually perform — no split-brain where the UI offers (or hides) a method the clone layer cannot (or can) do.
 
 ### Key Entities
 
@@ -63,6 +65,7 @@ The first-run wizard and Settings let the user pick the method; only probe-compa
 - **SC-002**: Isolation works on a copy-only filesystem (no CoW/hardlinks required).
 - **SC-003**: Only probe-compatible isolation methods are selectable in Settings.
 - **SC-004**: `active` runs with zero clone/overlay overhead when nothing is being previewed.
+- **SC-005**: The isolation methods offered in Settings are exactly the methods the clone layer will actually use on that deployment — on a `BOS_CLONE_SOURCE` single-mount view (e.g. the bastion layout), a hardlink-capable pair reports `hardlink` as selectable rather than silently falling back to `copy` while the UI shows it disabled.
 
 ## Notes
 

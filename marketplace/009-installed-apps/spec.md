@@ -44,11 +44,13 @@ The Developer writes a project into a fresh staging directory; `buildApp` reads 
 - **FR-004**: `installApp` MUST write `files` into `<appsDir>/<id>/`, run `buildAppDir` when `entry` is set, and commit to GitFS; `{ draft: true }` requires a feature branch's coupled `user-apps` worktree to receive it and is REFUSED from base (amended by `build-studio/038-user-apps-branch-coupling`; the `app-candidate` branch is retired). Serving prefers `<id>/dist/index.html` (built) else `<id>/` (static), behind a path-escape jail — project source is never reachable.
 - **FR-005**: Authoring a project MUST be decoupled from installing: the Developer (`contentOnly`) writes the project into a fresh staging directory (no build/install) → the orchestrator calls `buildApp` (`POST /api/apps/build` → `readProjectDir` → `installApp({ files, entry }, { draft: true })`). `readProjectDir` is capped and text-only and skips `node_modules`/`.git`/`dist`. Static apps keep the simpler `installApp({ html })` path.
 - **FR-006**: The runtime trust boundary is the sandboxed iframe; the build only bundles provided code (no `npm install`, so no per-app install-script surface). Arbitrary per-app npm dependencies and a secrets `SecFS` are out of scope.
+- **FR-007**: An installed app's **icon MUST be resolvable from durable state on every boot**, with no reinstall. Resolution order: the item's CATALOG entry (`marketplace.json` → `items[].app.icon` in the marketplace the item came from, `user-apps/marketplace.json` for the user's own) → the item's own `app/app.json` icon → `pickIcon(name)`. The catalog entry is the record the install path already applies (`installItemApp({ icon: item.app.icon })`) and an install persists nothing (`035-install-by-symlink` FR-001/FR-009), so the read path MUST resolve from that same record rather than from `app.json` alone — otherwise the icon is correct only until the next restart and then reverts to the `pickIcon` default.
+- **FR-008**: A GUESSED icon MUST NOT be persisted. `installItem` (and `/api/apps`, `/api/apps/build`) write `app.json`'s `icon` only when the caller DECLARED one; `pickIcon` applies at read time. A persisted guess is indistinguishable from a declaration and permanently shadows the catalog entry. A declared icon is additionally merged into the item's entry in the user's own catalog (existing entries only — `034-user-apps-marketplace-parity` FR-003 stays merge-only), so rebuilding an item can still change its icon.
 
 ### Key Entities
 
 - **App** — static or project, at `<appsDir>/<id>/`.
-- **`app.json`** — manifest (`id, name, icon, createdAt, status, entry?`).
+- **`app.json`** — manifest (`id, name, icon?, createdAt, entry?`); `icon` is present only when declared, and `dir`/`status` are derived at read time.
 - **`buildAppDir` / `installApp` / `buildApp`** — the build + install paths.
 - **Apps content repo** — the GitFS root (`BOS_APPS_DIR`).
 
@@ -58,7 +60,8 @@ The Developer writes a project into a fresh staging directory; `buildApp` reads 
 
 - **SC-001**: A multi-file React app installs and runs in a window.
 - **SC-002**: A project app's source files are never served (only `dist/`).
-- **SC-003**: The agent never writes the live apps repo directly — authoring goes through a staging dir + `buildApp`.
+- **SC-003**: An installed marketplace item shows its own icon after a full BOS restart, with no reinstall.
+- **SC-004**: The agent never writes the live apps repo directly — authoring goes through a staging dir + `buildApp`.
 
 ## Notes
 
