@@ -6,6 +6,8 @@
 
 **Revised**: 2026-09-22 (v2 — stateful sessions + first-class `browser_*` tools; branch `bos/browser-automation-v2`)
 
+**Revised**: 2026-10-10 (storage state — a captured session loaded into the isolated profile; branch `bos/browser-storage-state`)
+
 **Status**: Implemented
 
 **Input**: "Make the assistant able to DRIVE a real, stateful browser — open a URL, click around, take screenshots — one live browser per conversation, held open across tool calls. Use cases: screenshot BOS for documentation, scrape content, perform actions by driving a browser instead of APIs."
@@ -76,6 +78,16 @@ consent, and limits; the capability is off by default.
 2. **Given** the user enables it with an isolated profile, **When** automation
    runs, **Then** it uses a profile with no access to the user's real
    cookies/sessions.
+3. **Given** the user has captured a storage state file and configured its path,
+   **When** a session starts, **Then** the browser begins signed in to the
+   accounts that file carries — the one deliberate, user-placed way past the
+   isolated profile.
+4. **Given** a configured storage state that CANNOT take effect — the file is
+   absent, or the isolated profile is off (a persistent profile keeps its own
+   cookies and the server ignores the flag) — **When** a session is requested,
+   **Then** BOS refuses with a reason naming the fix and starts no browser; it
+   MUST NOT browse signed out, because the agent would then report a
+   logged-out page as the content.
 
 ### User Story 4 - Page content cannot hijack the agent (Priority: P2)
 
@@ -128,7 +140,12 @@ instructions.
   `isBlockedHost()` proxy guard; host scope is advisory defense-in-depth, NOT a
   security boundary (the server default is allow-all).
 - **FR-007**: An isolated browser profile MUST be the default (no access to real
-  cookies/sessions/credentials); downloads MUST be disabled by default.
+  cookies/sessions/credentials); downloads MUST be disabled by default. The
+  ONLY path past the isolated profile is the storage state of FR-013: a file
+  the user captured and placed by hand. BOS MUST NOT read the user's real
+  browser profile, and MUST NOT acquire a session itself (no credential entry,
+  no login automation) — the user authenticates in their own browser and hands
+  BOS the result.
 - **FR-008**: The agent's tool guidance MUST state that extracted page content
   is untrusted input and must not be followed as instructions.
 - **FR-009**: A configurable consent policy (`off` | `per-use` | `per-session`)
@@ -139,8 +156,9 @@ instructions.
 - **FR-010**: A `browser-automation` config namespace MUST render a Settings tab
   (and auto-expose to the assistant) with at least: enabled (default off),
   allowed/blocked origins, headless (default true), isolated profile (default
-  true), consent policy, downloads (default false), and limits. Policy is
-  resolved per call — changes apply to the next session with no restart.
+  true), storage state path (default empty), consent policy, downloads (default
+  false), and limits. Policy is resolved per call — changes apply to the next
+  session with no restart.
 - **FR-011**: Screenshots (and any file the browser saves) MUST land in the VFS
   (`/Screenshots`), MUST be reported by VFS path (host paths — absolute or
   cwd-relative — rewritten before the model sees them), and MUST return to the
@@ -151,6 +169,27 @@ instructions.
   (discoverable via `find_tools`, groupable, allowlistable), seeded into the
   assistant's allowlist, and granted once to pre-existing installs via a
   marker-guarded additive backfill (a user's later removal sticks).
+- **FR-013**: BOS MUST be able to start the browser from a user-supplied
+  Playwright **storage state** (cookies + localStorage captured from a session
+  the user authenticated themselves), passed to the server as
+  `--storage-state`, so the assistant can read what the user's own
+  subscriptions and accounts entitle them to instead of the logged-out page.
+  - A RELATIVE configured path MUST resolve against the **data dir**, not the
+    process cwd, so one value holds across the checkout, a per-user container
+    (`/app/data`), and a DataFS clone of the data dir.
+  - BOS MUST refuse to start the browser (no server config, plus a reason
+    naming the fix) when the setting cannot take effect: the file is missing,
+    or the isolated profile is off. Degrading to a signed-out session is
+    forbidden — it yields a plausible wrong answer (a paywall preview reported
+    as the article), the failure class the constitution's no-workarounds rule
+    exists to prevent.
+  - The storage state applies to EVERY session — main chat, sub-agents and
+    headless runs alike — so the accounts it carries are reachable by anything
+    holding the `browser_*` tools. This MUST be documented to the user as a
+    credential, together with the requirement that the file live OUTSIDE the
+    VFS (inside it, the `file_*` tools could read the session back out and the
+    agent could exfiltrate it).
+  - BOS MUST NOT write, refresh, or transmit the file; it is read-only input.
 
 ### Key Entities
 
@@ -164,6 +203,9 @@ instructions.
   composition, VFS path rewriting, vision attachments).
 - **Capability probe** — shared "is a browser available?" check that also
   resolves the Chromium path across install layouts.
+- **Storage state** — a user-captured Playwright session file (cookies +
+  localStorage) loaded into the isolated profile; read-only input, held outside
+  the VFS, treated as a credential.
 - **`browser-automation` config namespace** — the policy surface.
 
 ## Success Criteria *(mandatory)*
@@ -181,6 +223,10 @@ instructions.
   result, and the screenshot shows the post-click page.
 - **SC-005**: A screenshot taken for documentation is retrievable at a
   deterministic VFS path chosen by the caller and visible in the Files app.
+- **SC-006**: With a valid storage state configured, a page that requires
+  sign-in renders as the signed-in user; with a storage state that cannot take
+  effect, no browser starts and the reason names what to fix — there is no
+  configuration in which BOS silently returns the logged-out page.
 
 ## Notes
 
@@ -196,8 +242,13 @@ instructions.
   reimplement the accessibility-snapshot/ref interaction model and would put
   Chromium inside the Next.js process; the MCP server keeps it in a disposable
   subprocess.
+- The storage state is scoped to a user reaching their OWN accounts — the same
+  content they can already open in their own browser, on sites whose terms
+  permit it. It is a key to one session, not a bulk-collection facility, and the
+  user-facing docs say so where the capture recipe lives.
 - Dev docs: `docs/dev/automation/browser-automation.md`. Tests:
   `tests/assistant/browser-session.test.ts`, `tests/assistant/browser-tools.test.ts`,
-  `tests/assistant/playwright-probe.test.ts`, `tests/agent/browser-tools-backfill.test.ts`.
+  `tests/assistant/playwright-probe.test.ts`, `tests/agent/browser-tools-backfill.test.ts`,
+  `tests/assistant/browser-automation-storage-state.test.ts`.
 - v1 prose remains in git history; original migration source was
   `spec/automation/browser-automation.md`.
