@@ -73,7 +73,15 @@ Opaque origins have no browser storage, so:
 - The SDK installs a `localStorage`/`sessionStorage` shim over it.
 
 ### Adopt vs Run
-A marketplace item can expose an `app/` (run pre-built), a `spec/` (adopt = fork into `027`'s `data/specs/user/`), or both. "Adopt" hands off to Build Studio; the fork has no ongoing link to the marketplace.
+> **Update (2026-10-15, `bos/adopt-into-user-apps`)**: the fork is a **new item
+> of the user's own** — `user-apps/items/<id>/spec/` — not a folder in
+> `user-specs`. Copying into the store root predated Projects (037): a store's
+> top level holds only Projects, so the adopted spec was committed and
+> invisible, and it was committed straight onto the store's master, the one
+> spec write that skipped the feature branch. The user's own items are where
+> their own apps and specs live (034), so that is where a fork belongs (FR-AD-001..005).
+
+A marketplace item can expose an `app/` (run pre-built), a `spec/` (adopt = fork into the user's own marketplace, `user-apps`, as a new item), or both. "Adopt" hands off to Build Studio; the fork has no ongoing link to the marketplace.
 
 ## Clarifications
 
@@ -83,7 +91,7 @@ A marketplace item can expose an `app/` (run pre-built), a `spec/` (adopt = fork
 - Q: Opaque origins have no storage — how do apps persist? → A: Broker `storage` capability (per-app namespace) + SDK `localStorage`/`sessionStorage` shim.
 - Q (N3): Do *unmodified* open-web apps "just work"? → A: **Not universally — claim tightened.** Two real limits: (a) `localStorage` is read synchronously at first script execution, so an async hydrate would return a cold `null`; (b) removing `allow-same-origin` breaks the app's own relative `fetch()`. Resolutions: (a) **synchronous hydrate** — inline a per-app storage snapshot into a tiny dynamic bootstrap served *before* the static SDK (`window.__bos_storage_snapshot = {…}`), so the shim's `Map` is populated at parse time (no cold cache, no silent `null`); (b) set permissive CORS on the app's *own static-asset* route so it can fetch its bundled files, while BOS `/api/*` grants none. Apps that use the broker for BOS access work; apps expecting direct same-origin BOS API calls need adaptation. This is documented, not hidden.
 - Q (N7): Manifest back-compat? → A: Pre-028 GitFS-installed apps have manifests without `runtime`/`source`; default them to `runtime:'iframe'`, `source:'local'` so they still resolve.
-- Q (N7): Adopted-store id collisions? → A: Adoption forks into `data/specs/user/<itemId>`; on collision, append a numeric suffix (`<itemId>-2`) and record the origin in the store manifest.
+- Q (N7): Adopted-store id collisions? → A: ~~Adoption forks into `data/specs/user/<itemId>`~~ *(superseded 2026-10-15: adoption creates a user-apps item, FR-AD-002)*; on collision, append a numeric suffix (`<id>-2`).
 - Q (2026-10-15): Opaque-origin `fetch()` fails, but a WebSocket connects — is that a hole in the sandbox? → A: No, and it is not a working channel either. It connects without the user's session (cross-site → no `SameSite=Lax` cookie), so BOS refuses it wherever BOS authenticates. The sanctioned channel is `window.__bos.services.connect(id)`, opened by the parent with the session, gated by `services:read`.
 - Q: Marketplace URL safety? → A: Protocol allowlist (`https://` only, optional `ssh`); reject `file://`/`ext::`; schema-validate `marketplace.json` before use; clone via `execFile` (no shell).
 
@@ -126,7 +134,7 @@ The launcher lists builtin, local, and marketplace apps uniformly; native apps r
 
 **Acceptance Scenarios**:
 1. **Given** a registered marketplace, **When** the app loads, **Then** items render with Run / Install / Adopt actions per capability.
-2. **Given** an item with a `spec`, **When** "Adopt" is clicked, **Then** it forks into `data/specs/user/` (de-duped id, N7) with a commit and Build Studio opens it.
+2. **Given** an item with a `spec`, **When** "Adopt" is clicked, **Then** Build Studio opens, asks for a feature branch if none is active, forks the spec into a new `user-apps` item on that branch (de-duped id, N7), and opens it under USER APPS.
 3. **Given** a `file://`/`ext::` URL or malformed `marketplace.json`, **When** registration is attempted, **Then** it is rejected before any clone.
 
 ### User Story 6 — Browse a many-source catalog without scrolling past what you don't want (Priority: P2)
@@ -159,10 +167,19 @@ leaving its header and actions reachable.
 ### User Story 5 — Marketplace lifecycle: remove / uninstall / un-adopt (Priority: P3)
 
 **Acceptance Scenarios**:
-1. **Given** an adopted spec, **When** its source marketplace is removed, **Then** the adopted spec is unaffected (adoption is a fork).
+1. **Given** an adopted spec, **When** its source marketplace is removed, **Then** the adopted spec — a user-apps item of its own — is unaffected (adoption is a fork).
 2. **Given** a marketplace with running apps, **When** removed (with confirmation), **Then** its clones are deleted and its apps are delisted.
 3. **Given** an installed app, **When** uninstalled, **Then** it leaves the launcher and any local copy is deleted.
 
+
+## Adopting a spec (2026-10-15)
+
+- **FR-AD-001**: Adopting MUST fork the item's whole `spec/` folder into a **new user-apps item** (`user-apps/items/<id>/spec/`), through the one item-creation path that "New app" and `app_spec_create` use — never by copying into a spec store, and never by a second write path.
+- **FR-AD-002**: The new item's id MUST be derived from the item's name and de-duplicated against installed items, so a fork never shares an install link with an installed original.
+- **FR-AD-003**: Adopting is a spec write and MUST ride the active feature branch; with none, it is refused, writing nothing. Because the Marketplace app has no branch of its own, its **Adopt spec** action MUST hand off to Build Studio, which asks for a branch at that point (as "New app" does) and then opens the adopted spec.
+- **FR-AD-004**: The adopted folder MUST contain the primary artifact of the method it is created under; otherwise adopting is refused, since the item would hold a spec nothing discovers. A file that is not UTF-8 text MUST be refused by name rather than decoded lossily.
+- **FR-AD-005**: Build Studio's USER APPS heading — the only place "New app" is offered — MUST be shown even when the user has no apps yet.
+- **SC-AD-001**: A fresh user with local-only repositories adopts a spec from a registered marketplace, is asked for a branch, and sees the spec open under USER APPS (`e2e/adopt-spec.spec.ts`).
 
 ## Service sockets through the broker (2026-10-15)
 
