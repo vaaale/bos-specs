@@ -41,6 +41,8 @@ The user installs the Terminal service from the marketplace and starts it.
 1. **Given** a marketplace with Terminal service, **When** the user installs it, **Then** symlinks are created in `dataDir()/system/services/terminal` and `dataDir()/config/terminal` (directory).
 2. **Given** the Terminal service is installed, **When** the user starts it, **Then** a worker thread is created and the service binds to a configurable port (default: 3001).
 3. **Given** the Terminal service is running, **When** the terminal app reads port from `dataDir()/config/terminal/terminal.json`, **Then** the WebSocket connection is established and shell commands execute.
+4. **Given** the Terminal app installed from a marketplace, opened as a desktop window behind an authenticating front door (Bastion), with "Read services" granted, **When** it connects, **Then** the connection is opened through `window.__bos.services.connect("terminal")` and shell commands execute. *(2026-10-15: before this, the app opened the socket from inside its opaque-origin sandbox; the browser left the session cookie off the handshake and Bastion refused it — "HTTP Authentication failed; no valid credentials available".)*
+5. **Given** the Terminal app opened in its own browser tab (Settings → Services → Open App), **When** it connects, **Then** it reads its service's config same-origin and opens the socket itself, through the Supervisor's `wsPath`.
 
 ### User Story 2 - I can manage service lifecycle in Settings (Priority: P1)
 
@@ -700,6 +702,7 @@ All sources increment the restart counter and trigger the recovery flow.
 - **FR-017**: The consuming app MUST fetch the service config from `dataDir()/config/<id>/` to discover the port.
 - **FR-018**: If a port is already in use, the service MUST fail to start and log an error.
 - **FR-019**: (CH-005) After binding, the worker MUST publish the actual bound port via `{ type: 'bound', port, host }` message. The service manager MUST write the bound port to the config file so dependent services and apps can discover it.
+- **FR-019a**: (2026-10-15) An installed app MUST open a socket to a service through the broker — `window.__bos.services.connect(id)` (028 FR-SB-001..005) — and MUST NOT open it from inside its own frame. A marketplace app's frame is opaque-origin, so a socket it opens itself carries no session and is refused wherever BOS authenticates. Only a page running outside a BOS window (no `window.__bos`) opens the socket itself, at the service's `wsPath`.
 
 ### Dependencies
 
@@ -740,7 +743,7 @@ All sources increment the restart counter and trigger the recovery flow.
 
 ### Measurable Outcomes
 
-- **SC-001**: A terminal service can be installed from the marketplace, started, and connected to via WebSocket.
+- **SC-001**: A terminal service can be installed from the marketplace, started, and connected to via WebSocket — from its desktop window and from the Open App tab, including behind Bastion.
 - **SC-002**: A service can be stopped and restarted from Settings UI.
 - **SC-003**: A service port can be changed in Settings (auto-saved) and takes effect on restart.
 - **SC-004**: A crashing service automatically restarts up to the configured max restarts.
