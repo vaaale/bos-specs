@@ -55,13 +55,33 @@ Invariant: `native ⇔ static import ⇔ builtin`; `iframe ⇔ dynamic ⇔ local
 Untrusted apps render with `sandbox` **without** `allow-same-origin`, giving each frame a unique throwaway origin walled off from BOS and every other frame. The `postMessage` broker is the only channel; it already authenticates by `e.source === iframe.contentWindow` (`IframeApp.tsx:83`), correct for opaque frames (`e.origin === "null"`). No DNS, certs, or ports. A wildcard-subdomain origin remains a documented, unbuilt escape hatch only if unmodified open-web apps that need a stable browser origin become a requirement.
 
 ### iframe SDK as a TypeScript library + broker `storage`
+> **Update (2026-10-15, `bos/service-socket-broker`)**: the sandbox also strips
+> the user's **session** from anything the frame opens itself, and a WebSocket is
+> where that bites. CORS does not apply to a WebSocket, so an opaque-origin
+> frame's own `new WebSocket(...)` *connects* — but the frame is cross-site to
+> BOS, so the browser sends the handshake without the `SameSite=Lax` session
+> cookie, and an authenticating front door (Bastion) refuses it. Terminal shipped
+> that way and failed only in the deployment that authenticates. A socket an app
+> needs is therefore opened by the **parent** frame and relayed over the broker
+> (FR-SB-001..004). Separately, the SDK is installed only inside a BOS window: the
+> app route inlines it into every serve of an app, and in a page opened in its own
+> tab there is no parent to broker for (FR-SB-005).
+
 Opaque origins have no browser storage, so:
 - The SDK is promoted from a hard-coded string (`src/app/__bos/sdk.js/route.ts`) to a TS library (`src/lib/iframe-sdk/`) bundled to a served artifact (esbuild is already a dep — `src/lib/apps/build.ts`).
 - A broker `storage` capability persists to a **per-app BOS-assigned namespace** in the user's data volume (capability-gated). Per-app namespacing gives app-to-app isolation *with* persistence despite opaque origins.
 - The SDK installs a `localStorage`/`sessionStorage` shim over it.
 
 ### Adopt vs Run
-A marketplace item can expose an `app/` (run pre-built), a `spec/` (adopt = fork into `027`'s `data/specs/user/`), or both. "Adopt" hands off to Build Studio; the fork has no ongoing link to the marketplace.
+> **Update (2026-10-15, `bos/adopt-into-user-apps`)**: the fork is a **new item
+> of the user's own** — `user-apps/items/<id>/spec/` — not a folder in
+> `user-specs`. Copying into the store root predated Projects (037): a store's
+> top level holds only Projects, so the adopted spec was committed and
+> invisible, and it was committed straight onto the store's master, the one
+> spec write that skipped the feature branch. The user's own items are where
+> their own apps and specs live (034), so that is where a fork belongs (FR-AD-001..005).
+
+A marketplace item can expose an `app/` (run pre-built), a `spec/` (adopt = fork into the user's own marketplace, `user-apps`, as a new item), or both. "Adopt" hands off to Build Studio; the fork has no ongoing link to the marketplace.
 
 ## Clarifications
 
@@ -71,7 +91,8 @@ A marketplace item can expose an `app/` (run pre-built), a `spec/` (adopt = fork
 - Q: Opaque origins have no storage — how do apps persist? → A: Broker `storage` capability (per-app namespace) + SDK `localStorage`/`sessionStorage` shim.
 - Q (N3): Do *unmodified* open-web apps "just work"? → A: **Not universally — claim tightened.** Two real limits: (a) `localStorage` is read synchronously at first script execution, so an async hydrate would return a cold `null`; (b) removing `allow-same-origin` breaks the app's own relative `fetch()`. Resolutions: (a) **synchronous hydrate** — inline a per-app storage snapshot into a tiny dynamic bootstrap served *before* the static SDK (`window.__bos_storage_snapshot = {…}`), so the shim's `Map` is populated at parse time (no cold cache, no silent `null`); (b) set permissive CORS on the app's *own static-asset* route so it can fetch its bundled files, while BOS `/api/*` grants none. Apps that use the broker for BOS access work; apps expecting direct same-origin BOS API calls need adaptation. This is documented, not hidden.
 - Q (N7): Manifest back-compat? → A: Pre-028 GitFS-installed apps have manifests without `runtime`/`source`; default them to `runtime:'iframe'`, `source:'local'` so they still resolve.
-- Q (N7): Adopted-store id collisions? → A: Adoption forks into `data/specs/user/<itemId>`; on collision, append a numeric suffix (`<itemId>-2`) and record the origin in the store manifest.
+- Q (N7): Adopted-store id collisions? → A: ~~Adoption forks into `data/specs/user/<itemId>`~~ *(superseded 2026-10-15: adoption creates a user-apps item, FR-AD-002)*; on collision, append a numeric suffix (`<id>-2`).
+- Q (2026-10-15): Opaque-origin `fetch()` fails, but a WebSocket connects — is that a hole in the sandbox? → A: No, and it is not a working channel either. It connects without the user's session (cross-site → no `SameSite=Lax` cookie), so BOS refuses it wherever BOS authenticates. The sanctioned channel is `window.__bos.services.connect(id)`, opened by the parent with the session, gated by `services:read`.
 - Q: Marketplace URL safety? → A: Protocol allowlist (`https://` only, optional `ssh`); reject `file://`/`ext::`; schema-validate `marketplace.json` before use; clone via `execFile` (no shell).
 
 ## User Scenarios & Testing *(mandatory)*
@@ -86,6 +107,8 @@ A marketplace app runs in an opaque-origin frame and can reach BOS only through 
 1. **Given** an opaque-origin app, **When** it calls a BOS API directly, **Then** the call fails.
 2. **Given** a granted capability, **When** the app calls it via the SDK, **Then** it succeeds; an ungranted call is rejected by the broker.
 3. **Given** two different apps, **When** each writes storage, **Then** neither can read the other's namespace.
+4. **Given** an opaque-origin app with `services:read` and a running service of its own, **When** it opens a socket with `__bos.services.connect(id)`, **Then** the handshake reaches the service carrying the user's session cookie and messages flow both ways; the same socket opened with `new WebSocket(...)` from inside the frame arrives with no cookie.
+5. **Given** an app page opened in its own browser tab (no BOS window around it), **When** it loads, **Then** `window.__bos` is absent, so the app takes its same-origin path instead of hanging on a broker that cannot answer.
 
 ### User Story 2 — Open-web `localStorage` app works, within stated limits (Priority: P1)
 
@@ -111,7 +134,7 @@ The launcher lists builtin, local, and marketplace apps uniformly; native apps r
 
 **Acceptance Scenarios**:
 1. **Given** a registered marketplace, **When** the app loads, **Then** items render with Run / Install / Adopt actions per capability.
-2. **Given** an item with a `spec`, **When** "Adopt" is clicked, **Then** it forks into `data/specs/user/` (de-duped id, N7) with a commit and Build Studio opens it.
+2. **Given** an item with a `spec`, **When** "Adopt" is clicked, **Then** Build Studio opens, asks for a feature branch if none is active, forks the spec into a new `user-apps` item on that branch (de-duped id, N7), and opens it under USER APPS.
 3. **Given** a `file://`/`ext::` URL or malformed `marketplace.json`, **When** registration is attempted, **Then** it is rejected before any clone.
 
 ### User Story 6 — Browse a many-source catalog without scrolling past what you don't want (Priority: P2)
@@ -144,10 +167,28 @@ leaving its header and actions reachable.
 ### User Story 5 — Marketplace lifecycle: remove / uninstall / un-adopt (Priority: P3)
 
 **Acceptance Scenarios**:
-1. **Given** an adopted spec, **When** its source marketplace is removed, **Then** the adopted spec is unaffected (adoption is a fork).
+1. **Given** an adopted spec, **When** its source marketplace is removed, **Then** the adopted spec — a user-apps item of its own — is unaffected (adoption is a fork).
 2. **Given** a marketplace with running apps, **When** removed (with confirmation), **Then** its clones are deleted and its apps are delisted.
 3. **Given** an installed app, **When** uninstalled, **Then** it leaves the launcher and any local copy is deleted.
 
+
+## Adopting a spec (2026-10-15)
+
+- **FR-AD-001**: Adopting MUST fork the item's whole `spec/` folder into a **new user-apps item** (`user-apps/items/<id>/spec/`), through the one item-creation path that "New app" and `app_spec_create` use — never by copying into a spec store, and never by a second write path.
+- **FR-AD-002**: The new item's id MUST be derived from the item's name and de-duplicated against installed items, so a fork never shares an install link with an installed original.
+- **FR-AD-003**: Adopting is a spec write and MUST ride the active feature branch; with none, it is refused, writing nothing. Because the Marketplace app has no branch of its own, its **Adopt spec** action MUST hand off to Build Studio, which asks for a branch at that point (as "New app" does) and then opens the adopted spec.
+- **FR-AD-004**: The adopted folder MUST contain the primary artifact of the method it is created under; otherwise adopting is refused, since the item would hold a spec nothing discovers. A file that is not UTF-8 text MUST be refused by name rather than decoded lossily.
+- **FR-AD-005**: Build Studio's USER APPS heading — the only place "New app" is offered — MUST be shown even when the user has no apps yet.
+- **SC-AD-001**: A fresh user with local-only repositories adopts a spec from a registered marketplace, is asked for a branch, and sees the spec open under USER APPS (`e2e/adopt-spec.spec.ts`).
+
+## Service sockets through the broker (2026-10-15)
+
+- **FR-SB-001**: The SDK MUST offer `services.connect(id)`, returning a WebSocket-shaped handle (`readyState`, `send`, `close`, `onopen`/`onmessage`/`onerror`/`onclose`, `addEventListener`/`removeEventListener`). The socket itself MUST be opened by the parent frame, at the service's resolved endpoint (`wsPath` through the Supervisor, else the service's bound port — the same resolution `services.call` uses, from one shared function), so the browser attaches the user's session to it.
+- **FR-SB-002**: `services.connect` MUST be gated by the `services:read` capability, like `services.getConfig`/`status`/`call`. An ungranted call, or a service with no bound port, MUST fail the open visibly: the handle fires `error` carrying the reason, then `close` with code 1006.
+- **FR-SB-003**: A socket MUST be reachable only from the window that opened it. The window identity MUST come from the parent, never from the frame; another window naming the same socket id MUST get "unknown socket", and the socket's events MUST be delivered to the opening window only.
+- **FR-SB-004**: A window's sockets MUST be closed when the window closes. A frame reload MUST close the reloaded document's sockets rather than leave them open until the window closes.
+- **FR-SB-005**: The SDK MUST NOT install `window.__bos` in a document that has no parent frame. Apps detect "running outside a BOS window" by its absence.
+- **SC-SB-001**: An e2e test drives a real opaque-origin app and a real service through the Supervisor and asserts on the handshake's `Cookie` header: absent for a socket the frame opens itself, present for one opened through `services.connect` (`e2e/service-socket-broker.spec.ts`).
 
 ## Marketplace app UI requirements (2026-07-29)
 
